@@ -1,9 +1,9 @@
 """Health and metrics endpoints."""
 from __future__ import annotations
 
-import psutil
 import time
 
+import psutil
 from fastapi import APIRouter, Request
 
 router = APIRouter()

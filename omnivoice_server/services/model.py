@@ -9,9 +9,13 @@ import gc
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING
 
 import psutil
 import torch
+
+if TYPE_CHECKING:
+    from omnivoice import OmniVoice
 
 from ..config import Settings
 
@@ -73,7 +77,6 @@ class ModelService:
         self._loaded = True
 
     def _dtype_candidates(self) -> list:
-        import torch
         if self.cfg.device == "cuda":
             return [torch.float16, torch.bfloat16, torch.float32]
         if self.cfg.device == "mps":
@@ -82,11 +85,10 @@ class ModelService:
 
     @staticmethod
     def _has_nan(tensors: list) -> bool:
-        import torch
         return any(torch.isnan(t).any() for t in tensors)
 
     @property
-    def model(self) -> "OmniVoice":
+    def model(self) -> OmniVoice:
         if not self._loaded:
             raise RuntimeError("Model not loaded yet")
         return self._model

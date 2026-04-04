@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
 
 
 def main() -> None:
@@ -14,24 +13,71 @@ def main() -> None:
     )
 
     # Server
-    parser.add_argument("--host", default=None, help="Bind host (env: OMNIVOICE_HOST)")
-    parser.add_argument("--port", type=int, default=None, help="Port (env: OMNIVOICE_PORT)")
-    parser.add_argument("--log-level", default=None, choices=["debug", "info", "warning", "error"], help="Log level (env: OMNIVOICE_LOG_LEVEL)")
+    parser.add_argument(
+        "--host", default=None, help="Bind host (env: OMNIVOICE_HOST)"
+    )
+    parser.add_argument(
+        "--port", type=int, default=None, help="Port (env: OMNIVOICE_PORT)"
+    )
+    parser.add_argument(
+        "--log-level",
+        default=None,
+        choices=["debug", "info", "warning", "error"],
+        help="Log level (env: OMNIVOICE_LOG_LEVEL)",
+    )
 
     # Model
-    parser.add_argument("--model", default=None, dest="model_id", help="HuggingFace model ID or local path (env: OMNIVOICE_MODEL_ID)")
-    parser.add_argument("--device", default=None, choices=["auto", "cuda", "mps", "cpu"], help="Inference device (env: OMNIVOICE_DEVICE)")
-    parser.add_argument("--num-step", type=int, default=None, dest="num_step", help="Diffusion steps, 1-64 (env: OMNIVOICE_NUM_STEP)")
+    parser.add_argument(
+        "--model",
+        default=None,
+        dest="model_id",
+        help="HuggingFace model ID or local path (env: OMNIVOICE_MODEL_ID)",
+    )
+    parser.add_argument(
+        "--device",
+        default=None,
+        choices=["auto", "cuda", "mps", "cpu"],
+        help="Inference device (env: OMNIVOICE_DEVICE)",
+    )
+    parser.add_argument(
+        "--num-step",
+        type=int,
+        default=None,
+        dest="num_step",
+        help="Diffusion steps, 1-64 (env: OMNIVOICE_NUM_STEP)",
+    )
 
     # Inference
-    parser.add_argument("--max-concurrent", type=int, default=None, dest="max_concurrent", help="Max simultaneous inferences (env: OMNIVOICE_MAX_CONCURRENT)")
-    parser.add_argument("--timeout", type=int, default=None, dest="request_timeout_s", help="Request timeout in seconds (env: OMNIVOICE_REQUEST_TIMEOUT_S)")
+    parser.add_argument(
+        "--max-concurrent",
+        type=int,
+        default=None,
+        dest="max_concurrent",
+        help="Max simultaneous inferences (env: OMNIVOICE_MAX_CONCURRENT)",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=None,
+        dest="request_timeout_s",
+        help="Request timeout in seconds (env: OMNIVOICE_REQUEST_TIMEOUT_S)",
+    )
 
     # Storage
-    parser.add_argument("--profile-dir", default=None, dest="profile_dir", help="Voice profile directory (env: OMNIVOICE_PROFILE_DIR)")
+    parser.add_argument(
+        "--profile-dir",
+        default=None,
+        dest="profile_dir",
+        help="Voice profile directory (env: OMNIVOICE_PROFILE_DIR)",
+    )
 
     # Auth
-    parser.add_argument("--api-key", default=None, dest="api_key", help="Bearer token for auth. Empty = no auth (env: OMNIVOICE_API_KEY)")
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        dest="api_key",
+        help="Bearer token for auth. Empty = no auth (env: OMNIVOICE_API_KEY)",
+    )
 
     args = parser.parse_args()
 
@@ -49,6 +95,7 @@ def main() -> None:
     )
 
     import uvicorn
+
     from .app import create_app
 
     app = create_app(cfg)

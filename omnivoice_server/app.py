@@ -6,18 +6,18 @@ from __future__ import annotations
 
 import logging
 import time
-from contextlib import asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from .config import Settings
-from .services.model import ModelService
+from .routers import health, models, speech, voices  # FIX: added models
 from .services.inference import InferenceService
-from .services.profiles import ProfileService
 from .services.metrics import MetricsService
-from .routers import speech, voices, health, models  # FIX: added models
+from .services.model import ModelService
+from .services.profiles import ProfileService
 
 logger = logging.getLogger(__name__)
 

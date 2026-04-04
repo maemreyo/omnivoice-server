@@ -14,8 +14,7 @@ import gc
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import torch
 
@@ -29,14 +28,14 @@ logger = logging.getLogger(__name__)
 class SynthesisRequest:
     text: str
     mode: str                            # "auto" | "design" | "clone"
-    instruct: Optional[str] = None       # for mode="design"
-    ref_audio_path: Optional[str] = None # tmp path, for mode="clone"
-    ref_text: Optional[str] = None       # for mode="clone", optional
+    instruct: str | None = None       # for mode="design"
+    ref_audio_path: str | None = None # tmp path, for mode="clone"
+    ref_text: str | None = None       # for mode="clone", optional
     speed: float = 1.0
-    num_step: Optional[int] = None       # None → use server default
+    num_step: int | None = None       # None → use server default
     # Advanced passthrough — None means "use upstream default"
-    guidance_scale: Optional[float] = None
-    denoise: Optional[bool] = None
+    guidance_scale: float | None = None
+    denoise: bool | None = None
 
 
 @dataclass
@@ -65,7 +64,11 @@ class OmniVoiceAdapter:
     def build_kwargs(self, req: SynthesisRequest, model) -> dict:
         """Return kwargs dict ready to pass to model.generate()."""
         num_step = req.num_step or self._cfg.num_step
-        guidance_scale = req.guidance_scale if req.guidance_scale is not None else self._cfg.guidance_scale
+        guidance_scale = (
+            req.guidance_scale
+            if req.guidance_scale is not None
+            else self._cfg.guidance_scale
+        )
         denoise = req.denoise if req.denoise is not None else self._cfg.denoise
 
         kwargs: dict = {

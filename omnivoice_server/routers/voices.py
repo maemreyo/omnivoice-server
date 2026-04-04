@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 
@@ -83,7 +82,7 @@ async def create_profile(
         description="Unique identifier. Alphanumeric, dashes, underscores only.",
     ),
     ref_audio: UploadFile = File(...),
-    ref_text: Optional[str] = Form(default=None),
+    ref_text: str | None = Form(default=None),
     overwrite: bool = Form(default=False),
     profile_svc: ProfileService = Depends(_get_profiles),
 ):
@@ -160,8 +159,8 @@ async def delete_profile(
 async def update_profile(
     profile_id: str,
     request: Request,                    # FIX: needed for cfg.max_ref_audio_bytes
-    ref_audio: Optional[UploadFile] = File(default=None),
-    ref_text: Optional[str] = Form(default=None),
+    ref_audio: UploadFile | None = File(default=None),
+    ref_text: str | None = Form(default=None),
     profile_svc: ProfileService = Depends(_get_profiles),
 ):
     """

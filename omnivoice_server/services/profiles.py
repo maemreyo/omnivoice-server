@@ -14,7 +14,6 @@ import logging
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ class ProfileService:
             raise ProfileNotFoundError(f"Profile '{profile_id}' not found")
         return path
 
-    def get_ref_text(self, profile_id: str) -> Optional[str]:
+    def get_ref_text(self, profile_id: str) -> str | None:
         """Return ref_text from profile metadata, or None."""
         meta = self._read_meta(self._profile_path(profile_id))
         return meta.get("ref_text") if meta else None
@@ -60,7 +59,7 @@ class ProfileService:
         self,
         profile_id: str,
         audio_bytes: bytes,
-        ref_text: Optional[str] = None,
+        ref_text: str | None = None,
         overwrite: bool = False,
     ) -> dict:
         """
@@ -108,7 +107,7 @@ class ProfileService:
             raise ValueError(f"Invalid profile_id: '{profile_id}'")
         return self._dir / safe
 
-    def _read_meta(self, profile_path: Path) -> Optional[dict]:
+    def _read_meta(self, profile_path: Path) -> dict | None:
         meta_file = profile_path / PROFILE_META_FILE
         if not meta_file.exists():
             return None

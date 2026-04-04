@@ -7,8 +7,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator, Literal, Optional
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
@@ -17,7 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 from ..services.inference import InferenceService, SynthesisRequest
 from ..services.metrics import MetricsService
 from ..services.profiles import ProfileNotFoundError, ProfileService
-from ..utils.audio import compute_duration_s, tensor_to_pcm16_bytes, tensors_to_wav_bytes
+from ..utils.audio import tensor_to_pcm16_bytes, tensors_to_wav_bytes
 from ..utils.text import split_sentences
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ class SpeechRequest(BaseModel):
     response_format: Literal["wav", "pcm"] = Field(default="wav")
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     stream: bool = Field(default=False)
-    num_step: Optional[int] = Field(default=None, ge=1, le=64)
+    num_step: int | None = Field(default=None, ge=1, le=64)
 
     @field_validator("model")
     @classmethod
@@ -61,7 +62,7 @@ def _get_cfg(request: Request):
 def _parse_voice(
     voice_str: str,
     profile_svc: ProfileService,
-) -> tuple[str, Optional[str], Optional[str], Optional[str]]:
+) -> tuple[str, str | None, str | None, str | None]:
     """Parse voice string into (mode, instruct, ref_audio_path, ref_text)."""
     v = voice_str.strip()
 
@@ -207,9 +208,9 @@ async def _stream_sentences(
 async def create_speech_clone(
     text: str = Form(..., min_length=1, max_length=10_000),
     ref_audio: UploadFile = File(...),
-    ref_text: Optional[str] = Form(default=None),
+    ref_text: str | None = Form(default=None),
     speed: float = Form(default=1.0, ge=0.25, le=4.0),
-    num_step: Optional[int] = Form(default=None, ge=1, le=64),
+    num_step: int | None = Form(default=None, ge=1, le=64),
     inference_svc: InferenceService = Depends(_get_inference),
     metrics_svc: MetricsService = Depends(_get_metrics),
     cfg=Depends(_get_cfg),

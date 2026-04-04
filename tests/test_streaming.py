@@ -6,8 +6,6 @@ it belongs, with additional edge-case coverage.
 """
 from __future__ import annotations
 
-import pytest
-
 
 def test_streaming_returns_pcm_headers(client):
     """Streaming response must set the PCM metadata headers."""

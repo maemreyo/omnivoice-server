@@ -5,10 +5,13 @@ Priority: CLI flags > env vars > defaults.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+if TYPE_CHECKING:
+    import torch
 
 
 class Settings(BaseSettings):
@@ -103,9 +106,10 @@ class Settings(BaseSettings):
         return "cpu"
 
     @property
-    def torch_dtype(self) -> "torch.dtype":
+    def torch_dtype(self) -> torch.dtype:
         """Return appropriate torch dtype for device."""
         import torch
+
         if self.device in ("cuda", "mps"):
             return torch.float16
         return torch.float32

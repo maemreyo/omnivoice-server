@@ -7,10 +7,8 @@ be declared as a fixture parameter. Fixed below.
 """
 from __future__ import annotations
 
-import io
 import struct
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import torch
@@ -19,13 +17,12 @@ from fastapi.testclient import TestClient
 from omnivoice_server.app import create_app
 from omnivoice_server.config import Settings
 
-
 # ── Audio helpers ─────────────────────────────────────────────────────────────
 
 def make_silence_tensor(duration_s: float = 1.0) -> torch.Tensor:
     """Return a silent (1, T) float32 tensor at 24kHz."""
-    T = int(24_000 * duration_s)
-    return torch.zeros(1, T)
+    num_samples = int(24_000 * duration_s)
+    return torch.zeros(1, num_samples)
 
 
 def make_wav_bytes(duration_frames: int = 0, sample_rate: int = 24000) -> bytes:
