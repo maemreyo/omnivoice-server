@@ -38,6 +38,9 @@ class SynthesisRequest:
     guidance_scale: float | None = None
     denoise: bool | None = None
     t_shift: float | None = None
+    position_temperature: float | None = None
+    class_temperature: float | None = None
+    duration: float | None = None  # Fixed output duration in seconds
 
 
 @dataclass
@@ -71,6 +74,16 @@ class OmniVoiceAdapter:
         )
         denoise = req.denoise if req.denoise is not None else self._cfg.denoise
         t_shift = req.t_shift if req.t_shift is not None else self._cfg.t_shift
+        position_temperature = (
+            req.position_temperature
+            if req.position_temperature is not None
+            else self._cfg.position_temperature
+        )
+        class_temperature = (
+            req.class_temperature
+            if req.class_temperature is not None
+            else self._cfg.class_temperature
+        )
 
         kwargs: dict = {
             "text": req.text,
@@ -79,7 +92,13 @@ class OmniVoiceAdapter:
             "guidance_scale": guidance_scale,
             "denoise": denoise,
             "t_shift": t_shift,
+            "position_temperature": position_temperature,
+            "class_temperature": class_temperature,
         }
+
+        # Add optional duration parameter if provided
+        if req.duration is not None:
+            kwargs["duration"] = req.duration
 
         if req.mode == "design" and req.instruct:
             kwargs["instruct"] = req.instruct

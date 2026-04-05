@@ -138,3 +138,28 @@ def test_speech_clone_invalid_audio_format(client, tmp_path):
     assert resp.status_code == 422
     assert "could not parse as audio file" in resp.json()["detail"]
 
+
+def test_speech_custom_position_temperature(client):
+    """Custom position_temperature parameter should be accepted."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "position_temperature": 0.0,  # Deterministic mode
+        },
+    )
+    assert resp.status_code == 200
+
+
+def test_speech_custom_class_temperature(client):
+    """Custom class_temperature parameter should be accepted."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "class_temperature": 0.5,
+        },
+    )
+    assert resp.status_code == 200
+
+

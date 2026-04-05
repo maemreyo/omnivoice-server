@@ -38,7 +38,10 @@ class SpeechRequest(BaseModel):
     num_step: int | None = Field(default=None, ge=1, le=64)
     guidance_scale: float | None = Field(default=None, ge=0.0, le=10.0)
     denoise: bool | None = Field(default=None)
-    t_shift: float | None = Field(default=None, ge=0.0, le=1.0)
+    t_shift: float | None = Field(default=None, ge=0.0, le=2.0)
+    position_temperature: float | None = Field(default=None, ge=0.0, le=10.0)
+    class_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    duration: float | None = Field(default=None, ge=0.1, le=60.0)
 
     @field_validator("model")
     @classmethod
@@ -125,6 +128,9 @@ async def create_speech(
         guidance_scale=body.guidance_scale,
         denoise=body.denoise,
         t_shift=body.t_shift,
+        position_temperature=body.position_temperature,
+        class_temperature=body.class_temperature,
+        duration=body.duration,
     )
 
     if body.stream:
@@ -200,6 +206,9 @@ async def _stream_sentences(
             guidance_scale=base_req.guidance_scale,
             denoise=base_req.denoise,
             t_shift=base_req.t_shift,
+            position_temperature=base_req.position_temperature,
+            class_temperature=base_req.class_temperature,
+            duration=base_req.duration,
         )
         try:
             result = await inference_svc.synthesize(req)
@@ -225,7 +234,10 @@ async def create_speech_clone(
     num_step: int | None = Form(default=None, ge=1, le=64),
     guidance_scale: float | None = Form(default=None, ge=0.0, le=10.0),
     denoise: bool | None = Form(default=None),
-    t_shift: float | None = Form(default=None, ge=0.0, le=1.0),
+    t_shift: float | None = Form(default=None, ge=0.0, le=2.0),
+    position_temperature: float | None = Form(default=None, ge=0.0, le=10.0),
+    class_temperature: float | None = Form(default=None, ge=0.0, le=2.0),
+    duration: float | None = Form(default=None, ge=0.1, le=60.0),
     inference_svc: InferenceService = Depends(_get_inference),
     metrics_svc: MetricsService = Depends(_get_metrics),
     cfg=Depends(_get_cfg),
@@ -258,6 +270,9 @@ async def create_speech_clone(
             guidance_scale=guidance_scale,
             denoise=denoise,
             t_shift=t_shift,
+            position_temperature=position_temperature,
+            class_temperature=class_temperature,
+            duration=duration,
         )
         try:
             result = await inference_svc.synthesize(req)

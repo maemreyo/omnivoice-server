@@ -112,7 +112,13 @@ def test_validate_audio_bytes_empty_audio():
     # Create WAV with 0 samples
     tensor = torch.randn(1, 0)
     buf = io.BytesIO()
-    torchaudio.save(buf, tensor, 24000, format="wav")
+
+    try:
+        torchaudio.save(buf, tensor, 24000, format="wav")
+    except RuntimeError:
+        # Some torchaudio versions don't support saving empty tensors
+        pytest.skip("torchaudio version doesn't support empty tensor save")
+
     buf.seek(0)
     audio_bytes = buf.read()
 

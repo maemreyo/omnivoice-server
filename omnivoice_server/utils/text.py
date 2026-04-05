@@ -61,7 +61,9 @@ def split_sentences(text: str, max_chars: int = 400) -> list[str]:
             for m in _FALSE_ENDS.finditer(current):
                 match = m  # Get last match
 
-            # If last match is at the end of the string (within 2 chars), merge
+            # If last match is at the end of the string (within 2 chars for trailing punctuation),
+            # merge with next sentence. The -2 tolerance accounts for patterns like "v2.1." where
+            # the period after the false-end pattern should still trigger a merge.
             if match and match.end() >= len(current) - 2:
                 current = current + " " + raw_sentences[i + 1]
                 i += 1

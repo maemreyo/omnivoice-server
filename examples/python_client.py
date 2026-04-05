@@ -184,7 +184,10 @@ async def streaming_synthesis():
                     print(f"  Received {len(chunk)} bytes")
 
             print(f"✓ Stream saved to {output_path}")
-            print(f"  Convert to WAV: ffmpeg -f s16le -ar {sample_rate} -ac 1 -i {output_path} output_stream.wav")
+            print(
+                f"  Convert to WAV: ffmpeg -f s16le -ar {sample_rate} "
+                f"-ac 1 -i {output_path} output_stream.wav"
+            )
 
 
 # ── Example 6: List available voices ─────────────────────────────────────────

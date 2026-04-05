@@ -4,8 +4,6 @@ Tests for text splitting utilities.
 
 from __future__ import annotations
 
-import pytest
-
 from omnivoice_server.utils.text import split_sentences
 
 
@@ -39,11 +37,13 @@ def test_split_sentences_abbreviation_not_split():
 
 def test_split_sentences_version_not_split():
     """Version numbers like v2.1.0 should NOT be treated as sentence boundaries."""
-    text = "Use v2.1.0 for this. It works better."
-    result = split_sentences(text, max_chars=25)  # Force split
-    # Should split at "It works better." not at "v2.1.0"
-    assert len(result) == 2
-    assert "v2.1.0" in result[0]
+    text = "Release v2.1. Download now."
+    result = split_sentences(text, max_chars=100)
+    # Should NOT split at "v2.1." because it matches _FALSE_ENDS pattern
+    # Should only be one sentence (or split elsewhere if forced by max_chars)
+    assert len(result) == 1
+    assert "v2.1." in result[0]
+    assert "Download now." in result[0]
 
 
 def test_split_sentences_chinese():

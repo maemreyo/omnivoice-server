@@ -50,8 +50,26 @@ class Settings(BaseSettings):
     t_shift: float = Field(
         default=0.1,
         ge=0.0,
-        le=1.0,
+        le=2.0,  # Upstream docs don't specify max; allowing up to 2.0 for flexibility
         description="Noise schedule shift. Affects quality/speed tradeoff.",
+    )
+    position_temperature: float = Field(
+        default=5.0,
+        ge=0.0,
+        le=10.0,
+        description=(
+            "Temperature for mask-position selection. "
+            "0=deterministic/greedy, higher=more diversity."
+        ),
+    )
+    class_temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        description=(
+            "Temperature for token sampling at each step. "
+            "0=greedy, higher=more randomness."
+        ),
     )
 
     # Inference

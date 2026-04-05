@@ -448,13 +448,44 @@ response = httpx.post(
     json={
         "input": "Hello world",
         "voice": "auto",
-        "num_step": 32,          # Inference steps (1-64, higher=better quality)
-        "guidance_scale": 3.0,   # CFG scale (0-10, higher=stronger conditioning)
-        "denoise": True,         # Enable denoising (recommended)
-        "t_shift": 0.1          # Noise schedule shift (0-1, affects quality/speed)
+        "num_step": 32,                 # Inference steps (1-64, higher=better quality)
+        "guidance_scale": 3.0,          # CFG scale (0-10, higher=stronger conditioning)
+        "denoise": True,                # Enable denoising (recommended)
+        "t_shift": 0.1,                 # Noise schedule shift (0-2, affects quality/speed)
+        "position_temperature": 5.0,    # Voice diversity (0=deterministic, higher=more variation)
+        "class_temperature": 0.0,       # Token sampling temperature (0=greedy, higher=random)
+        "duration": 3.5                 # Fixed output duration in seconds (overrides speed)
     }
 )
 ```
+
+**Voice Consistency & Reproducibility:**
+
+For deterministic, reproducible output (same voice every time):
+```python
+{
+    "position_temperature": 0.0,  # Greedy/deterministic voice selection
+    "class_temperature": 0.0      # Greedy token sampling
+}
+```
+
+This is especially useful for:
+- Streaming with consistent voice across sentences
+- Reproducible synthesis for testing
+- Fixed voice character in production
+
+Higher `position_temperature` (default 5.0) produces more voice diversity in auto mode but may cause inconsistency when streaming.
+
+**Fixed Duration for Video Sync:**
+
+Use `duration` to generate audio of exact length for syncing with video or animations:
+```python
+{
+    "duration": 5.0  # Generate exactly 5 seconds of audio
+}
+```
+
+When both `duration` and `speed` are provided, `duration` takes precedence and `speed` is ignored.
 
 These parameters override server defaults on a per-request basis.
 
@@ -654,7 +685,24 @@ When using `stream=True` with `voice="auto"`, each sentence is synthesized indep
 
 **Workarounds:**
 
-1. **Use voice cloning for consistent streaming:**
+1. **Set position_temperature=0 for deterministic voice selection (recommended):**
+   ```python
+   with httpx.stream(
+       "POST",
+       "http://127.0.0.1:8880/v1/audio/speech",
+       json={
+           "input": "Long text...",
+           "voice": "auto",
+           "stream": True,
+           "position_temperature": 0.0  # Deterministic voice selection
+       }
+   ) as response:
+       for chunk in response.iter_bytes():
+           play_audio(chunk)
+   ```
+   This ensures the same voice is selected for each sentence, providing consistency across the stream.
+
+2. **Use voice cloning for consistent streaming:**
    ```python
    # Create a profile first
    with open("reference.wav", "rb") as f:
@@ -678,7 +726,7 @@ When using `stream=True` with `voice="auto"`, each sentence is synthesized indep
            play_audio(chunk)
    ```
 
-2. **Use design mode with specific attributes:**
+3. **Use design mode with specific attributes:**
    ```python
    {
        "voice": "design:female,british accent",

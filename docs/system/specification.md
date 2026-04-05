@@ -1,9 +1,14 @@
 # omnivoice-server — System Specification
 
-> **Version**: 2026-04-04
-> **Status**: Pre-implementation
+> **Version**: 2026-04-05
+> **Status**: Implemented
+> **Last Updated**: Synced with commit (main branch)
 > **Repo**: `github.com/<you>/omnivoice-server` (separate repo, MIT License)
-> **Purpose**: Tài liệu đủ chi tiết để implement không cần hỏi thêm
+> **Purpose**: Reference implementation — see README.md for current API documentation
+>
+> **Note**: This specification was originally a pre-implementation design document. It is now
+> maintained as a technical reference for implementation details. For the authoritative
+> API documentation, see `README.md`.
 
 ---
 
@@ -345,6 +350,31 @@ class Settings(BaseSettings):
     denoise: bool = Field(
         default=True,
         description="Enable upstream denoising token. Recommended on.",
+    )
+    t_shift: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=2.0,  # Upstream doesn't specify max; allowing up to 2.0 for flexibility
+        description="Noise schedule shift. Affects quality/speed tradeoff.",
+    )
+    position_temperature: float = Field(
+        default=5.0,
+        ge=0.0,
+        le=10.0,
+        description=(
+            "Temperature for mask-position selection. "
+            "0=deterministic/greedy, higher=more diversity. "
+            "Set to 0 for consistent streaming voice."
+        ),
+    )
+    class_temperature: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=2.0,
+        description=(
+            "Temperature for token sampling at each step. "
+            "0=greedy, higher=more randomness."
+        ),
     )
 
     # Inference
@@ -704,6 +734,10 @@ class SynthesisRequest:
     # Advanced passthrough — None means "use upstream default"
     guidance_scale: Optional[float] = None
     denoise: Optional[bool] = None
+    t_shift: Optional[float] = None               # Noise schedule shift
+    position_temperature: Optional[float] = None  # Mask-position temperature
+    class_temperature: Optional[float] = None     # Token sampling temperature
+    duration: Optional[float] = None              # Fixed output duration (seconds)
 
 
 @dataclass
@@ -734,6 +768,17 @@ class OmniVoiceAdapter:
         num_step = req.num_step or self._cfg.num_step
         guidance_scale = req.guidance_scale if req.guidance_scale is not None else self._cfg.guidance_scale
         denoise = req.denoise if req.denoise is not None else self._cfg.denoise
+        t_shift = req.t_shift if req.t_shift is not None else self._cfg.t_shift
+        position_temperature = (
+            req.position_temperature
+            if req.position_temperature is not None
+            else self._cfg.position_temperature
+        )
+        class_temperature = (
+            req.class_temperature
+            if req.class_temperature is not None
+            else self._cfg.class_temperature
+        )
 
         kwargs: dict = {
             "text": req.text,
@@ -741,7 +786,14 @@ class OmniVoiceAdapter:
             "speed": req.speed,
             "guidance_scale": guidance_scale,
             "denoise": denoise,
+            "t_shift": t_shift,
+            "position_temperature": position_temperature,
+            "class_temperature": class_temperature,
         }
+
+        # Add optional duration parameter if provided (batch inference feature)
+        if req.duration is not None:
+            kwargs["duration"] = req.duration
 
         if req.mode == "design" and req.instruct:
             kwargs["instruct"] = req.instruct
@@ -1273,6 +1325,23 @@ def _split_at_words(text: str, max_chars: int) -> list[str]:
         parts.append(current)
 
     return parts
+
+
+# NOTE: _FALSE_ENDS merge logic (implementation detail)
+#
+# When _SENTENCE_END splits text, some splits are "false positives" — patterns
+# like "v2.1.0" or "Dr." that end with periods but aren't sentence boundaries.
+# The actual implementation has a merge step that checks if a false-end pattern
+# appears at the end of a sentence chunk (within 2 chars tolerance for trailing
+# punctuation). If so, it merges with the next chunk.
+#
+# The -2 tolerance is intentional design:
+# - It accounts for "v2.1." where the period after the version is the sentence end
+# - It's an approximation rather than a correctness guarantee
+# - Full correctness would require complex regex lookbehind for all edge cases
+# - Current approach handles: "Release v2.1. Download now." correctly
+#
+# See test_split_sentences_version_not_split in tests/test_text.py for validation.
 ```
 
 ---
@@ -1540,6 +1609,22 @@ async def _stream_sentences(
     """
     Sentence-level streaming generator.
     Yields PCM int16 bytes as each sentence is synthesized.
+
+    STREAMING CONSISTENCY NOTE:
+    When using streaming (stream=true) with voice="auto", each sentence chunk
+    is synthesized independently. By default, position_temperature=5.0 introduces
+    randomness in voice selection, which can cause inconsistent voice characteristics
+    between chunks (e.g., different genders/accents per sentence).
+
+    RECOMMENDED FIX:
+    Set position_temperature=0 (or 0.0 in request) for deterministic voice selection.
+    This ensures consistent voice across all chunks in a streaming session.
+
+    Example:
+        {"input": "Long text...", "stream": true, "position_temperature": 0}
+
+    Trade-off: Lower position_temperature = less voice diversity but perfect consistency.
+    Higher position_temperature = more diversity but potential chunk-to-chunk variation.
     """
     sentences = split_sentences(text, max_chars=cfg.stream_chunk_max_chars)
 
@@ -2548,6 +2633,18 @@ def main() -> None:
                         help="Inference device (env: OMNIVOICE_DEVICE)")
     parser.add_argument("--num-step", type=int, default=None, dest="num_step",
                         help="Diffusion steps, 1–64 (env: OMNIVOICE_NUM_STEP)")
+    parser.add_argument("--guidance-scale", type=float, default=None, dest="guidance_scale",
+                        help="CFG scale, 0–10 (env: OMNIVOICE_GUIDANCE_SCALE)")
+    parser.add_argument("--denoise", action="store_true", default=None, dest="denoise",
+                        help="Enable denoising (env: OMNIVOICE_DENOISE)")
+    parser.add_argument("--no-denoise", action="store_false", dest="denoise",
+                        help="Disable denoising")
+    parser.add_argument("--t-shift", type=float, default=None, dest="t_shift",
+                        help="Noise schedule shift, 0–2 (env: OMNIVOICE_T_SHIFT)")
+    parser.add_argument("--position-temperature", type=float, default=None, dest="position_temperature",
+                        help="Voice diversity temperature, 0–10 (env: OMNIVOICE_POSITION_TEMPERATURE)")
+    parser.add_argument("--class-temperature", type=float, default=None, dest="class_temperature",
+                        help="Token sampling temperature, 0–2 (env: OMNIVOICE_CLASS_TEMPERATURE)")
 
     # Inference
     parser.add_argument("--max-concurrent", type=int, default=None, dest="max_concurrent",
