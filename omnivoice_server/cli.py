@@ -100,6 +100,13 @@ def main() -> None:
         dest="request_timeout_s",
         help="Request timeout in seconds (env: OMNIVOICE_REQUEST_TIMEOUT_S)",
     )
+    parser.add_argument(
+        "--shutdown-timeout",
+        type=int,
+        default=None,
+        dest="shutdown_timeout",
+        help="Seconds to wait for in-flight requests on shutdown (env: OMNIVOICE_SHUTDOWN_TIMEOUT)",
+    )
 
     # Storage
     parser.add_argument(
@@ -119,18 +126,18 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Build override dict
     overrides = {k: v for k, v in vars(args).items() if v is not None}
 
     from .config import Settings
 
     cfg = Settings(**overrides)
 
-    # Configure logging
+    import sys
     logging.basicConfig(
         level=cfg.log_level.upper(),
-        format="%(asctime)s %(levelname)s %(name)s  %(message)s",
-        datefmt="%H:%M:%S",
+        format="%(asctime)s [%(levelname)-5s] [%(name)s] %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%SZ",
+        stream=sys.stderr,
     )
 
     import uvicorn
@@ -146,6 +153,7 @@ def main() -> None:
         log_level=cfg.log_level,
         workers=1,
         loop="asyncio",
+        timeout_graceful_shutdown=cfg.shutdown_timeout,
     )
 
 

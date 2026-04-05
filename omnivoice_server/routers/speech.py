@@ -163,8 +163,6 @@ async def create_speech(
         )
 
     if body.response_format == "pcm":
-        from ..utils.audio import tensor_to_pcm16_bytes
-
         audio_bytes = b"".join(tensor_to_pcm16_bytes(t) for t in result.tensors)
         media_type = "audio/pcm"
     else:
@@ -227,6 +225,7 @@ async def _stream_sentences(
 
 @router.post("/audio/speech/clone")
 async def create_speech_clone(
+    request: Request,
     text: str = Form(..., min_length=1, max_length=10_000),
     ref_audio: UploadFile = File(...),
     ref_text: str | None = Form(default=None),
@@ -243,6 +242,24 @@ async def create_speech_clone(
     cfg=Depends(_get_cfg),
 ):
     """One-shot voice cloning. Upload reference audio + text to synthesize."""
+    # Fail-fast: reject oversized uploads before reading body
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            cl_bytes = int(content_length)
+            if cl_bytes > cfg.max_ref_audio_bytes:
+                cl_mb = cl_bytes / 1024 / 1024
+                limit_mb = cfg.max_ref_audio_bytes / 1024 / 1024
+                logger.warning(
+                    f"Rejected upload: Content-Length {cl_mb:.1f}MB > limit {limit_mb:.0f}MB"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Upload too large: {cl_mb:.1f}MB exceeds limit of {limit_mb:.0f}MB",
+                )
+        except ValueError:
+            pass  # Invalid Content-Length header — let body validation handle it
+
     from ..utils.audio import read_upload_bounded, validate_audio_bytes
 
     raw = await ref_audio.read()
@@ -255,11 +272,10 @@ async def create_speech_clone(
             detail=str(e),
         )
 
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tmp.write(audio_bytes)
-        tmp_path = tmp.name
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = str(Path(tmpdir) / "ref_audio.wav")
+        Path(tmp_path).write_bytes(audio_bytes)
 
-    try:
         req = SynthesisRequest(
             text=text,
             mode="clone",
@@ -290,14 +306,12 @@ async def create_speech_clone(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Synthesis failed: {e}",
             )
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
 
-    return Response(
-        content=tensors_to_wav_bytes(result.tensors),
-        media_type="audio/wav",
-        headers={
-            "X-Audio-Duration-S": str(round(result.duration_s, 3)),
-            "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
-        },
-    )
+        return Response(
+            content=tensors_to_wav_bytes(result.tensors),
+            media_type="audio/wav",
+            headers={
+                "X-Audio-Duration-S": str(round(result.duration_s, 3)),
+                "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
+            },
+        )

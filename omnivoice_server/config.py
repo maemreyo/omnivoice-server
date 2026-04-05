@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import platformdirs
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,7 +25,7 @@ class Settings(BaseSettings):
 
     # Server
     host: str = Field(default="127.0.0.1", description="Bind host")
-    port: int = Field(default=8880, ge=1, le=65535)
+    port: int = Field(default=8880, ge=0, le=65535)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
 
     # Model
@@ -32,7 +33,11 @@ class Settings(BaseSettings):
         default="k2-fsa/OmniVoice",
         description="HuggingFace repo ID or local path",
     )
-    device: Literal["auto", "cuda", "mps", "cpu"] = "cpu"  # MPS broken - use CPU
+    model_cache_dir: Path | None = Field(
+        default=None,
+        description="Override HuggingFace model cache directory",
+    )
+    device: Literal["auto", "cuda", "mps", "cpu"] = "cpu"
     num_step: int = Field(default=32, ge=1, le=64)  # Upstream default
 
     # Advanced generation params (passed through to OmniVoice.generate())
@@ -83,10 +88,16 @@ class Settings(BaseSettings):
         default=120,
         description="Max seconds per synthesis request before 504",
     )
+    shutdown_timeout: int = Field(
+        default=10,
+        ge=1,
+        le=300,
+        description="Seconds to wait for in-flight requests on shutdown",
+    )
 
     # Voice profiles
     profile_dir: Path = Field(
-        default=Path.home() / ".omnivoice" / "profiles",
+        default=Path(platformdirs.user_data_dir("omnivoice")) / "profiles",
         description="Directory for saved voice cloning profiles",
     )
 
@@ -109,7 +120,6 @@ class Settings(BaseSettings):
         description="Max upload size for ref_audio files in megabytes.",
     )
 
-    # FIX: was defined twice — removed duplicate. Single source of truth here.
     @property
     def max_ref_audio_bytes(self) -> int:
         """Return max upload size in bytes."""

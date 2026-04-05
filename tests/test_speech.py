@@ -17,7 +17,6 @@ def test_speech_auto_returns_wav(client):
     )
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "audio/wav"
-    # WAV magic bytes: RIFF
     assert resp.content[:4] == b"RIFF"
 
 
@@ -136,7 +135,10 @@ def test_speech_clone_invalid_audio_format(client, tmp_path):
         )
 
     assert resp.status_code == 422
-    assert "could not parse as audio file" in resp.json()["detail"]
+    body = resp.json()
+    # Error response uses structured format: {"error": {"code": ..., "message": ...}}
+    error_msg = body.get("error", {}).get("message") or body.get("detail", "")
+    assert "could not parse as audio file" in error_msg
 
 
 def test_speech_custom_position_temperature(client):

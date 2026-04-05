@@ -10,11 +10,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .config import Settings
-from .routers import health, models, speech, voices  # FIX: added models
+from .routers import health, models, speech, voices
 from .services.inference import InferenceService
 from .services.metrics import MetricsService
 from .services.model import ModelService
@@ -57,12 +58,30 @@ async def lifespan(app: FastAPI):
     elapsed = time.monotonic() - t0
     logger.info(f"Startup complete in {elapsed:.1f}s. Listening on http://{cfg.host}:{cfg.port}")
 
+    # Announce readiness to stdout (for process supervisors/callers to detect port)
+    print(f"OMNIVOICE_READY host={cfg.host} port={cfg.port}", flush=True)
+
     yield
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
     logger.info("Shutting down...")
     executor.shutdown(wait=False)
     logger.info("Done.")
+
+
+def _status_to_code(status_code: int) -> str:
+    _map = {
+        400: "bad_request",
+        401: "unauthorized",
+        403: "forbidden",
+        404: "not_found",
+        413: "payload_too_large",
+        422: "validation_error",
+        500: "inference_failed",
+        503: "model_not_ready",
+        504: "timeout",
+    }
+    return _map.get(status_code, f"http_{status_code}")
 
 
 def create_app(cfg: Settings) -> FastAPI:
@@ -94,10 +113,36 @@ def create_app(cfg: Settings) -> FastAPI:
                 )
             return await call_next(request)
 
+    # ── Global error handlers ─────────────────────────────────────────────────
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": {
+                    "code": "validation_error",
+                    "message": "Request validation failed",
+                    "detail": exc.errors(),
+                }
+            },
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": {
+                    "code": _status_to_code(exc.status_code),
+                    "message": exc.detail,
+                }
+            },
+        )
+
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(speech.router, prefix="/v1")
     app.include_router(voices.router, prefix="/v1")
-    app.include_router(models.router, prefix="/v1")  # FIX: was missing
+    app.include_router(models.router, prefix="/v1")
     app.include_router(health.router)
 
     return app

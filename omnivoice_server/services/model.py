@@ -45,10 +45,15 @@ class ModelService:
 
         for dtype in self._dtype_candidates():
             try:
+                from_pretrained_kwargs = {
+                    "device_map": self.cfg.torch_device_map,
+                    "dtype": dtype,
+                }
+                if self.cfg.model_cache_dir is not None:
+                    from_pretrained_kwargs["cache_dir"] = str(self.cfg.model_cache_dir)
                 model = OmniVoice.from_pretrained(
                     self.cfg.model_id,
-                    device_map=self.cfg.torch_device_map,
-                    dtype=dtype,
+                    **from_pretrained_kwargs,
                 )
                 test = model.generate(text="test", num_step=4)
                 if self._has_nan(test):
@@ -78,9 +83,7 @@ class ModelService:
         self._loaded = True
 
     def _dtype_candidates(self) -> list:
-        if self.cfg.device == "cuda":
-            return [torch.float16, torch.bfloat16, torch.float32]
-        if self.cfg.device == "mps":
+        if self.cfg.device in ("cuda", "mps"):
             return [torch.float16, torch.bfloat16, torch.float32]
         return [torch.float32]
 
