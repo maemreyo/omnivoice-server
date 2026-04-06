@@ -138,6 +138,35 @@ def main() -> None:
         help="Voice profile directory (env: OMNIVOICE_PROFILE_DIR)",
     )
 
+    # Cache
+    parser.add_argument(
+        "--cache-enabled",
+        action="store_true",
+        default=None,
+        dest="cache_enabled",
+        help="Enable in-memory audio cache (env: OMNIVOICE_CACHE_ENABLED)",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_false",
+        dest="cache_enabled",
+        help="Disable in-memory audio cache",
+    )
+    parser.add_argument(
+        "--cache-max-mb",
+        type=int,
+        default=None,
+        dest="cache_max_mb",
+        help="Max cache memory in MB, 16-8192 (env: OMNIVOICE_CACHE_MAX_MB)",
+    )
+    parser.add_argument(
+        "--cache-ttl-s",
+        type=int,
+        default=None,
+        dest="cache_ttl_s",
+        help="Cache entry TTL in seconds. 0=no expiry (env: OMNIVOICE_CACHE_TTL_S)",
+    )
+
     # Auth
     parser.add_argument(
         "--api-key",

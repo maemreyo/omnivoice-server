@@ -107,6 +107,23 @@ class Settings(BaseSettings):
         description="Max milliseconds to wait for more requests before dispatching a batch",
     )
 
+    # Audio cache
+    cache_enabled: bool = Field(
+        default=True,
+        description="Enable in-memory LRU cache for repeated synthesis requests",
+    )
+    cache_max_mb: int = Field(
+        default=512,
+        ge=16,
+        le=8192,
+        description="Max memory for audio cache in MB. LRU eviction when exceeded.",
+    )
+    cache_ttl_s: int = Field(
+        default=3600,
+        ge=0,
+        description="Cache entry TTL in seconds. 0 = no expiry (LRU eviction only).",
+    )
+
     # Voice profiles
     profile_dir: Path = Field(
         default=Path.home() / ".omnivoice" / "profiles",
