@@ -70,6 +70,7 @@ def settings(tmp_path_factory):  # FIX: tmp_path_factory is a fixture param, not
         max_concurrent=1,
         api_key="",
         profile_dir=profile_dir,
+        batch_enabled=False,  # Tests mock synthesize() directly; skip batching
     )
 
 

@@ -29,6 +29,7 @@ OpenAI-compatible HTTP server for [OmniVoice](https://github.com/k2-fsa/OmniVoic
 - **Voice profile management** - Save and reuse cloned voices
 - **Streaming synthesis** - Low-latency sentence-level streaming
 - **Concurrent requests** - Configurable thread pool for parallel synthesis
+- **Dynamic batching** - Groups concurrent requests into single GPU calls for higher throughput
 - **Multiple audio formats** - WAV and raw PCM output
 - **Speed control** - 0.25x to 4.0x playback speed
 - **Optional authentication** - Bearer token support
@@ -298,7 +299,10 @@ omnivoice-server
 | `--port` | `OMNIVOICE_PORT` | `8880` | Bind port |
 | `--device` | `OMNIVOICE_DEVICE` | `cpu` | Device: cpu, cuda (MPS broken) |
 | `--num-step` | `OMNIVOICE_NUM_STEP` | `32` | Inference steps (1-64, higher=better quality) |
-| `--max-concurrent` | `OMNIVOICE_MAX_CONCURRENT` | `2` | Max concurrent requests |
+| `--max-concurrent` | `OMNIVOICE_MAX_CONCURRENT` | `2` | Max concurrent requests (or batch dispatches) |
+| `--batch-enabled` | `OMNIVOICE_BATCH_ENABLED` | `true` | Enable dynamic batching of concurrent requests |
+| `--batch-max-size` | `OMNIVOICE_BATCH_MAX_SIZE` | `8` | Max requests per batch |
+| `--batch-timeout-ms` | `OMNIVOICE_BATCH_TIMEOUT_MS` | `50` | Batch accumulation timeout in ms |
 | `--api-key` | `OMNIVOICE_API_KEY` | `""` | Bearer token (empty = no auth) |
 | `--model-id` | `OMNIVOICE_MODEL_ID` | `k2-fsa/OmniVoice` | HuggingFace repo or local path |
 | `--profile-dir` | `OMNIVOICE_PROFILE_DIR` | `~/.omnivoice/profiles` | Voice profiles directory |
@@ -401,6 +405,24 @@ Health check endpoint.
 Prometheus-style metrics.
 
 ## Advanced Features
+
+### Dynamic Batching
+
+When multiple requests arrive concurrently, the server groups them into a single `model.generate()` call using OmniVoice's native batch API. This improves GPU utilisation and throughput under load — a batch of 8 requests takes roughly the same time as 2-3 individual calls.
+
+Requests are grouped by compatible generation parameters (num_step, guidance_scale, etc.). Per-item parameters like text, voice, speed, and duration vary freely within a batch.
+
+```bash
+# Tune batching behaviour
+omnivoice-server --batch-max-size 8 --batch-timeout-ms 50
+
+# Disable batching (legacy single-request mode)
+omnivoice-server --no-batch
+```
+
+The batch dispatches when either `batch_max_size` is reached or `batch_timeout_ms` elapses since the first request in the batch. Batch stats (dispatches, avg size) are available on `/metrics`.
+
+If the batched call fails (e.g. upstream API change), it falls back to sequential single-item generation automatically.
 
 ### Non-Verbal Symbols
 

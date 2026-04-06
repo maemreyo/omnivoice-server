@@ -101,6 +101,35 @@ def main() -> None:
         help="Request timeout in seconds (env: OMNIVOICE_REQUEST_TIMEOUT_S)",
     )
 
+    # Dynamic batching
+    parser.add_argument(
+        "--batch-enabled",
+        action="store_true",
+        default=None,
+        dest="batch_enabled",
+        help="Enable dynamic batching (env: OMNIVOICE_BATCH_ENABLED)",
+    )
+    parser.add_argument(
+        "--no-batch",
+        action="store_false",
+        dest="batch_enabled",
+        help="Disable dynamic batching",
+    )
+    parser.add_argument(
+        "--batch-max-size",
+        type=int,
+        default=None,
+        dest="batch_max_size",
+        help="Max requests per batch, 1-64 (env: OMNIVOICE_BATCH_MAX_SIZE)",
+    )
+    parser.add_argument(
+        "--batch-timeout-ms",
+        type=int,
+        default=None,
+        dest="batch_timeout_ms",
+        help="Batch accumulation timeout in ms, 1-1000 (env: OMNIVOICE_BATCH_TIMEOUT_MS)",
+    )
+
     # Storage
     parser.add_argument(
         "--profile-dir",

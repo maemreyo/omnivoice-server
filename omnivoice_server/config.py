@@ -77,11 +77,34 @@ class Settings(BaseSettings):
         default=2,
         ge=1,
         le=16,
-        description="Max simultaneous inference calls",
+        description=(
+            "Without batching: max simultaneous single-request inference calls "
+            "(controls both thread pool size and semaphore). "
+            "With batching: max simultaneous batch dispatches to the GPU "
+            "(controls thread pool size; typically 1 is enough for a single GPU)."
+        ),
     )
     request_timeout_s: int = Field(
         default=120,
         description="Max seconds per synthesis request before 504",
+    )
+
+    # Dynamic batching
+    batch_enabled: bool = Field(
+        default=True,
+        description="Enable dynamic batching of concurrent requests",
+    )
+    batch_max_size: int = Field(
+        default=8,
+        ge=1,
+        le=64,
+        description="Max requests to batch together in a single model.generate() call",
+    )
+    batch_timeout_ms: int = Field(
+        default=50,
+        ge=1,
+        le=1000,
+        description="Max milliseconds to wait for more requests before dispatching a batch",
     )
 
     # Voice profiles

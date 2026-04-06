@@ -219,6 +219,9 @@ GET /health → always 200 (auth bypassed)
   "device": "mps" | "cuda" | "cpu",
   "num_step": 16,
   "max_concurrent": 2,
+  "batch_enabled": true,
+  "batch_max_size": 8,
+  "batch_timeout_ms": 50,
   "uptime_s": 42.1
 }
 ```
@@ -236,9 +239,13 @@ GET /metrics → always 200 (auth bypassed)
   "requests_timeout": 1,
   "mean_latency_ms": 1240.5,
   "p95_latency_ms": 2100.0,
-  "ram_mb": 5432.1
+  "ram_mb": 5432.1,
+  "batches_dispatched": 20,
+  "avg_batch_size": 6.9
 }
 ```
+
+Batch fields are included when `batch_enabled=true` (default).
 
 Note: After applying **P1 patch**, streaming requests are included in these counters. Prior to the patch, streaming requests were not counted.
 
