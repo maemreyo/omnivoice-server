@@ -23,6 +23,9 @@ async def health(request: Request):
         "device": cfg.device,
         "num_step": cfg.num_step,
         "max_concurrent": cfg.max_concurrent,
+        "batch_enabled": cfg.batch_enabled,
+        "batch_max_size": cfg.batch_max_size,
+        "batch_timeout_ms": cfg.batch_timeout_ms,
         "uptime_s": round(uptime_s, 1),
     }
 
