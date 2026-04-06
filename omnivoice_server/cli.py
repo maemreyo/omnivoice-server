@@ -101,12 +101,70 @@ def main() -> None:
         help="Request timeout in seconds (env: OMNIVOICE_REQUEST_TIMEOUT_S)",
     )
 
+    # Dynamic batching
+    parser.add_argument(
+        "--batch-enabled",
+        action="store_true",
+        default=None,
+        dest="batch_enabled",
+        help="Enable dynamic batching (env: OMNIVOICE_BATCH_ENABLED)",
+    )
+    parser.add_argument(
+        "--no-batch",
+        action="store_false",
+        dest="batch_enabled",
+        help="Disable dynamic batching",
+    )
+    parser.add_argument(
+        "--batch-max-size",
+        type=int,
+        default=None,
+        dest="batch_max_size",
+        help="Max requests per batch, 1-64 (env: OMNIVOICE_BATCH_MAX_SIZE)",
+    )
+    parser.add_argument(
+        "--batch-timeout-ms",
+        type=int,
+        default=None,
+        dest="batch_timeout_ms",
+        help="Batch accumulation timeout in ms, 1-1000 (env: OMNIVOICE_BATCH_TIMEOUT_MS)",
+    )
+
     # Storage
     parser.add_argument(
         "--profile-dir",
         default=None,
         dest="profile_dir",
         help="Voice profile directory (env: OMNIVOICE_PROFILE_DIR)",
+    )
+
+    # Cache
+    parser.add_argument(
+        "--cache-enabled",
+        action="store_true",
+        default=None,
+        dest="cache_enabled",
+        help="Enable in-memory audio cache (env: OMNIVOICE_CACHE_ENABLED)",
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_false",
+        dest="cache_enabled",
+        help="Disable in-memory audio cache",
+    )
+    parser.add_argument(
+        "--cache-max-mb",
+        type=int,
+        default=None,
+        dest="cache_max_mb",
+        help="Max cache memory in MB, 16-8192 (env: OMNIVOICE_CACHE_MAX_MB)",
+    )
+    parser.add_argument(
+        "--cache-ttl-s",
+        type=int,
+        default=None,
+        dest="cache_ttl_s",
+        help="Cache entry TTL in seconds. 0=no expiry (env: OMNIVOICE_CACHE_TTL_S)",
     )
 
     # Auth

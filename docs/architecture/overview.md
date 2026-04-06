@@ -126,9 +126,11 @@ graph TB
 
     subgraph SVC["Service layer"]
         IS["InferenceService<br/>executor + semaphore"]
+        BS["BatchingService<br/>accumulate + dispatch"]
         MS["ModelService<br/>model singleton"]
         PS["ProfileService<br/>disk store"]
         MTS["MetricsService<br/>in-memory counters"]
+        AC["AudioCache<br/>LRU + TTL"]
     end
 
     subgraph UTIL["Utility layer"]
@@ -147,8 +149,9 @@ graph TB
     end
 
     R1 & R2 & R3 & R4 --> AUTH
-    AUTH --> IS & PS & MTS
-    IS --> MS
+    AUTH --> IS & PS & MTS & AC
+    IS --> BS
+    BS --> MS
     IS --> UTIL
     IS --> TP & SEM
     PS --> FS
@@ -161,7 +164,7 @@ graph TB
 | -------------------------- | ------------------------------------------------------------------ | ------------------------- |
 | **HTTP surface** (routers) | Parse/validate request, format response, map errors to HTTP status | Business logic            |
 | **Middleware**             | Auth gate, future: rate limiting                                   | Routing                   |
-| **Service layer**          | Orchestrate inference, manage state, record metrics                | HTTP concerns             |
+| **Service layer**          | Orchestrate inference, manage state, record metrics, cache results | HTTP concerns             |
 | **Utility layer**          | Pure functions (audio encoding, text splitting)                    | Side effects              |
 | **Config layer**           | Single source of truth for all tunables                            | Validation beyond type    |
 | **Infrastructure**         | Thread pool, semaphore, filesystem                                 | Awareness of domain logic |
@@ -188,8 +191,10 @@ graph LR
         subgraph services["services/"]
             SMODEL["model.py<br/>ModelService"]
             SINFER["inference.py<br/>InferenceService<br/>SynthesisRequest / Result"]
+            SBATCH["batching.py<br/>BatchingService<br/>accumulate + batch dispatch"]
             SPROFILE["profiles.py<br/>ProfileService"]
             SMETRIC["metrics.py<br/>MetricsService"]
+            SCACHE["cache.py<br/>AudioCache<br/>LRU + TTL sweep"]
         end
 
         subgraph utils["utils/"]
@@ -204,11 +209,13 @@ graph LR
     APP --> SMODEL & SINFER & SPROFILE & SMETRIC
     APP --> RSPEECH & RVOICES & RHEALTH
 
-    RSPEECH --> SINFER & SPROFILE & SMETRIC & UAUDIO & UTEXT
+    RSPEECH --> SINFER & SPROFILE & SMETRIC & UAUDIO & UTEXT & SCACHE
     RVOICES --> SPROFILE
-    RHEALTH --> SMETRIC
+    RHEALTH --> SMETRIC & SCACHE
 
     SINFER --> SMODEL & UAUDIO
+    SINFER --> SBATCH
+    SBATCH --> SMODEL
     SMODEL -->|"OmniVoice.from_pretrained()"| EXT_OV["omnivoice<br/>(external package)"]
 ```
 
@@ -217,6 +224,39 @@ graph LR
 ## 4. Concurrency model
 
 This is the most important architectural decision. Understand this before touching `InferenceService`.
+
+### With dynamic batching (default)
+
+```mermaid
+sequenceDiagram
+    participant C1 as Client 1
+    participant C2 as Client 2
+    participant EL as asyncio event loop
+    participant BS as BatchingService<br/>(background loop)
+    participant SEM as batch_semaphore(N)
+    participant EX as ThreadPoolExecutor
+    participant GPU as GPU (blocking)
+
+    C1->>EL: POST /v1/audio/speech
+    EL->>BS: submit(req1) → Future
+    C2->>EL: POST /v1/audio/speech
+    EL->>BS: submit(req2) → Future
+    Note over BS: Accumulate until batch_max_size<br/>or batch_timeout_ms elapsed
+    BS->>SEM: await batch_semaphore.acquire()
+    SEM-->>BS: acquired
+    BS->>EX: run_in_executor(_run_batch_sync)
+    EX->>GPU: model.generate(text=[text1, text2]) [BLOCKING]
+    GPU-->>EX: [tensor1, tensor2]
+    EX-->>BS: [SynthesisResult1, SynthesisResult2]
+    BS->>SEM: semaphore.release()
+    BS-->>EL: resolve Future1, Future2
+    EL-->>C1: Response(audio1)
+    EL-->>C2: Response(audio2)
+```
+
+Requests are grouped by compatible generation parameters (num_step, guidance_scale, etc.) into parameter groups. Each group is dispatched as a single batched `model.generate()` call. The `batch_semaphore` limits concurrent batch dispatches to `max_concurrent` threads.
+
+### Without batching (--no-batch)
 
 ```mermaid
 sequenceDiagram
@@ -246,13 +286,24 @@ sequenceDiagram
 | Rule                                   | Why                                                                                                  |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `workers=1` in uvicorn                 | One model in VRAM. Multi-process = N copies of weights.                                              |
-| `ThreadPoolExecutor(max_workers=N)`    | N = `MAX_CONCURRENT` (default 2). Matches semaphore.                                                 |
-| `asyncio.Semaphore(N)`                 | Prevents > N concurrent inferences. Queue forms in the event loop.                                   |
+| `ThreadPoolExecutor(max_workers=N)`    | N = `MAX_CONCURRENT`. Controls concurrent batch dispatches (batching) or individual requests (legacy).|
+| `batch_semaphore(N)` (batching mode)   | Prevents > N concurrent batch dispatches to the executor. Provides backpressure.                     |
+| `asyncio.Semaphore(N)` (legacy mode)   | Prevents > N concurrent inferences. Queue forms in the event loop.                                   |
 | `await asyncio.wait_for(..., timeout)` | Wraps executor call. Raises `TimeoutError` after `request_timeout_s`.                                |
 | `_cleanup_memory()` in `finally`       | Runs on every inference — success or exception. Mitigates Torch 2.8 memory leak (upstream issue #9). |
 
 ### What happens under load
 
+**With batching (default):**
+```
+1 request  → waits up to batch_timeout_ms, then dispatches alone
+2 requests → both accumulated, dispatched as batch of 2
+8 requests → dispatched as batch of 8 (batch_max_size default)
+9 requests → batch of 8 dispatched, 9th starts next batch
+             different param groups dispatch independently
+```
+
+**Without batching (--no-batch):**
 ```
 1 request  → runs immediately
 2 requests → both run simultaneously (N=2 default)
@@ -284,7 +335,9 @@ flowchart TD
     E --> F{stream=True?}
     F -->|yes| STREAM([→ See streaming diagram])
 
-    F -->|no| G[InferenceService.synthesize]
+    F -->|no| G0{AudioCache\nlookup}
+    G0 -->|HIT| CACHED([200 OK\nX-Cache: HIT\naudio bytes from cache])
+    G0 -->|MISS| G[InferenceService.synthesize]
     G --> H{semaphore acquired?}
     H -->|wait| H
     H -->|acquired| I[ThreadPoolExecutor\n_run_sync]
@@ -293,7 +346,8 @@ flowchart TD
     J -->|Exception| ERR500([500 Internal Server Error])
     J -->|tensors| K[tensor→WAV or PCM bytes]
     K --> L[metrics_svc.record_success]
-    L --> M([200 OK\naudio/wav or audio/pcm])
+    L --> L2[AudioCache.put]
+    L2 --> M([200 OK\nX-Cache: MISS\naudio/wav or audio/pcm])
 ```
 
 ---
@@ -396,8 +450,13 @@ sequenceDiagram
 
     APP->>EX: ThreadPoolExecutor(max_workers=N)
     APP->>APP: InferenceService(model_svc, executor, cfg)
+    APP->>APP: BatchingService(model_svc, executor, cfg)
+    APP->>APP: await batching_svc.start()
+    Note over APP: Starts background dispatch loop
     APP->>APP: ProfileService(profile_dir)
     APP->>APP: MetricsService()
+    APP->>APP: AudioCache(cfg) + await start()
+    Note over APP: Starts background TTL sweep task<br/>(interval = ttl_s / 2, min 10s)
     APP->>APP: record start_time
 
     APP-->>UV: yield  ← server starts accepting requests
@@ -405,6 +464,10 @@ sequenceDiagram
     Note over UV: ... server live ...
 
     UV->>APP: shutdown signal (SIGINT / SIGTERM)
+    APP->>APP: await batching_svc.stop()
+    Note over APP: Cancels dispatch loop,<br/>fails pending requests
+    APP->>APP: await audio_cache.stop()
+    Note over APP: Cancels TTL sweep task
     APP->>EX: executor.shutdown(wait=False)
     Note over EX: In-flight inferences may be interrupted.<br/>wait=False avoids hanging on long synthesis.
     APP-->>UV: done
@@ -485,16 +548,25 @@ graph TD
     PS["ProfileService<br/>owns: profile_dir path<br/>state: filesystem (external)"]
     MTS["MetricsService<br/>owns: counters, latency deque<br/>state: in-memory, resets on restart"]
 
+    BS["BatchingService<br/>owns: pending queue, dispatch loop, batch_semaphore<br/>state: in-memory, resets on restart"]
+
+    AC["AudioCache<br/>owns: LRU OrderedDict, TTL sweep task<br/>state: in-memory, resets on restart"]
+
     EX["ThreadPoolExecutor<br/>(created in lifespan, shared)"]
     FS["~/.omnivoice/profiles/"]
 
     CFG -->|"model_id, device, num_step"| MS
     CFG -->|"max_concurrent, request_timeout_s, num_step"| IS
+    CFG -->|"batch_max_size, batch_timeout_ms"| BS
     CFG -->|"profile_dir"| PS
     CFG -->|"max_concurrent"| EX
 
+    AC -.->|"used by"| RSPEECH
+    AC -.->|"used by"| RHEALTH
     MS -->|"model singleton"| IS
     EX -->|"thread pool"| IS
+    BS -->|"batched generate()"| MS
+    EX -->|"thread pool"| BS
     FS -->|"read/write"| PS
 
     IS -.->|"used by"| RSPEECH["routers/speech.py"]

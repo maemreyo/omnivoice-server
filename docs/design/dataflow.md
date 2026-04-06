@@ -10,6 +10,7 @@
 | ------------------------------------------------- | -------------------- | ------------- | --------------- |
 | [`/v1/audio/speech`](#v1audiospeech)              | POST                 | Optional      | WAV / PCM bytes |
 | [`/v1/audio/speech/clone`](#v1audiospeechclone)   | POST                 | Optional      | WAV bytes       |
+| [`/v1/audio/cache`](#v1audiocache)                | DELETE               | Optional      | JSON            |
 | [`/v1/voices`](#v1voices)                         | GET                  | Optional      | JSON            |
 | [`/v1/voices/profiles`](#v1voicesprofiles)        | POST                 | Optional      | JSON (201)      |
 | [`/v1/voices/profiles/{id}`](#v1voicesprofilesid) | GET / PATCH / DELETE | Optional      | JSON / 204      |
@@ -45,6 +46,12 @@ HTTP Request
   ├─ SynthesisRequest built ─────────────────────────────────────────────────────────
   │   text, mode, instruct, ref_audio_path, ref_text, speed, num_step
   │
+  ├─ Cache lookup (non-streaming only) ──────────────────────────────────────────────
+  │   key = SHA-256(voice, text, speed, num_step, guidance_scale, ...)
+  │   AudioCache.get(key)
+  │   → HIT:  return cached audio bytes immediately (X-Cache: HIT)
+  │   → MISS: proceed to inference
+  │
   ├─ InferenceService.synthesize() [async] ──────────────────────────────────────────
   │   └─ asyncio.wait_for(                       timeout = request_timeout_s (120s)
   │        run_in_executor(executor, _run_sync)  releases event loop while GPU runs
@@ -71,7 +78,9 @@ HTTP Request
       Content-Type: audio/wav | audio/pcm
       X-Audio-Duration-S: <seconds>
       X-Synthesis-Latency-S: <seconds>
+      X-Cache: HIT | MISS
       Body: <audio bytes>
+      → AudioCache.put(key, audio_bytes) on MISS
 ```
 
 ### Streaming data flow
@@ -209,6 +218,29 @@ HTTP PATCH /v1/voices/profiles/{profile_id}
 
 ---
 
+## /v1/audio/cache
+
+```
+DELETE /v1/audio/cache → 200 (auth required if configured)
+{
+  "cleared": {
+    "cache_entries": 42,
+    "cache_bytes": 12345678,
+    "cache_mb": 11.77,
+    "cache_max_mb": 512,
+    "cache_hits": 100,
+    "cache_misses": 42,
+    "cache_evictions": 3,
+    "cache_hit_rate": 0.704
+  }
+}
+```
+
+Returns stats at the moment of clearing, then wipes all cached entries.
+Returns 404 if cache is disabled.
+
+---
+
 ## /health
 
 ```
@@ -219,6 +251,11 @@ GET /health → always 200 (auth bypassed)
   "device": "mps" | "cuda" | "cpu",
   "num_step": 16,
   "max_concurrent": 2,
+  "batch_enabled": true,
+  "batch_max_size": 8,
+  "batch_timeout_ms": 50,
+  "cache_enabled": true,
+  "cache_max_mb": 512,
   "uptime_s": 42.1
 }
 ```
@@ -236,9 +273,20 @@ GET /metrics → always 200 (auth bypassed)
   "requests_timeout": 1,
   "mean_latency_ms": 1240.5,
   "p95_latency_ms": 2100.0,
-  "ram_mb": 5432.1
+  "ram_mb": 5432.1,
+  "batches_dispatched": 20,
+  "avg_batch_size": 6.9,
+  "cache_entries": 42,
+  "cache_mb": 11.77,
+  "cache_max_mb": 512,
+  "cache_hits": 100,
+  "cache_misses": 42,
+  "cache_evictions": 3,
+  "cache_hit_rate": 0.704
 }
 ```
+
+Batch fields are included when `batch_enabled=true`. Cache fields are included when `cache_enabled=true`. Both are enabled by default.
 
 Note: After applying **P1 patch**, streaming requests are included in these counters. Prior to the patch, streaming requests were not counted.
 

@@ -15,6 +15,8 @@ class MetricsService:
         self.success = 0
         self.error = 0
         self.timeout = 0
+        self.batches_dispatched = 0
+        self.total_batch_size = 0
         self._latencies: deque[float] = deque(maxlen=latency_window)
 
     def record_success(self, latency_s: float) -> None:
@@ -33,9 +35,20 @@ class MetricsService:
             self.total += 1
             self.timeout += 1
 
+    def record_batch(self, batch_size: int) -> None:
+        """Record a batch dispatch event."""
+        with self._lock:
+            self.batches_dispatched += 1
+            self.total_batch_size += batch_size
+
     def snapshot(self) -> dict:
         with self._lock:
             lats = list(self._latencies)
+            avg_batch = (
+                self.total_batch_size / self.batches_dispatched
+                if self.batches_dispatched > 0
+                else 0.0
+            )
         mean_ms = sum(lats) / len(lats) if lats else 0.0
         sorted_lats = sorted(lats)
         p95_ms = sorted_lats[int(len(sorted_lats) * 0.95)] if sorted_lats else 0.0
@@ -46,4 +59,6 @@ class MetricsService:
             "requests_timeout": self.timeout,
             "mean_latency_ms": round(mean_ms, 1),
             "p95_latency_ms": round(p95_ms, 1),
+            "batches_dispatched": self.batches_dispatched,
+            "avg_batch_size": round(avg_batch, 2),
         }
