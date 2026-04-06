@@ -29,6 +29,7 @@ OpenAI-compatible HTTP server for [OmniVoice](https://github.com/k2-fsa/OmniVoic
 - **Voice profile management** - Save and reuse cloned voices
 - **Streaming synthesis** - Low-latency sentence-level streaming
 - **Concurrent requests** - Configurable thread pool for parallel synthesis
+- **In-memory audio cache** - LRU cache with TTL for repeated requests (same voice + text)
 - **Multiple audio formats** - WAV and raw PCM output
 - **Speed control** - 0.25x to 4.0x playback speed
 - **Optional authentication** - Bearer token support
@@ -300,6 +301,9 @@ omnivoice-server
 | `--num-step` | `OMNIVOICE_NUM_STEP` | `32` | Inference steps (1-64, higher=better quality) |
 | `--max-concurrent` | `OMNIVOICE_MAX_CONCURRENT` | `2` | Max concurrent requests |
 | `--api-key` | `OMNIVOICE_API_KEY` | `""` | Bearer token (empty = no auth) |
+| `--cache-enabled` | `OMNIVOICE_CACHE_ENABLED` | `true` | Enable in-memory audio cache |
+| `--cache-max-mb` | `OMNIVOICE_CACHE_MAX_MB` | `512` | Max cache memory in MB (LRU eviction) |
+| `--cache-ttl-s` | `OMNIVOICE_CACHE_TTL_S` | `3600` | Cache entry TTL in seconds (0 = no expiry) |
 | `--model-id` | `OMNIVOICE_MODEL_ID` | `k2-fsa/OmniVoice` | HuggingFace repo or local path |
 | `--profile-dir` | `OMNIVOICE_PROFILE_DIR` | `~/.omnivoice/profiles` | Voice profiles directory |
 | `--log-level` | `OMNIVOICE_LOG_LEVEL` | `info` | Logging level |
@@ -398,9 +402,37 @@ Health check endpoint.
 
 #### `GET /metrics`
 
-Prometheus-style metrics.
+Prometheus-style metrics (includes cache stats when enabled).
+
+#### `DELETE /v1/audio/cache`
+
+Clear the in-memory audio cache. Returns cache stats at the moment of clearing.
 
 ## Advanced Features
+
+### Audio Cache
+
+Repeated requests with the same parameters (voice, text, speed, etc.) are served from an in-memory LRU cache, skipping inference entirely. This is useful when clients send the same request many times (e.g. the same clone profile + text).
+
+The cache stores final audio bytes (WAV/PCM), not GPU tensors, so it doesn't consume GPU memory.
+
+```bash
+# Check cache stats
+curl http://127.0.0.1:8880/metrics
+# → { "cache_hits": 42, "cache_misses": 10, "cache_hit_rate": 0.808, ... }
+
+# Clear the cache
+curl -X DELETE http://127.0.0.1:8880/v1/audio/cache
+
+# Disable cache entirely
+omnivoice-server --no-cache
+```
+
+Responses include an `X-Cache: HIT` or `X-Cache: MISS` header. Cache applies to non-streaming `/v1/audio/speech` only — streaming and one-shot `/v1/audio/speech/clone` are not cached.
+
+Memory is managed by:
+- **LRU eviction**: when total cached bytes exceed `cache_max_mb` (default 512MB), least-recently-used entries are dropped.
+- **TTL expiry**: a background sweep removes entries older than `cache_ttl_s` (default 3600s). Set to 0 to disable TTL (LRU-only).
 
 ### Non-Verbal Symbols
 

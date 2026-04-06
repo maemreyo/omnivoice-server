@@ -129,6 +129,7 @@ graph TB
         MS["ModelService<br/>model singleton"]
         PS["ProfileService<br/>disk store"]
         MTS["MetricsService<br/>in-memory counters"]
+        AC["AudioCache<br/>LRU + TTL"]
     end
 
     subgraph UTIL["Utility layer"]
@@ -147,7 +148,7 @@ graph TB
     end
 
     R1 & R2 & R3 & R4 --> AUTH
-    AUTH --> IS & PS & MTS
+    AUTH --> IS & PS & MTS & AC
     IS --> MS
     IS --> UTIL
     IS --> TP & SEM
@@ -161,7 +162,7 @@ graph TB
 | -------------------------- | ------------------------------------------------------------------ | ------------------------- |
 | **HTTP surface** (routers) | Parse/validate request, format response, map errors to HTTP status | Business logic            |
 | **Middleware**             | Auth gate, future: rate limiting                                   | Routing                   |
-| **Service layer**          | Orchestrate inference, manage state, record metrics                | HTTP concerns             |
+| **Service layer**          | Orchestrate inference, manage state, record metrics, cache results | HTTP concerns             |
 | **Utility layer**          | Pure functions (audio encoding, text splitting)                    | Side effects              |
 | **Config layer**           | Single source of truth for all tunables                            | Validation beyond type    |
 | **Infrastructure**         | Thread pool, semaphore, filesystem                                 | Awareness of domain logic |
@@ -190,6 +191,7 @@ graph LR
             SINFER["inference.py<br/>InferenceService<br/>SynthesisRequest / Result"]
             SPROFILE["profiles.py<br/>ProfileService"]
             SMETRIC["metrics.py<br/>MetricsService"]
+            SCACHE["cache.py<br/>AudioCache<br/>LRU + TTL sweep"]
         end
 
         subgraph utils["utils/"]
@@ -204,9 +206,9 @@ graph LR
     APP --> SMODEL & SINFER & SPROFILE & SMETRIC
     APP --> RSPEECH & RVOICES & RHEALTH
 
-    RSPEECH --> SINFER & SPROFILE & SMETRIC & UAUDIO & UTEXT
+    RSPEECH --> SINFER & SPROFILE & SMETRIC & UAUDIO & UTEXT & SCACHE
     RVOICES --> SPROFILE
-    RHEALTH --> SMETRIC
+    RHEALTH --> SMETRIC & SCACHE
 
     SINFER --> SMODEL & UAUDIO
     SMODEL -->|"OmniVoice.from_pretrained()"| EXT_OV["omnivoice<br/>(external package)"]
@@ -284,7 +286,9 @@ flowchart TD
     E --> F{stream=True?}
     F -->|yes| STREAM([→ See streaming diagram])
 
-    F -->|no| G[InferenceService.synthesize]
+    F -->|no| G0{AudioCache\nlookup}
+    G0 -->|HIT| CACHED([200 OK\nX-Cache: HIT\naudio bytes from cache])
+    G0 -->|MISS| G[InferenceService.synthesize]
     G --> H{semaphore acquired?}
     H -->|wait| H
     H -->|acquired| I[ThreadPoolExecutor\n_run_sync]
@@ -293,7 +297,8 @@ flowchart TD
     J -->|Exception| ERR500([500 Internal Server Error])
     J -->|tensors| K[tensor→WAV or PCM bytes]
     K --> L[metrics_svc.record_success]
-    L --> M([200 OK\naudio/wav or audio/pcm])
+    L --> L2[AudioCache.put]
+    L2 --> M([200 OK\nX-Cache: MISS\naudio/wav or audio/pcm])
 ```
 
 ---
@@ -398,6 +403,8 @@ sequenceDiagram
     APP->>APP: InferenceService(model_svc, executor, cfg)
     APP->>APP: ProfileService(profile_dir)
     APP->>APP: MetricsService()
+    APP->>APP: AudioCache(cfg) + await start()
+    Note over APP: Starts background TTL sweep task<br/>(interval = ttl_s / 2, min 10s)
     APP->>APP: record start_time
 
     APP-->>UV: yield  ← server starts accepting requests
@@ -405,6 +412,8 @@ sequenceDiagram
     Note over UV: ... server live ...
 
     UV->>APP: shutdown signal (SIGINT / SIGTERM)
+    APP->>APP: await audio_cache.stop()
+    Note over APP: Cancels TTL sweep task
     APP->>EX: executor.shutdown(wait=False)
     Note over EX: In-flight inferences may be interrupted.<br/>wait=False avoids hanging on long synthesis.
     APP-->>UV: done
@@ -485,6 +494,8 @@ graph TD
     PS["ProfileService<br/>owns: profile_dir path<br/>state: filesystem (external)"]
     MTS["MetricsService<br/>owns: counters, latency deque<br/>state: in-memory, resets on restart"]
 
+    AC["AudioCache<br/>owns: LRU OrderedDict, TTL sweep task<br/>state: in-memory, resets on restart"]
+
     EX["ThreadPoolExecutor<br/>(created in lifespan, shared)"]
     FS["~/.omnivoice/profiles/"]
 
@@ -493,6 +504,8 @@ graph TD
     CFG -->|"profile_dir"| PS
     CFG -->|"max_concurrent"| EX
 
+    AC -.->|"used by"| RSPEECH
+    AC -.->|"used by"| RHEALTH
     MS -->|"model singleton"| IS
     EX -->|"thread pool"| IS
     FS -->|"read/write"| PS
