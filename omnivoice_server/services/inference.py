@@ -2,6 +2,12 @@
 Runs model.generate() in a thread pool with concurrency limiting and
 post-request memory cleanup.
 
+Supports two modes:
+  1. Dynamic batching (default): requests are accumulated by BatchingService
+     and dispatched as a single batched model.generate() call.
+  2. Legacy single-request mode: each request runs independently in the
+     thread pool with semaphore-based concurrency limiting.
+
 DESIGN NOTE — upstream isolation:
   All kwargs construction for model.generate() is centralised in
   OmniVoiceAdapter._build_kwargs(). When OmniVoice adds / renames params,
@@ -15,39 +21,20 @@ import gc
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import torch
 
 from ..config import Settings
 from .model import ModelService
 
+# Re-export from batching so existing imports (routers, tests) keep working.
+from .batching import SynthesisRequest, SynthesisResult  # noqa: F401
+
+if TYPE_CHECKING:
+    from .batching import BatchingService
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class SynthesisRequest:
-    text: str
-    mode: str  # "auto" | "design" | "clone"
-    instruct: str | None = None  # for mode="design"
-    ref_audio_path: str | None = None  # tmp path, for mode="clone"
-    ref_text: str | None = None  # for mode="clone", optional
-    speed: float = 1.0
-    num_step: int | None = None  # None → use server default
-    # Advanced passthrough — None means "use upstream default"
-    guidance_scale: float | None = None
-    denoise: bool | None = None
-    t_shift: float | None = None
-    position_temperature: float | None = None
-    class_temperature: float | None = None
-    duration: float | None = None  # Fixed output duration in seconds
-
-
-@dataclass
-class SynthesisResult:
-    tensors: list  # list[torch.Tensor], each (1, T)
-    duration_s: float
-    latency_s: float
 
 
 class OmniVoiceAdapter:
@@ -135,24 +122,43 @@ class OmniVoiceAdapter:
 
 
 class InferenceService:
+    """
+    Unified inference entry point.
+
+    When batching is enabled (cfg.batch_enabled), delegates to BatchingService.
+    Otherwise falls back to the legacy single-request thread pool path.
+    """
+
     def __init__(
         self,
         model_svc: ModelService,
         executor: ThreadPoolExecutor,
         cfg: Settings,
+        batching_svc: BatchingService | None = None,
     ) -> None:
         self._model_svc = model_svc
         self._executor = executor
         self._cfg = cfg
-        self._semaphore = asyncio.Semaphore(cfg.max_concurrent)
         self._adapter = OmniVoiceAdapter(cfg)
+        self._batching_svc = batching_svc
+        # Semaphore only used in legacy (non-batched) mode.
+        # When batching is active, BatchingService owns its own semaphore.
+        self._semaphore = asyncio.Semaphore(cfg.max_concurrent)
 
     async def synthesize(self, req: SynthesisRequest) -> SynthesisResult:
         """
-        Run synthesis in thread pool.
-        Blocks at semaphore if MAX_CONCURRENT already running.
+        Run synthesis — batched or single-request depending on config.
+
         Raises asyncio.TimeoutError if exceeds request_timeout_s.
         """
+        if self._batching_svc is not None:
+            return await self._batching_svc.submit(req)
+
+        # Legacy single-request path
+        return await self._synthesize_single(req)
+
+    async def _synthesize_single(self, req: SynthesisRequest) -> SynthesisResult:
+        """Legacy: run a single request in the thread pool with semaphore."""
         loop = asyncio.get_running_loop()
 
         async with self._semaphore:
