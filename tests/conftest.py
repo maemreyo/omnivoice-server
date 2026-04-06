@@ -52,10 +52,38 @@ def make_wav_bytes(duration_frames: int = 0, sample_rate: int = 24000) -> bytes:
 
 def _mock_synthesize(req):
     """Fake synthesis — returns 1s of silence immediately."""
-    from omnivoice_server.services.inference import SynthesisResult
+    from omnivoice_server.services.inference import SynthesisResult, SynthesisTimingBreakdown
 
     tensor = make_silence_tensor(1.0)
-    return SynthesisResult(tensors=[tensor], duration_s=1.0, latency_s=0.05)
+    return SynthesisResult(
+        tensors=[tensor],
+        duration_s=1.0,
+        latency_s=0.05,
+        breakdown=SynthesisTimingBreakdown(
+            clone_prompt_ms=12.0 if req.mode == "clone" else 0.0,
+            clone_prompt_calls=1 if req.mode == "clone" else 0,
+            decode_postprocess_ms=8.0,
+            decode_postprocess_calls=1,
+            postprocess_ms=3.0,
+            postprocess_calls=1,
+            cleanup_ms=0.0,
+            prepare_inference_calls=1,
+            batch_size=1,
+            max_condition_len=64,
+            max_target_tokens=25,
+            max_ref_audio_tokens=12 if req.mode == "clone" else 0,
+            attention_mask_mb_estimate=0.008,
+            batch_logits_mb_estimate=1.5,
+            tokens_mb_estimate=0.002,
+            cuda_allocated_before_mb=100.0,
+            cuda_allocated_after_mb=120.0,
+            cuda_reserved_before_mb=128.0,
+            cuda_reserved_after_mb=256.0,
+            cuda_free_before_mb=8000.0,
+            cuda_free_after_mb=7900.0,
+            cuda_total_mb=16384.0,
+        ),
+    )
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

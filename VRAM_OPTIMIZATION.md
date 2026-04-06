@@ -1,0 +1,202 @@
+# VRAM Optimization Notes
+
+## Scope
+
+This document summarizes the current VRAM findings for the OmniVoice server and
+the most credible next steps to reduce peak GPU footprint without regressing the
+streaming `clone:<profile>` production path.
+
+Primary question:
+
+- Why does `nvidia-smi` show roughly `6.8-7.0 GiB` for a process whose loaded
+  model weights are closer to `~2 GiB`?
+
+## Current Measured Footprint
+
+Static loaded model footprint on CUDA:
+
+- Core OmniVoice model params: `~1168.4 MB`
+- Audio tokenizer params: `~764.3 MB`
+- Total loaded params: `~1932.6 MB`
+
+Prompt-cache footprint:
+
+- Cached clone prompt token data: `~0.011 MB`
+
+Conclusion:
+
+- There is no large application-level VRAM cache in the server code.
+- The stored profile prompt cache is negligible.
+
+## Observed Runtime Memory
+
+Measured after a representative long streaming `clone:sky` request:
+
+- `cuda_allocated_mb`: `~1945.3`
+- `cuda_reserved_mb`: `~5258.0`
+- `cuda_max_allocated_mb`: `~4125.4`
+- `cuda_max_reserved_mb`: `~5258.0`
+
+Allocator stats from `torch.cuda.memory_stats()` on the same path:
+
+- `allocated_bytes.all.current`: `~1945.3 MB`
+- `allocated_bytes.all.peak`: `~4125.4 MB`
+- `reserved_bytes.all.current`: `~5014.0 MB`
+- `reserved_bytes.all.peak`: `~5014.0 MB`
+- `inactive_split_bytes.all.current`: `~16.7 MB`
+- `inactive_split_bytes.all.peak`: `~1154.0 MB`
+
+Interpretation:
+
+- The model does not keep `~5 GiB` of live tensors resident after the request.
+- Peak live PyTorch allocation was still real and substantial at `~4.1 GiB`.
+- Roughly `~0.9-1.1 GiB` of the peak reserve looks attributable to allocator
+  overhead / fragmentation rather than active tensors.
+- The larger post-request gap between `allocated` and `reserved` is reusable
+  cached allocator state, not evidence of a large explicit model cache.
+
+## Why The Working Set Is Larger Than The Weights
+
+The current OmniVoice inference path materially expands runtime memory beyond
+the static checkpoint size.
+
+### 1. Classifier-free guidance doubles the batch
+
+In iterative generation, OmniVoice allocates tensors for both conditional and
+unconditional branches:
+
+- [`omnivoice.py`](/home/remo/github/omnivoice-server/.venv/lib/python3.12/site-packages/omnivoice/models/omnivoice.py#L1162)
+- [`omnivoice.py`](/home/remo/github/omnivoice-server/.venv/lib/python3.12/site-packages/omnivoice/models/omnivoice.py#L1178)
+
+That means the hot path uses `2 * B` for several sequence-shaped tensors.
+
+This is not waste when `guidance_scale > 0`, but it is a real VRAM multiplier.
+
+### 2. Full-sequence forward passes happen on every iterative decode step
+
+Generation repeatedly runs the full model over the current sequence:
+
+- [`omnivoice.py`](/home/remo/github/omnivoice-server/.venv/lib/python3.12/site-packages/omnivoice/models/omnivoice.py#L1226)
+
+There is no KV-cache-style reuse here. The model re-materializes activations and
+uses CUDA library workspace across multiple decoding steps.
+
+### 3. Sequence length is driven by audio-token generation, not only text length
+
+For the measured first streamed chunk:
+
+- `first_chunk_chars`: `68`
+- `first_max_condition_len`: `597`
+- `first_max_target_tokens`: `396`
+- `first_max_ref_audio_tokens`: `175`
+
+This is why a short sentence can still create a nontrivial GPU working set.
+
+### 4. Some tensor work is wasteful, but not multi-GB wasteful
+
+The model computes full-sequence logits:
+
+- [`omnivoice.py`](/home/remo/github/omnivoice-server/.venv/lib/python3.12/site-packages/omnivoice/models/omnivoice.py#L405)
+
+Then upcasts them to fp32:
+
+- [`omnivoice.py`](/home/remo/github/omnivoice-server/.venv/lib/python3.12/site-packages/omnivoice/models/omnivoice.py#L1231)
+
+Only the target slices are consumed later:
+
+- [`omnivoice.py`](/home/remo/github/omnivoice-server/.venv/lib/python3.12/site-packages/omnivoice/models/omnivoice.py#L1240)
+
+For the measured shape, rough tensor-size estimates are:
+
+- dense attention mask: `< 1 MB`
+- full fp32 logits tensor: `~37 MB`
+- one layer of fp16 attention scores: `~22 MB`
+
+So there is some obvious inefficiency, but not enough to explain the entire
+`~7 GiB` seen in `nvidia-smi`.
+
+## Bottom Line
+
+Current evidence suggests:
+
+- No large explicit VRAM cache in server code
+- Real peak inference demand around `~4.1 GiB`
+- Additional `~1 GiB` class overhead from allocator fragmentation / reserve
+- Remaining difference in `nvidia-smi` likely includes CUDA context and library
+  workspace outside the directly attributed PyTorch tensor footprint
+
+So the `~7 GiB` process size is higher than the model weights alone, but it is
+not mostly fake or obviously wasted by the application.
+
+## Recommendations
+
+### 1. Lowest-risk next experiment: allocator tuning
+
+Best first test:
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+```
+
+Why:
+
+- This workload has varying sequence lengths and chunk sizes.
+- Peak `inactive_split_bytes` was high enough to suggest fragmentation.
+- This setting is intended for workloads with changing allocation sizes.
+
+Expected upside:
+
+- Reduce allocator slivers / fragmented reserve
+- Potentially reclaim on the order of `~1 GiB` of peak reserve
+
+Expected risk:
+
+- Low integration risk
+- Low code risk
+- Performance impact must still be benchmarked, but this is the cleanest first
+  allocator experiment
+
+### 2. Medium-value model-path optimization: CFG fast path for `guidance_scale=0`
+
+If the server ever runs with `guidance_scale=0`, the unconditional branch should
+be skipped entirely instead of still allocating the doubled batch.
+
+This would reduce real peak memory, not only reserve.
+
+### 3. Medium-value model-path optimization: avoid unnecessary full fp32 logits
+
+If upstream can avoid materializing or keeping the full fp32 logits tensor for
+all positions, there is a modest VRAM reduction available.
+
+This is likely a tens-of-MB optimization, not a multi-GB one.
+
+### 4. Largest durable reduction: quantize the core model
+
+If allocator tuning is insufficient and the tokenizer must remain on GPU,
+quantizing the core model is the most credible next large memory reduction.
+
+Most likely order:
+
+1. int8 core model
+2. fp8 benchmark only if int8 is insufficient
+3. 4-bit only as a more experimental path
+
+## Recommended Test Plan
+
+1. Baseline current production-like run with `/metrics` and `torch.cuda.memory_stats()`.
+2. Restart server with:
+
+```bash
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+```
+
+3. Compare:
+
+- `cuda_max_allocated_mb`
+- `cuda_max_reserved_mb`
+- `inactive_split_bytes.all.peak`
+- streaming TTFA
+- total streaming latency
+
+If reserve drops materially and latency stays flat, keep it. If not, revert and
+move on to true peak reducers such as model-path changes or quantization.

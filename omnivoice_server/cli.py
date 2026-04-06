@@ -100,6 +100,13 @@ def main() -> None:
         dest="request_timeout_s",
         help="Request timeout in seconds (env: OMNIVOICE_REQUEST_TIMEOUT_S)",
     )
+    parser.add_argument(
+        "--cleanup-interval",
+        type=int,
+        default=None,
+        dest="cleanup_interval",
+        help="Run memory cleanup every N syntheses. 0 disables it (env: OMNIVOICE_CLEANUP_INTERVAL)",
+    )
 
     # Storage
     parser.add_argument(

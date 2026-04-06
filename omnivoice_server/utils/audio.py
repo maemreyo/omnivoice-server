@@ -8,6 +8,7 @@ from __future__ import annotations
 # FIX: io and torchaudio were imported a second time in the middle of the file,
 # after validate_audio_bytes. Moved all imports to top — single import block.
 import io
+import wave
 
 import torch
 import torchaudio
@@ -76,11 +77,14 @@ def validate_audio_bytes(data: bytes, field_name: str = "ref_audio") -> None:
     try:
         buf = io.BytesIO(data)
         info = torchaudio.info(buf)
-        if info.num_frames == 0:
-            raise ValueError(f"{field_name}: audio file has 0 frames")
-        if info.sample_rate < 8000:
-            raise ValueError(f"{field_name}: sample rate {info.sample_rate}Hz too low (min 8000Hz)")
     except Exception as e:
+        wav_metadata = _read_wav_metadata(data)
+        if wav_metadata is not None:
+            _validate_audio_metadata(
+                num_frames=wav_metadata[0],
+                sample_rate=wav_metadata[1],
+                field_name=field_name,
+            )
         if isinstance(e, ValueError):
             raise
         raise ValueError(
@@ -88,3 +92,24 @@ def validate_audio_bytes(data: bytes, field_name: str = "ref_audio") -> None:
             "Supported formats: WAV, MP3, FLAC, OGG. "
             f"Original error: {e}"
         ) from e
+    else:
+        _validate_audio_metadata(
+            num_frames=info.num_frames,
+            sample_rate=info.sample_rate,
+            field_name=field_name,
+        )
+
+
+def _validate_audio_metadata(num_frames: int, sample_rate: int, field_name: str) -> None:
+    if num_frames == 0:
+        raise ValueError(f"{field_name}: audio file has 0 frames")
+    if sample_rate < 8000:
+        raise ValueError(f"{field_name}: sample rate {sample_rate}Hz too low (min 8000Hz)")
+
+
+def _read_wav_metadata(data: bytes) -> tuple[int, int] | None:
+    try:
+        with wave.open(io.BytesIO(data), "rb") as wav_file:
+            return wav_file.getnframes(), wav_file.getframerate()
+    except wave.Error:
+        return None

@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+import time
+import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Literal
@@ -17,7 +19,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from ..services.inference import InferenceService, SynthesisRequest
-from ..services.metrics import MetricsService
+from ..services.metrics import MetricsService, StreamObservation
 from ..services.profiles import ProfileNotFoundError, ProfileService
 from ..utils.audio import tensor_to_pcm16_bytes, tensors_to_wav_bytes
 from ..utils.text import split_sentences
@@ -106,6 +108,14 @@ def _parse_voice(
     return "design", v, None, None
 
 
+def _extract_clone_profile_id(voice_str: str) -> str | None:
+    voice = voice_str.strip()
+    if not voice.startswith("clone:"):
+        return None
+    profile_id = voice[len("clone:") :].strip()
+    return profile_id or None
+
+
 @router.post("/audio/speech")
 async def create_speech(
     body: SpeechRequest,
@@ -116,6 +126,7 @@ async def create_speech(
 ):
     """Generate speech from text."""
     mode, instruct, ref_audio_path, ref_text = _parse_voice(body.voice, profile_svc)
+    profile_id = _extract_clone_profile_id(body.voice)
 
     req = SynthesisRequest(
         text=body.input,
@@ -123,6 +134,7 @@ async def create_speech(
         instruct=instruct,
         ref_audio_path=ref_audio_path,
         ref_text=ref_text,
+        profile_id=profile_id,
         speed=body.speed,
         num_step=body.num_step,
         guidance_scale=body.guidance_scale,
@@ -134,10 +146,20 @@ async def create_speech(
     )
 
     if body.stream:
+        request_id = uuid.uuid4().hex[:12]
         return StreamingResponse(
-            _stream_sentences(body.input, req, inference_svc, metrics_svc, cfg),
+            _stream_sentences(
+                text=body.input,
+                base_req=req,
+                inference_svc=inference_svc,
+                metrics_svc=metrics_svc,
+                cfg=cfg,
+                request_id=request_id,
+                profile_id=profile_id,
+            ),
             media_type="audio/pcm",
             headers={
+                "X-Request-Id": request_id,
                 "X-Audio-Sample-Rate": "24000",
                 "X-Audio-Channels": "1",
                 "X-Audio-Bit-Depth": "16",
@@ -187,12 +209,48 @@ async def _stream_sentences(
     inference_svc: InferenceService,
     metrics_svc: MetricsService,
     cfg,
+    request_id: str,
+    profile_id: str | None,
 ) -> AsyncIterator[bytes]:
     """Sentence-level streaming generator."""
-    sentences = split_sentences(text, max_chars=cfg.stream_chunk_max_chars)
+    stream_started = time.monotonic()
+    sentences = split_sentences(
+        text,
+        max_chars=cfg.stream_chunk_max_chars,
+        eager_first_chunk=True,
+    )
+    sentence_split_ms = (time.monotonic() - stream_started) * 1000
 
     if not sentences:
         return
+
+    first_chunk_chars = len(sentences[0])
+    completed_synthesis_calls = 0
+    emitted_audio_chunks = 0
+    emitted_bytes = 0
+    ttfa_ms: float | None = None
+    first_synthesis_ms: float | None = None
+    first_clone_prompt_ms: float | None = None
+    first_decode_postprocess_ms: float | None = None
+    first_postprocess_ms: float | None = None
+    first_decode_only_ms: float | None = None
+    first_cleanup_ms: float | None = None
+    first_pcm_encode_ms: float | None = None
+    first_prepare_inference_calls: int | None = None
+    first_batch_size: int | None = None
+    first_max_condition_len: int | None = None
+    first_max_target_tokens: int | None = None
+    first_max_ref_audio_tokens: int | None = None
+    first_attention_mask_mb_estimate: float | None = None
+    first_batch_logits_mb_estimate: float | None = None
+    first_tokens_mb_estimate: float | None = None
+    first_cuda_allocated_before_mb: float | None = None
+    first_cuda_allocated_after_mb: float | None = None
+    first_cuda_reserved_before_mb: float | None = None
+    first_cuda_reserved_after_mb: float | None = None
+    first_cuda_free_before_mb: float | None = None
+    first_cuda_free_after_mb: float | None = None
+    first_cuda_total_mb: float | None = None
 
     for sentence in sentences:
         req = SynthesisRequest(
@@ -201,6 +259,7 @@ async def _stream_sentences(
             instruct=base_req.instruct,
             ref_audio_path=base_req.ref_audio_path,
             ref_text=base_req.ref_text,
+            profile_id=base_req.profile_id,
             speed=base_req.speed,
             num_step=base_req.num_step,
             guidance_scale=base_req.guidance_scale,
@@ -211,18 +270,246 @@ async def _stream_sentences(
             duration=base_req.duration,
         )
         try:
+            synth_started = time.monotonic()
             result = await inference_svc.synthesize(req)
-            metrics_svc.record_success(result.latency_s)
+            completed_synthesis_calls += 1
+            if first_synthesis_ms is None:
+                first_synthesis_ms = (time.monotonic() - synth_started) * 1000
+                if result.breakdown is not None:
+                    first_clone_prompt_ms = result.breakdown.clone_prompt_ms
+                    first_decode_postprocess_ms = result.breakdown.decode_postprocess_ms
+                    first_postprocess_ms = result.breakdown.postprocess_ms
+                    first_decode_only_ms = result.breakdown.decode_only_ms
+                    first_cleanup_ms = result.breakdown.cleanup_ms
+                    first_prepare_inference_calls = result.breakdown.prepare_inference_calls
+                    first_batch_size = result.breakdown.batch_size
+                    first_max_condition_len = result.breakdown.max_condition_len
+                    first_max_target_tokens = result.breakdown.max_target_tokens
+                    first_max_ref_audio_tokens = result.breakdown.max_ref_audio_tokens
+                    first_attention_mask_mb_estimate = (
+                        result.breakdown.attention_mask_mb_estimate
+                    )
+                    first_batch_logits_mb_estimate = result.breakdown.batch_logits_mb_estimate
+                    first_tokens_mb_estimate = result.breakdown.tokens_mb_estimate
+                    first_cuda_allocated_before_mb = result.breakdown.cuda_allocated_before_mb
+                    first_cuda_allocated_after_mb = result.breakdown.cuda_allocated_after_mb
+                    first_cuda_reserved_before_mb = result.breakdown.cuda_reserved_before_mb
+                    first_cuda_reserved_after_mb = result.breakdown.cuda_reserved_after_mb
+                    first_cuda_free_before_mb = result.breakdown.cuda_free_before_mb
+                    first_cuda_free_after_mb = result.breakdown.cuda_free_after_mb
+                    first_cuda_total_mb = result.breakdown.cuda_total_mb
+
             for tensor in result.tensors:
-                yield tensor_to_pcm16_bytes(tensor)
+                encode_started = time.monotonic()
+                chunk = tensor_to_pcm16_bytes(tensor)
+                encode_ms = (time.monotonic() - encode_started) * 1000
+                emitted_audio_chunks += 1
+                emitted_bytes += len(chunk)
+
+                if first_pcm_encode_ms is None:
+                    first_pcm_encode_ms = encode_ms
+                if ttfa_ms is None:
+                    ttfa_ms = (time.monotonic() - stream_started) * 1000
+
+                yield chunk
         except asyncio.TimeoutError:
+            total_ms = (time.monotonic() - stream_started) * 1000
             metrics_svc.record_timeout()
-            logger.warning(f"Streaming chunk timed out: '{sentence[:50]}...'")
+            observation = _build_stream_observation(
+                request_id=request_id,
+                mode=base_req.mode,
+                profile_id=profile_id,
+                input_chars=len(text),
+                planned_synthesis_calls=len(sentences),
+                first_chunk_chars=first_chunk_chars,
+                completed_synthesis_calls=completed_synthesis_calls,
+                emitted_audio_chunks=emitted_audio_chunks,
+                emitted_bytes=emitted_bytes,
+                status="timeout",
+                sentence_split_ms=sentence_split_ms,
+                ttfa_ms=ttfa_ms,
+                first_synthesis_ms=first_synthesis_ms,
+                first_clone_prompt_ms=first_clone_prompt_ms,
+                first_decode_postprocess_ms=first_decode_postprocess_ms,
+                first_postprocess_ms=first_postprocess_ms,
+                first_decode_only_ms=first_decode_only_ms,
+                first_cleanup_ms=first_cleanup_ms,
+                first_pcm_encode_ms=first_pcm_encode_ms,
+                first_prepare_inference_calls=first_prepare_inference_calls,
+                first_batch_size=first_batch_size,
+                first_max_condition_len=first_max_condition_len,
+                first_max_target_tokens=first_max_target_tokens,
+                first_max_ref_audio_tokens=first_max_ref_audio_tokens,
+                first_attention_mask_mb_estimate=first_attention_mask_mb_estimate,
+                first_batch_logits_mb_estimate=first_batch_logits_mb_estimate,
+                first_tokens_mb_estimate=first_tokens_mb_estimate,
+                first_cuda_allocated_before_mb=first_cuda_allocated_before_mb,
+                first_cuda_allocated_after_mb=first_cuda_allocated_after_mb,
+                first_cuda_reserved_before_mb=first_cuda_reserved_before_mb,
+                first_cuda_reserved_after_mb=first_cuda_reserved_after_mb,
+                first_cuda_free_before_mb=first_cuda_free_before_mb,
+                first_cuda_free_after_mb=first_cuda_free_after_mb,
+                first_cuda_total_mb=first_cuda_total_mb,
+                total_ms=total_ms,
+            )
+            metrics_svc.record_stream_observation(observation)
+            logger.warning(
+                "stream request_id=%s mode=%s profile_id=%s status=timeout "
+                "planned_calls=%d completed_calls=%d emitted_chunks=%d "
+                "emitted_bytes=%d ttfa_ms=%s first_clone_prompt_ms=%s "
+                "first_decode_postprocess_ms=%s first_cleanup_ms=%s total_ms=%.1f "
+                "timed out on '%s...'",
+                request_id,
+                base_req.mode,
+                profile_id,
+                len(sentences),
+                completed_synthesis_calls,
+                emitted_audio_chunks,
+                emitted_bytes,
+                _fmt_ms(ttfa_ms),
+                _fmt_ms(first_clone_prompt_ms),
+                _fmt_ms(first_decode_postprocess_ms),
+                _fmt_ms(first_cleanup_ms),
+                total_ms,
+                sentence[:50],
+            )
             return
         except Exception:
+            total_ms = (time.monotonic() - stream_started) * 1000
             metrics_svc.record_error()
-            logger.exception(f"Streaming chunk failed: '{sentence[:50]}...'")
+            observation = _build_stream_observation(
+                request_id=request_id,
+                mode=base_req.mode,
+                profile_id=profile_id,
+                input_chars=len(text),
+                planned_synthesis_calls=len(sentences),
+                first_chunk_chars=first_chunk_chars,
+                completed_synthesis_calls=completed_synthesis_calls,
+                emitted_audio_chunks=emitted_audio_chunks,
+                emitted_bytes=emitted_bytes,
+                status="error",
+                sentence_split_ms=sentence_split_ms,
+                ttfa_ms=ttfa_ms,
+                first_synthesis_ms=first_synthesis_ms,
+                first_clone_prompt_ms=first_clone_prompt_ms,
+                first_decode_postprocess_ms=first_decode_postprocess_ms,
+                first_postprocess_ms=first_postprocess_ms,
+                first_decode_only_ms=first_decode_only_ms,
+                first_cleanup_ms=first_cleanup_ms,
+                first_pcm_encode_ms=first_pcm_encode_ms,
+                first_prepare_inference_calls=first_prepare_inference_calls,
+                first_batch_size=first_batch_size,
+                first_max_condition_len=first_max_condition_len,
+                first_max_target_tokens=first_max_target_tokens,
+                first_max_ref_audio_tokens=first_max_ref_audio_tokens,
+                first_attention_mask_mb_estimate=first_attention_mask_mb_estimate,
+                first_batch_logits_mb_estimate=first_batch_logits_mb_estimate,
+                first_tokens_mb_estimate=first_tokens_mb_estimate,
+                first_cuda_allocated_before_mb=first_cuda_allocated_before_mb,
+                first_cuda_allocated_after_mb=first_cuda_allocated_after_mb,
+                first_cuda_reserved_before_mb=first_cuda_reserved_before_mb,
+                first_cuda_reserved_after_mb=first_cuda_reserved_after_mb,
+                first_cuda_free_before_mb=first_cuda_free_before_mb,
+                first_cuda_free_after_mb=first_cuda_free_after_mb,
+                first_cuda_total_mb=first_cuda_total_mb,
+                total_ms=total_ms,
+            )
+            metrics_svc.record_stream_observation(observation)
+            logger.exception(
+                "stream request_id=%s mode=%s profile_id=%s status=error "
+                "planned_calls=%d completed_calls=%d emitted_chunks=%d "
+                "emitted_bytes=%d ttfa_ms=%s first_clone_prompt_ms=%s "
+                "first_decode_postprocess_ms=%s first_cleanup_ms=%s total_ms=%.1f "
+                "failed on '%s...'",
+                request_id,
+                base_req.mode,
+                profile_id,
+                len(sentences),
+                completed_synthesis_calls,
+                emitted_audio_chunks,
+                emitted_bytes,
+                _fmt_ms(ttfa_ms),
+                _fmt_ms(first_clone_prompt_ms),
+                _fmt_ms(first_decode_postprocess_ms),
+                _fmt_ms(first_cleanup_ms),
+                total_ms,
+                sentence[:50],
+            )
             return
+
+    total_s = time.monotonic() - stream_started
+    total_ms = total_s * 1000
+    metrics_svc.record_success(total_s)
+    observation = _build_stream_observation(
+        request_id=request_id,
+        mode=base_req.mode,
+        profile_id=profile_id,
+        input_chars=len(text),
+        planned_synthesis_calls=len(sentences),
+        first_chunk_chars=first_chunk_chars,
+        completed_synthesis_calls=completed_synthesis_calls,
+        emitted_audio_chunks=emitted_audio_chunks,
+        emitted_bytes=emitted_bytes,
+        status="success",
+        sentence_split_ms=sentence_split_ms,
+        ttfa_ms=ttfa_ms,
+        first_synthesis_ms=first_synthesis_ms,
+        first_clone_prompt_ms=first_clone_prompt_ms,
+        first_decode_postprocess_ms=first_decode_postprocess_ms,
+        first_postprocess_ms=first_postprocess_ms,
+        first_decode_only_ms=first_decode_only_ms,
+        first_cleanup_ms=first_cleanup_ms,
+        first_pcm_encode_ms=first_pcm_encode_ms,
+        first_prepare_inference_calls=first_prepare_inference_calls,
+        first_batch_size=first_batch_size,
+        first_max_condition_len=first_max_condition_len,
+        first_max_target_tokens=first_max_target_tokens,
+        first_max_ref_audio_tokens=first_max_ref_audio_tokens,
+        first_attention_mask_mb_estimate=first_attention_mask_mb_estimate,
+        first_batch_logits_mb_estimate=first_batch_logits_mb_estimate,
+        first_tokens_mb_estimate=first_tokens_mb_estimate,
+        first_cuda_allocated_before_mb=first_cuda_allocated_before_mb,
+        first_cuda_allocated_after_mb=first_cuda_allocated_after_mb,
+        first_cuda_reserved_before_mb=first_cuda_reserved_before_mb,
+        first_cuda_reserved_after_mb=first_cuda_reserved_after_mb,
+        first_cuda_free_before_mb=first_cuda_free_before_mb,
+        first_cuda_free_after_mb=first_cuda_free_after_mb,
+        first_cuda_total_mb=first_cuda_total_mb,
+        total_ms=total_ms,
+    )
+    metrics_svc.record_stream_observation(observation)
+    logger.info(
+        "stream request_id=%s mode=%s profile_id=%s status=success "
+        "planned_calls=%d completed_calls=%d emitted_chunks=%d emitted_bytes=%d "
+        "split_ms=%.1f ttfa_ms=%s first_synthesis_ms=%s "
+        "first_clone_prompt_ms=%s first_decode_postprocess_ms=%s "
+        "first_cleanup_ms=%s first_pcm_encode_ms=%s total_ms=%.1f",
+        request_id,
+        base_req.mode,
+        profile_id,
+        len(sentences),
+        completed_synthesis_calls,
+        emitted_audio_chunks,
+        emitted_bytes,
+        sentence_split_ms,
+        _fmt_ms(ttfa_ms),
+        _fmt_ms(first_synthesis_ms),
+        _fmt_ms(first_clone_prompt_ms),
+        _fmt_ms(first_decode_postprocess_ms),
+        _fmt_ms(first_cleanup_ms),
+        _fmt_ms(first_pcm_encode_ms),
+        total_ms,
+    )
+
+
+def _build_stream_observation(**kwargs) -> StreamObservation:
+    return StreamObservation(**kwargs)
+
+
+def _fmt_ms(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.1f}"
 
 
 @router.post("/audio/speech/clone")

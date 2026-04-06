@@ -15,6 +15,7 @@ from ..services.profiles import (
     ProfileNotFoundError,
     ProfileService,
 )
+from ..services.model import ModelService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -31,6 +32,10 @@ DESIGN_ATTRIBUTES = {
 
 def _get_profiles(request: Request) -> ProfileService:
     return request.app.state.profile_svc
+
+
+def _get_model(request: Request) -> ModelService:
+    return request.app.state.model_svc
 
 
 # ── GET /v1/voices ───────────────────────────────────────────────────────────
@@ -88,6 +93,7 @@ async def create_profile(
     ref_text: str | None = Form(default=None),
     overwrite: bool = Form(default=False),
     profile_svc: ProfileService = Depends(_get_profiles),
+    model_svc: ModelService = Depends(_get_model),
 ):
     """
     Save a voice cloning profile.
@@ -120,6 +126,7 @@ async def create_profile(
             detail=str(e),
         )
 
+    model_svc.invalidate_voice_clone_prompt(profile_id)
     return meta
 
 
@@ -146,6 +153,7 @@ async def get_profile(
 
 @router.delete("/voices/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_profile(
+    request: Request,
     profile_id: str,
     profile_svc: ProfileService = Depends(_get_profiles),
 ):
@@ -156,6 +164,8 @@ async def delete_profile(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Profile '{profile_id}' not found",
         )
+
+    request.app.state.model_svc.invalidate_voice_clone_prompt(profile_id)
 
 
 # ── PATCH /v1/voices/profiles/{profile_id} ───────────────────────────────────
@@ -168,6 +178,7 @@ async def update_profile(
     ref_audio: UploadFile | None = File(default=None),
     ref_text: str | None = Form(default=None),
     profile_svc: ProfileService = Depends(_get_profiles),
+    model_svc: ModelService = Depends(_get_model),
 ):
     """
     Update an existing profile. Fields not provided are left unchanged.
@@ -217,4 +228,5 @@ async def update_profile(
             overwrite=True,
         )
 
+    model_svc.invalidate_voice_clone_prompt(profile_id)
     return meta

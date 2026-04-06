@@ -81,3 +81,36 @@ def test_speech_with_saved_profile(client, sample_audio_bytes):
         },
     )
     assert resp.status_code == 200
+
+
+def test_profile_mutations_invalidate_prompt_cache(client, sample_audio_bytes, monkeypatch):
+    import io
+
+    invalidated: list[str] = []
+
+    def fake_invalidate(profile_id: str | None = None) -> None:
+        invalidated.append(profile_id or "<all>")
+
+    monkeypatch.setattr(
+        client.app.state.model_svc,
+        "invalidate_voice_clone_prompt",
+        fake_invalidate,
+    )
+
+    create_resp = client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "cache-me", "ref_text": "first"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert create_resp.status_code == 201
+
+    update_resp = client.patch(
+        "/v1/voices/profiles/cache-me",
+        data={"ref_text": "updated"},
+    )
+    assert update_resp.status_code == 200
+
+    delete_resp = client.delete("/v1/voices/profiles/cache-me")
+    assert delete_resp.status_code == 204
+
+    assert invalidated == ["cache-me", "cache-me", "cache-me"]

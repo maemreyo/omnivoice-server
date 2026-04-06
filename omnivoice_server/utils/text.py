@@ -27,7 +27,11 @@ _FALSE_ENDS = re.compile(
 )
 
 
-def split_sentences(text: str, max_chars: int = 400) -> list[str]:
+def split_sentences(
+    text: str,
+    max_chars: int = 400,
+    eager_first_chunk: bool = False,
+) -> list[str]:
     """
     Split text into sentence-level chunks suitable for streaming.
     Avoids splitting at false sentence boundaries (decimals, abbreviations, URLs).
@@ -37,7 +41,7 @@ def split_sentences(text: str, max_chars: int = 400) -> list[str]:
 
     text = text.strip()
 
-    if len(text) <= max_chars:
+    if len(text) <= max_chars and not eager_first_chunk:
         return [text]
 
     # First split at apparent sentence boundaries
@@ -73,11 +77,30 @@ def split_sentences(text: str, max_chars: int = 400) -> list[str]:
         merged.append(current)
         i += 1
 
-    # Now apply max_chars chunking
+    # Streaming TTFA optimization: emit the first natural sentence as soon as
+    # possible, then fall back to merged chunking for the rest of the text.
+    if eager_first_chunk and merged:
+        first_sentence = merged[0]
+        if len(first_sentence) <= max_chars:
+            first_chunks = [first_sentence]
+            remaining_sentences = merged[1:]
+        else:
+            split_first = _split_at_words(first_sentence, max_chars)
+            first_chunks = split_first[:1]
+            remaining_sentences = split_first[1:] + merged[1:]
+
+        result = first_chunks + _chunk_sentences(remaining_sentences, max_chars)
+        return [c for c in result if c.strip()]
+
+    return [c for c in _chunk_sentences(merged, max_chars) if c.strip()]
+
+
+def _chunk_sentences(sentences: list[str], max_chars: int) -> list[str]:
+    """Merge sentence strings into max_chars chunks, then word-split if needed."""
     chunks: list[str] = []
     current = ""
 
-    for sentence in merged:
+    for sentence in sentences:
         if not current:
             current = sentence
         elif len(current) + 1 + len(sentence) <= max_chars:
@@ -96,7 +119,7 @@ def split_sentences(text: str, max_chars: int = 400) -> list[str]:
         else:
             result.extend(_split_at_words(chunk, max_chars))
 
-    return [c for c in result if c.strip()]
+    return result
 
 
 def _split_at_words(text: str, max_chars: int) -> list[str]:

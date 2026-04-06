@@ -74,6 +74,16 @@ def test_split_sentences_single_short_sentence():
     assert result[0] == "Hello world."
 
 
+def test_split_sentences_eager_first_chunk_preserves_first_sentence():
+    """Streaming mode should emit the first natural sentence immediately."""
+    text = "Hello world. This is sentence two. This is sentence three."
+    result = split_sentences(text, max_chars=400, eager_first_chunk=True)
+    assert result[0] == "Hello world."
+    assert len(result) == 2
+    assert "sentence two" in result[1]
+    assert "sentence three" in result[1]
+
+
 def test_split_sentences_multiple_punctuation():
     """Multiple sentence endings (! ?) should split correctly."""
     text = "Hello! How are you? I am fine."

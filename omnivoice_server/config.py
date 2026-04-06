@@ -83,6 +83,12 @@ class Settings(BaseSettings):
         default=120,
         description="Max seconds per synthesis request before 504",
     )
+    cleanup_interval: int = Field(
+        default=0,
+        ge=0,
+        le=10_000,
+        description="Run hot-path memory cleanup every N syntheses. 0 disables it.",
+    )
 
     # Voice profiles
     profile_dir: Path = Field(
