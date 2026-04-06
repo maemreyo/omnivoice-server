@@ -6,6 +6,7 @@ All shared state lives on app.state — no module-level globals.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
@@ -23,6 +24,29 @@ from .services.profiles import ProfileService
 logger = logging.getLogger(__name__)
 
 
+def _apply_cuda_allocator_config(cfg: Settings) -> None:
+    if cfg.device != "cuda" or not cfg.cuda_alloc_conf:
+        return
+
+    import torch
+
+    if torch.cuda.is_initialized():
+        logger.warning(
+            "CUDA allocator config was not applied because CUDA is already initialized. "
+            "Wanted PYTORCH_CUDA_ALLOC_CONF=%s",
+            cfg.cuda_alloc_conf,
+        )
+        return
+
+    current = os.environ.get("PYTORCH_CUDA_ALLOC_CONF")
+    if current == cfg.cuda_alloc_conf:
+        logger.info("Using existing PYTORCH_CUDA_ALLOC_CONF=%s", current)
+        return
+
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = cfg.cuda_alloc_conf
+    logger.info("Set PYTORCH_CUDA_ALLOC_CONF=%s", cfg.cuda_alloc_conf)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg: Settings = app.state.cfg
@@ -35,6 +59,7 @@ async def lifespan(app: FastAPI):
     )
 
     cfg.profile_dir.mkdir(parents=True, exist_ok=True)
+    _apply_cuda_allocator_config(cfg)
 
     model_svc = ModelService(cfg)
     await model_svc.load()

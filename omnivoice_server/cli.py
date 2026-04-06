@@ -107,6 +107,16 @@ def main() -> None:
         dest="cleanup_interval",
         help="Run memory cleanup every N syntheses. 0 disables it (env: OMNIVOICE_CLEANUP_INTERVAL)",
     )
+    parser.add_argument(
+        "--cuda-alloc-conf",
+        default=None,
+        dest="cuda_alloc_conf",
+        help=(
+            "Set PYTORCH_CUDA_ALLOC_CONF before CUDA init. "
+            "Use 'off' to disable the server override "
+            "(env: OMNIVOICE_CUDA_ALLOC_CONF)"
+        ),
+    )
 
     # Storage
     parser.add_argument(

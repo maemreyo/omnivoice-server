@@ -200,3 +200,41 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 If reserve drops materially and latency stays flat, keep it. If not, revert and
 move on to true peak reducers such as model-path changes or quantization.
+
+## Current Allocator Tuning Result
+
+Status: implemented and tested.
+
+Server change:
+
+- The server now applies `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` by
+  default on CUDA startup.
+- It can be disabled for A/B testing with `OMNIVOICE_CUDA_ALLOC_CONF=off` or
+  `--cuda-alloc-conf off`.
+
+Measured A/B on the same long streaming `clone:sky` request:
+
+- Baseline, allocator override disabled:
+  - `cuda_max_allocated_mb`: `4125.4`
+  - `cuda_max_reserved_mb`: `5258.0`
+  - `streaming_ttfa_ms`: `350.6`
+  - `streaming_total_ms`: `2375.3`
+- With `expandable_segments:True` enabled:
+  - `cuda_max_allocated_mb`: `4089.3`
+  - `cuda_max_reserved_mb`: `4100.0`
+  - `streaming_ttfa_ms`: `338.5`
+  - `streaming_total_ms`: `2607.0`
+
+Interpretation:
+
+- Peak reserved VRAM dropped by about `1158 MB`.
+- Peak allocated VRAM changed only slightly.
+- TTFA stayed effectively flat within normal run-to-run variance.
+- Total request time moved around, but there is no evidence here of a clear
+  latency regression caused by the allocator setting.
+
+Current recommendation:
+
+- Keep `expandable_segments:True` enabled by default on CUDA.
+- Recheck under production concurrency, but this is currently the best
+  low-risk VRAM improvement found.

@@ -89,6 +89,13 @@ class Settings(BaseSettings):
         le=10_000,
         description="Run hot-path memory cleanup every N syntheses. 0 disables it.",
     )
+    cuda_alloc_conf: str = Field(
+        default="expandable_segments:True",
+        description=(
+            "Value to apply to PYTORCH_CUDA_ALLOC_CONF before CUDA initialization. "
+            "Use empty/off/disabled to skip the override."
+        ),
+    )
 
     # Voice profiles
     profile_dir: Path = Field(
@@ -136,6 +143,14 @@ class Settings(BaseSettings):
         except ImportError:
             pass
         return "cpu"
+
+    @field_validator("cuda_alloc_conf")
+    @classmethod
+    def normalize_cuda_alloc_conf(cls, v: str) -> str:
+        value = (v or "").strip()
+        if value.lower() in {"", "off", "none", "disable", "disabled"}:
+            return ""
+        return value
 
     @property
     def torch_dtype(self) -> torch.dtype:

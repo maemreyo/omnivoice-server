@@ -28,6 +28,7 @@ def test_metrics_ok(client):
     assert "streaming_first_cleanup_ms_mean" in data
     assert "streaming_latest" in data
     assert "ram_mb" in data
+    assert "cuda_alloc_conf" in data
     assert "cuda_allocated_mb" in data
     assert "cuda_reserved_mb" in data
     assert "cuda_non_torch_mb_estimate" in data

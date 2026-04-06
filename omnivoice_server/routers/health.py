@@ -36,6 +36,7 @@ async def metrics(request: Request):
     cfg = request.app.state.cfg
     snapshot = metrics_svc.snapshot()
     snapshot["ram_mb"] = round(psutil.Process().memory_info().rss / 1024 / 1024, 1)
+    snapshot["cuda_alloc_conf"] = cfg.cuda_alloc_conf
     snapshot.update(model_svc.debug_snapshot())
     snapshot.update(_cuda_snapshot(cfg.device))
     return snapshot
