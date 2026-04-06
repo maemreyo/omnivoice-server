@@ -23,6 +23,8 @@ async def health(request: Request):
         "device": cfg.device,
         "num_step": cfg.num_step,
         "max_concurrent": cfg.max_concurrent,
+        "cache_enabled": cfg.cache_enabled,
+        "cache_max_mb": cfg.cache_max_mb,
         "uptime_s": round(uptime_s, 1),
     }
 
@@ -33,4 +35,9 @@ async def metrics(request: Request):
     metrics_svc = request.app.state.metrics_svc
     snapshot = metrics_svc.snapshot()
     snapshot["ram_mb"] = round(psutil.Process().memory_info().rss / 1024 / 1024, 1)
+
+    audio_cache = getattr(request.app.state, "audio_cache", None)
+    if audio_cache is not None:
+        snapshot.update(audio_cache.snapshot())
+
     return snapshot

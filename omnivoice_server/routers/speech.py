@@ -17,6 +17,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from ..services.inference import InferenceService, SynthesisRequest
+from ..services.cache import AudioCache, _build_cache_key
 from ..services.metrics import MetricsService
 from ..services.profiles import ProfileNotFoundError, ProfileService
 from ..utils.audio import tensor_to_pcm16_bytes, tensors_to_wav_bytes
@@ -67,6 +68,10 @@ def _get_cfg(request: Request):
     return request.app.state.cfg
 
 
+def _get_cache(request: Request) -> AudioCache | None:
+    return getattr(request.app.state, "audio_cache", None)
+
+
 def _parse_voice(
     voice_str: str,
     profile_svc: ProfileService,
@@ -113,6 +118,7 @@ async def create_speech(
     profile_svc: ProfileService = Depends(_get_profiles),
     metrics_svc: MetricsService = Depends(_get_metrics),
     cfg=Depends(_get_cfg),
+    cache: AudioCache | None = Depends(_get_cache),
 ):
     """Generate speech from text."""
     mode, instruct, ref_audio_path, ref_text = _parse_voice(body.voice, profile_svc)
@@ -145,6 +151,44 @@ async def create_speech(
             },
         )
 
+    # ── Cache lookup (non-streaming only) ─────────────────────────────────
+    cache_key = None
+    if cache is not None:
+        cache_key = _build_cache_key(
+            text=body.input,
+            voice=body.voice,
+            speed=body.speed,
+            num_step=body.num_step if body.num_step is not None else cfg.num_step,
+            guidance_scale=(
+                body.guidance_scale if body.guidance_scale is not None else cfg.guidance_scale
+            ),
+            denoise=body.denoise if body.denoise is not None else cfg.denoise,
+            t_shift=body.t_shift if body.t_shift is not None else cfg.t_shift,
+            position_temperature=(
+                body.position_temperature
+                if body.position_temperature is not None
+                else cfg.position_temperature
+            ),
+            class_temperature=(
+                body.class_temperature
+                if body.class_temperature is not None
+                else cfg.class_temperature
+            ),
+            duration=body.duration,
+            response_format=body.response_format,
+        )
+        hit = cache.get(cache_key)
+        if hit is not None:
+            return Response(
+                content=hit.audio_bytes,
+                media_type=hit.media_type,
+                headers={
+                    "X-Audio-Duration-S": str(round(hit.duration_s, 3)),
+                    "X-Synthesis-Latency-S": "0.000",
+                    "X-Cache": "HIT",
+                },
+            )
+
     try:
         result = await inference_svc.synthesize(req)
         metrics_svc.record_success(result.latency_s)
@@ -171,12 +215,17 @@ async def create_speech(
         audio_bytes = tensors_to_wav_bytes(result.tensors)
         media_type = "audio/wav"
 
+    # ── Cache store ───────────────────────────────────────────────────────
+    if cache is not None and cache_key is not None:
+        cache.put(cache_key, audio_bytes, media_type, result.duration_s)
+
     return Response(
         content=audio_bytes,
         media_type=media_type,
         headers={
             "X-Audio-Duration-S": str(round(result.duration_s, 3)),
             "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
+            "X-Cache": "MISS",
         },
     )
 
@@ -301,3 +350,19 @@ async def create_speech_clone(
             "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
         },
     )
+
+
+@router.delete("/audio/cache")
+async def clear_cache(
+    cache: AudioCache | None = Depends(_get_cache),
+):
+    """Clear the in-memory audio cache. Returns current stats before clearing."""
+    if cache is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio cache is not enabled",
+        )
+
+    stats = cache.snapshot()
+    cache.clear()
+    return {"cleared": stats}

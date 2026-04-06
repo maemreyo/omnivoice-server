@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from .config import Settings
 from .routers import health, models, speech, voices  # FIX: added models
+from .services.cache import AudioCache
 from .services.inference import InferenceService
 from .services.metrics import MetricsService
 from .services.model import ModelService
@@ -52,6 +53,18 @@ async def lifespan(app: FastAPI):
 
     app.state.profile_svc = ProfileService(profile_dir=cfg.profile_dir)
     app.state.metrics_svc = MetricsService()
+
+    # Audio cache for repeated requests (same voice + text)
+    if cfg.cache_enabled:
+        audio_cache = AudioCache(cfg)
+        await audio_cache.start()
+        app.state.audio_cache = audio_cache
+        logger.info(
+            f"Audio cache enabled (max={cfg.cache_max_mb}MB, ttl={cfg.cache_ttl_s}s)"
+        )
+    else:
+        app.state.audio_cache = None
+
     app.state.start_time = time.monotonic()
 
     elapsed = time.monotonic() - t0
@@ -61,6 +74,9 @@ async def lifespan(app: FastAPI):
 
     # ── Shutdown ──────────────────────────────────────────────────────────────
     logger.info("Shutting down...")
+    audio_cache = getattr(app.state, "audio_cache", None)
+    if audio_cache is not None:
+        await audio_cache.stop()
     executor.shutdown(wait=False)
     logger.info("Done.")
 
