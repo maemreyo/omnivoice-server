@@ -87,6 +87,19 @@ Secondary metrics:
 - Current assessment: Flex Attention is benchmark-worthy in other environments, but
   it is not a safe default inference optimization on this machine today.
 
+### 8. CUDA allocator tuning produced a meaningful VRAM win
+
+- The server now supports a startup allocator override via `OMNIVOICE_CUDA_ALLOC_CONF`
+  / `--cuda-alloc-conf`.
+- Default CUDA behavior now enables `expandable_segments:True`.
+- On the target long streaming `clone:sky` request, this reduced peak reserved VRAM
+  from `5258.0 MB` to `4100.0 MB`.
+- Peak allocated VRAM stayed essentially flat (`4125.4 MB` to `4089.3 MB`), which
+  means this was mostly allocator overhead reduction rather than a real model-path
+  memory reduction.
+- TTFA remained in the same range (`350.6 ms` baseline vs `338.5 ms` with tuning).
+- Current assessment: this is the best low-risk VRAM optimization found so far.
+
 ## Plan
 
 ### Phase 1. Observability and measurement
@@ -210,6 +223,40 @@ Interpretation:
 - Flex Attention is not currently production-safe enough to enable by default here.
 - If attention backend benchmarking resumes later, test `flash_attention_2` first
   only after installing its runtime and keeping an automatic fallback path.
+
+### Phase 7. CUDA allocator tuning
+
+Status: done.
+
+Implementation:
+
+- Add a config-backed startup hook for `PYTORCH_CUDA_ALLOC_CONF`.
+- Default CUDA startup to `expandable_segments:True`.
+- Expose the effective allocator config in `/metrics`.
+- Allow easy A/B testing with `OMNIVOICE_CUDA_ALLOC_CONF=off`.
+
+Validation:
+
+- Compare `cuda_max_allocated_mb`, `cuda_max_reserved_mb`, and TTFA on the same
+  long streaming `clone:sky` request with and without the override.
+
+Current results:
+
+- Baseline:
+  - `cuda_max_allocated_mb`: `4125.4`
+  - `cuda_max_reserved_mb`: `5258.0`
+  - `streaming_ttfa_ms`: `350.6`
+- `expandable_segments:True`:
+  - `cuda_max_allocated_mb`: `4089.3`
+  - `cuda_max_reserved_mb`: `4100.0`
+  - `streaming_ttfa_ms`: `338.5`
+
+Interpretation:
+
+- Peak reserved VRAM dropped by about `1158 MB`.
+- Peak allocated VRAM stayed nearly unchanged.
+- No clear latency regression was observed in the A/B run.
+- Keep this enabled by default unless production concurrency shows a downside.
 
 ## Measurement Workflow
 
