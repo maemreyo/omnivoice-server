@@ -24,48 +24,10 @@ from ..services.profiles import (
     ProfileNotFoundError,
     ProfileService,
 )
+from ..voice_presets import DEFAULT_DESIGN_INSTRUCTIONS, DESIGN_ATTRIBUTES, OPENAI_VOICE_PRESETS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-DESIGN_ATTRIBUTES = {
-    "gender": ["male", "female"],
-    "age": ["child", "teenager", "young adult", "middle-aged", "elderly"],
-    "pitch": [
-        "very low pitch",
-        "low pitch",
-        "moderate pitch",
-        "high pitch",
-        "very high pitch",
-    ],
-    "style": ["whisper"],
-    "accent_en": [
-        "american accent",
-        "british accent",
-        "australian accent",
-        "chinese accent",
-        "canadian accent",
-        "indian accent",
-        "korean accent",
-        "portuguese accent",
-        "russian accent",
-        "japanese accent",
-    ],
-    "dialect_zh": [
-        "河南话",
-        "陕西话",
-        "四川话",
-        "贵州话",
-        "云南话",
-        "桂林话",
-        "济南话",
-        "石家庄话",
-        "甘肃话",
-        "宁夏话",
-        "青岛话",
-        "东北话",
-    ],
-}
 
 
 def _get_profiles(request: Request) -> ProfileService:
@@ -84,8 +46,8 @@ async def list_voices(
             "id": "auto",
             "type": "auto",
             "description": (
-                "Ignored by /v1/audio/speech; server default design prompt is "
-                "male, middle-aged, moderate pitch, british accent"
+                "Fallback/default prompt when no instructions or recognized preset is provided: "
+                f"{DEFAULT_DESIGN_INSTRUCTIONS}"
             ),
         },
         {
@@ -94,6 +56,13 @@ async def list_voices(
             "description": "Voice design via attributes. Example: 'design:female,british accent'",
             "attributes_reference": DESIGN_ATTRIBUTES,
         },
+    ] + [
+        {
+            "id": preset_name,
+            "type": "preset",
+            "description": f"OpenAI-compatible preset mapped to '{prompt}'",
+        }
+        for preset_name, prompt in sorted(OPENAI_VOICE_PRESETS.items())
     ]
 
     profiles = profile_svc.list_profiles()

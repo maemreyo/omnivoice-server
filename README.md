@@ -87,8 +87,8 @@ omnivoice-server
 
 The server will start at `http://127.0.0.1:8880` by default.
 
-`/v1/audio/speech` ignores the request `voice` field and uses `instructions` instead.
-Default design prompt when `instructions` is omitted:
+`/v1/audio/speech` accepts explicit `instructions`, plus OpenAI-style preset names in
+`voice` or `speaker`. If none are provided, it falls back to the default design prompt:
 `male, middle-aged, moderate pitch, british accent`
 
 ## ⚠️ Verification Status
@@ -181,7 +181,10 @@ response = httpx.post(
 )
 ```
 
-`/v1/audio/speech` uses `instructions` for voice design and ignores the `voice` field entirely, including OpenAI-style values such as `alloy` and clone prefixes. If `instructions` is omitted, the server uses the default design prompt `male, middle-aged, moderate pitch, british accent`.
+`instructions` is the strongest control and overrides preset selection. If `instructions`
+is absent, `/v1/audio/speech` also accepts OpenAI-style preset names in `voice` or
+`speaker`, such as `alloy`, `nova`, `onyx`, and `shimmer`. Unknown values are ignored,
+and the server falls back to the default design prompt `male, middle-aged, moderate pitch, british accent`.
 
 Available attributes:
 - **Gender**: male, female
@@ -189,7 +192,28 @@ Available attributes:
 - **Pitch**: very low pitch, low pitch, moderate pitch, high pitch, very high pitch
 - **Style**: whisper
 - **Accent (English)**: american accent, british accent, australian accent, chinese accent, canadian accent, indian accent, korean accent, portuguese accent, russian accent, japanese accent
-- **Dialect (Chinese)**: 四川话, 陕西话, 粤语, 闽南话
+- **Dialect (Chinese)**: 河南话, 陕西话, 四川话, 贵州话, 云南话, 桂林话, 济南话, 石家庄话, 甘肃话, 宁夏话, 青岛话, 东北话
+
+OpenAI-compatible local presets:
+- `alloy`, `ash`, `ballad`, `cedar`, `coral`, `echo`, `fable`, `marin`, `nova`, `onyx`, `sage`, `shimmer`, `verse`
+
+Preset mapping table:
+
+| Preset | Local design prompt |
+|--------|---------------------|
+| `alloy` | `female, young adult, moderate pitch, american accent` |
+| `ash` | `male, young adult, low pitch, american accent` |
+| `ballad` | `male, middle-aged, low pitch, british accent` |
+| `cedar` | `male, middle-aged, low pitch, american accent` |
+| `coral` | `female, young adult, high pitch, australian accent` |
+| `echo` | `male, middle-aged, moderate pitch, canadian accent` |
+| `fable` | `female, middle-aged, moderate pitch, british accent` |
+| `marin` | `female, middle-aged, moderate pitch, canadian accent` |
+| `nova` | `female, young adult, high pitch, american accent` |
+| `onyx` | `male, middle-aged, very low pitch, british accent` |
+| `sage` | `female, elderly, low pitch, british accent` |
+| `shimmer` | `female, young adult, very high pitch, american accent` |
+| `verse` | `male, young adult, moderate pitch, british accent` |
 
 ### Voice Cloning
 
@@ -313,6 +337,8 @@ Generate speech from text (OpenAI-compatible).
 {
   "model": "omnivoice",
   "input": "Text to synthesize",
+  "voice": "alloy",
+  "speaker": "onyx",
   "instructions": "female,british accent",
   "response_format": "wav",
   "speed": 1.0,
@@ -320,6 +346,12 @@ Generate speech from text (OpenAI-compatible).
   "num_step": 32
 }
 ```
+
+Precedence:
+- `instructions`
+- `speaker` preset
+- `voice` preset
+- server default prompt
 
 **Response:** Audio file (WAV or PCM)
 
@@ -350,6 +382,7 @@ List available voices and profiles.
       "description": "Ignored by /v1/audio/speech; server default design prompt is male, middle-aged, moderate pitch, british accent"
     },
     {"id": "design:<attributes>", "type": "design", "description": "..."},
+    {"id": "alloy", "type": "preset", "description": "..."},
     {"id": "clone:my_voice", "type": "clone", "profile_id": "my_voice"}
   ],
   "design_attributes": {...},

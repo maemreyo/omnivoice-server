@@ -21,11 +21,10 @@ from ..services.metrics import MetricsService
 from ..services.profiles import ProfileService
 from ..utils.audio import tensor_to_pcm16_bytes, tensors_to_wav_bytes
 from ..utils.text import split_sentences
+from ..voice_presets import DEFAULT_DESIGN_INSTRUCTIONS, OPENAI_VOICE_PRESETS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-DEFAULT_DESIGN_INSTRUCTIONS = "male, middle-aged, moderate pitch, british accent"
 
 
 class SpeechRequest(BaseModel):
@@ -34,6 +33,7 @@ class SpeechRequest(BaseModel):
     model: str = Field(default="omnivoice")
     input: str = Field(..., min_length=1, max_length=10_000)
     voice: str = Field(default="auto")
+    speaker: str | None = Field(default=None)
     instructions: str | None = Field(default=None)
     response_format: Literal["wav", "pcm"] = Field(default="wav")
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
@@ -74,12 +74,20 @@ def _resolve_synthesis_mode(
     body: SpeechRequest,
     profile_svc: ProfileService,
 ) -> tuple[str, str | None, str | None, str | None]:
-    """Resolve synthesis mode for /v1/audio/speech, ignoring the `voice` field."""
+    """Resolve synthesis mode for /v1/audio/speech."""
     del profile_svc
     instructions = body.instructions.strip() if body.instructions else None
+    speaker = body.speaker.strip().lower() if body.speaker else None
+    voice = body.voice.strip().lower() if body.voice else None
 
     if instructions:
         return "design", instructions, None, None
+
+    if speaker and speaker in OPENAI_VOICE_PRESETS:
+        return "design", OPENAI_VOICE_PRESETS[speaker], None, None
+
+    if voice and voice in OPENAI_VOICE_PRESETS:
+        return "design", OPENAI_VOICE_PRESETS[voice], None, None
 
     return "design", DEFAULT_DESIGN_INSTRUCTIONS, None, None
 

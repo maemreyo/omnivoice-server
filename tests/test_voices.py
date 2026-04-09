@@ -65,6 +65,16 @@ def test_list_voices_design_attributes_match_omnivoice_validator(client):
     ]
 
 
+def test_list_voices_includes_openai_presets(client):
+    """GET /v1/voices should advertise OpenAI-compatible preset names."""
+    resp = client.get("/v1/voices")
+    assert resp.status_code == 200
+
+    ids = [voice["id"] for voice in resp.json()["voices"]]
+    for preset_name in ("alloy", "nova", "onyx", "shimmer", "verse", "cedar", "marin"):
+        assert preset_name in ids
+
+
 def test_create_and_list_profile(client, sample_audio_bytes):
     """POST creates profile, appears in list."""
     # Create
