@@ -26,7 +26,7 @@ CHUNK_SIZE = 4096
 
 def stream_and_play(
     text: str,
-    voice: str = "auto",
+    instructions: str | None = None,
     speed: float = 1.0,
     api_key: str | None = None,
 ):
@@ -43,7 +43,7 @@ def stream_and_play(
     )
 
     print(f"Streaming: {text[:50]}...")
-    print(f"Voice: {voice}, Speed: {speed}x")
+    print(f"Instructions: {instructions or '[default design prompt]'}, Speed: {speed}x")
     print("Playing audio...")
 
     try:
@@ -58,7 +58,7 @@ def stream_and_play(
             json={
                 "model": "omnivoice",
                 "input": text,
-                "voice": voice,
+                "instructions": instructions,
                 "speed": speed,
                 "stream": True,
             },
@@ -96,19 +96,19 @@ def stream_and_play(
 def main():
     """CLI entry point."""
     if len(sys.argv) < 2:
-        print("Usage: python streaming_player.py <text> [voice] [speed]")
+        print("Usage: python streaming_player.py <text> [instructions] [speed]")
         print()
         print("Examples:")
         print('  python streaming_player.py "Hello world"')
-        print('  python streaming_player.py "Hello world" "design:female,british accent"')
-        print('  python streaming_player.py "Hello world" "clone:my_voice" 1.2')
+        print('  python streaming_player.py "Hello world" "female,british accent"')
+        print('  python streaming_player.py "Hello world" "male,deep voice" 1.2')
         sys.exit(1)
 
     text = sys.argv[1]
-    voice = sys.argv[2] if len(sys.argv) > 2 else "auto"
+    instructions = sys.argv[2] if len(sys.argv) > 2 else None
     speed = float(sys.argv[3]) if len(sys.argv) > 3 else 1.0
 
-    stream_and_play(text, voice, speed, API_KEY)
+    stream_and_play(text, instructions, speed, API_KEY)
 
 
 if __name__ == "__main__":

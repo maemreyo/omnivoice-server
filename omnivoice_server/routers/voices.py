@@ -8,7 +8,16 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 
 from ..services.profiles import (
     ProfileAlreadyExistsError,
@@ -21,11 +30,41 @@ router = APIRouter()
 
 DESIGN_ATTRIBUTES = {
     "gender": ["male", "female"],
-    "age": ["child", "young adult", "middle-aged", "elderly"],
-    "pitch": ["very low", "low", "medium", "high", "very high"],
+    "age": ["child", "teenager", "young adult", "middle-aged", "elderly"],
+    "pitch": [
+        "very low pitch",
+        "low pitch",
+        "moderate pitch",
+        "high pitch",
+        "very high pitch",
+    ],
     "style": ["whisper"],
-    "accent_en": ["American", "British", "Australian", "Indian", "Irish"],
-    "dialect_zh": ["四川话", "陕西话", "粤语", "闽南话"],
+    "accent_en": [
+        "american accent",
+        "british accent",
+        "australian accent",
+        "chinese accent",
+        "canadian accent",
+        "indian accent",
+        "korean accent",
+        "portuguese accent",
+        "russian accent",
+        "japanese accent",
+    ],
+    "dialect_zh": [
+        "河南话",
+        "陕西话",
+        "四川话",
+        "贵州话",
+        "云南话",
+        "桂林话",
+        "济南话",
+        "石家庄话",
+        "甘肃话",
+        "宁夏话",
+        "青岛话",
+        "东北话",
+    ],
 }
 
 
@@ -44,7 +83,10 @@ async def list_voices(
         {
             "id": "auto",
             "type": "auto",
-            "description": "Model selects voice automatically",
+            "description": (
+                "Ignored by /v1/audio/speech; server default design prompt is "
+                "male, middle-aged, moderate pitch, british accent"
+            ),
         },
         {
             "id": "design:<attributes>",
@@ -91,7 +133,7 @@ async def create_profile(
 ):
     """
     Save a voice cloning profile.
-    After saving, use voice='clone:<profile_id>' in /v1/audio/speech.
+    Use /v1/audio/speech/clone for synthesis with reference audio uploads.
     """
     from ..utils.audio import read_upload_bounded, validate_audio_bytes
 
@@ -103,7 +145,7 @@ async def create_profile(
         validate_audio_bytes(audio_bytes)
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
 
@@ -183,7 +225,7 @@ async def update_profile(
 
     if ref_audio is None and ref_text is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Provide at least one of: ref_audio, ref_text",
         )
 
@@ -198,7 +240,7 @@ async def update_profile(
             validate_audio_bytes(audio_bytes)
         except ValueError as e:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(e),
             )
         meta = profile_svc.save_profile(

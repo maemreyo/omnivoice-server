@@ -57,16 +57,8 @@ def test_streaming_multi_sentence(client):
     assert len(resp.content) >= 48000
 
 
-def test_streaming_with_clone_voice(client, sample_audio_bytes):
-    """Streaming should work with clone: prefix too."""
-    import io
-
-    # Create profile first
-    client.post(
-        "/v1/voices/profiles",
-        data={"profile_id": "stream-test"},
-        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
-    )
+def test_streaming_ignores_voice_field(client):
+    """Streaming should ignore the voice field and keep working."""
     resp = client.post(
         "/v1/audio/speech",
         json={"input": "Hello.", "voice": "clone:stream-test", "stream": True},
@@ -83,13 +75,13 @@ def test_streaming_empty_text_rejected(client):
     assert resp.status_code == 422
 
 
-def test_streaming_nonexistent_profile_rejected(client):
-    """clone: prefix with unknown profile should return 404 even in streaming mode."""
+def test_streaming_nonexistent_profile_not_checked(client):
+    """Unknown clone voices should be ignored in streaming mode too."""
     resp = client.post(
         "/v1/audio/speech",
         json={"input": "Hello.", "voice": "clone:does-not-exist", "stream": True},
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 200
 
 
 def test_streaming_does_not_return_wav_header(client):

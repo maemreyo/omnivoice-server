@@ -87,6 +87,10 @@ omnivoice-server
 
 The server will start at `http://127.0.0.1:8880` by default.
 
+`/v1/audio/speech` ignores the request `voice` field and uses `instructions` instead.
+Default design prompt when `instructions` is omitted:
+`male, middle-aged, moderate pitch, british accent`
+
 ## ⚠️ Verification Status
 
 **Last Updated**: 2026-04-04
@@ -137,8 +141,7 @@ curl -X POST http://127.0.0.1:8880/v1/audio/speech \
   -H "Content-Type: application/json" \
   -d '{
     "model": "omnivoice",
-    "input": "Hello, this is OmniVoice text-to-speech!",
-    "voice": "auto"
+    "input": "Hello, this is OmniVoice text-to-speech!"
   }' \
   --output speech.wav
 ```
@@ -155,7 +158,6 @@ response = httpx.post(
     json={
         "model": "omnivoice",
         "input": "Hello world!",
-        "voice": "auto",
         "response_format": "wav"
     }
 )
@@ -174,17 +176,19 @@ response = httpx.post(
     json={
         "model": "omnivoice",
         "input": "This voice has specific attributes.",
-        "voice": "design:female,british accent,young adult,high pitch"
+        "instructions": "female,british accent,young adult,high pitch"
     }
 )
 ```
 
+`/v1/audio/speech` uses `instructions` for voice design and ignores the `voice` field entirely, including OpenAI-style values such as `alloy` and clone prefixes. If `instructions` is omitted, the server uses the default design prompt `male, middle-aged, moderate pitch, british accent`.
+
 Available attributes:
 - **Gender**: male, female
-- **Age**: child, young adult, middle-aged, elderly
-- **Pitch**: very low, low, medium, high, very high
+- **Age**: child, teenager, young adult, middle-aged, elderly
+- **Pitch**: very low pitch, low pitch, moderate pitch, high pitch, very high pitch
 - **Style**: whisper
-- **Accent (English)**: American, British, Australian, Indian, Irish
+- **Accent (English)**: american accent, british accent, australian accent, chinese accent, canadian accent, indian accent, korean accent, portuguese accent, russian accent, japanese accent
 - **Dialect (Chinese)**: 四川话, 陕西话, 粤语, 闽南话
 
 ### Voice Cloning
@@ -203,15 +207,8 @@ with open("reference.wav", "rb") as f:
         files={"ref_audio": f}
     )
 
-# Use the profile
-response = httpx.post(
-    "http://127.0.0.1:8880/v1/audio/speech",
-    json={
-        "model": "omnivoice",
-        "input": "This uses my cloned voice.",
-        "voice": "clone:my_voice"
-    }
-)
+# Profiles are stored for management and inspection.
+# For synthesis, use POST /v1/audio/speech/clone with reference audio.
 ```
 
 #### Option 2: One-Shot Cloning
@@ -239,7 +236,6 @@ with httpx.stream(
     json={
         "model": "omnivoice",
         "input": "Long text to stream...",
-        "voice": "auto",
         "stream": True
     }
 ) as response:
@@ -317,7 +313,7 @@ Generate speech from text (OpenAI-compatible).
 {
   "model": "omnivoice",
   "input": "Text to synthesize",
-  "voice": "auto",
+  "instructions": "female,british accent",
   "response_format": "wav",
   "speed": 1.0,
   "stream": false,
@@ -348,7 +344,11 @@ List available voices and profiles.
 ```json
 {
   "voices": [
-    {"id": "auto", "type": "auto", "description": "..."},
+    {
+      "id": "auto",
+      "type": "auto",
+      "description": "Ignored by /v1/audio/speech; server default design prompt is male, middle-aged, moderate pitch, british accent"
+    },
     {"id": "design:<attributes>", "type": "design", "description": "..."},
     {"id": "clone:my_voice", "type": "clone", "profile_id": "my_voice"}
   ],
@@ -410,8 +410,7 @@ OmniVoice natively supports non-verbal symbols inline in text. These are pass-th
 response = httpx.post(
     "http://127.0.0.1:8880/v1/audio/speech",
     json={
-        "input": "Hello [laughter] this is amazing [breath] really cool [sigh]",
-        "voice": "auto"
+        "input": "Hello [laughter] this is amazing [breath] really cool [sigh]"
     }
 )
 ```
@@ -430,8 +429,7 @@ For Chinese text, you can provide pinyin hints for pronunciation correction:
 response = httpx.post(
     "http://127.0.0.1:8880/v1/audio/speech",
     json={
-        "input": "这是拼音(pīn yīn)提示的例子",
-        "voice": "auto"
+        "input": "这是拼音(pīn yīn)提示的例子"
     }
 )
 ```
@@ -447,7 +445,6 @@ response = httpx.post(
     "http://127.0.0.1:8880/v1/audio/speech",
     json={
         "input": "Hello world",
-        "voice": "auto",
         "num_step": 32,                 # Inference steps (1-64, higher=better quality)
         "guidance_scale": 3.0,          # CFG scale (0-10, higher=stronger conditioning)
         "denoise": True,                # Enable denoising (recommended)
@@ -464,7 +461,7 @@ response = httpx.post(
 For deterministic, reproducible output (same voice every time):
 ```python
 {
-    "position_temperature": 0.0,  # Greedy/deterministic voice selection
+    "position_temperature": 0.0,  # Greedy/deterministic voice rendering
     "class_temperature": 0.0      # Greedy token sampling
 }
 ```
@@ -474,7 +471,7 @@ This is especially useful for:
 - Reproducible synthesis for testing
 - Fixed voice character in production
 
-Higher `position_temperature` (default 5.0) produces more voice diversity in auto mode but may cause inconsistency when streaming.
+Higher `position_temperature` (default 5.0) produces more variation from the default design prompt and may cause inconsistency when streaming.
 
 **Fixed Duration for Video Sync:**
 
@@ -681,55 +678,42 @@ omnivoice-server --num-step 32
 
 ### Streaming Voice Consistency
 
-When using `stream=True` with `voice="auto"`, each sentence is synthesized independently. This can result in different voices being selected for different sentences within the same stream, as there is no shared state between sentence-level synthesis calls.
+When using `stream=True`, each sentence is synthesized independently from the same instructions or default design prompt. With non-zero temperature settings, timbre can still drift across chunks because there is no shared state between sentence-level synthesis calls.
 
 **Workarounds:**
 
-1. **Set position_temperature=0 for deterministic voice selection (recommended):**
+1. **Set position_temperature=0 for deterministic voice rendering (recommended):**
    ```python
    with httpx.stream(
        "POST",
        "http://127.0.0.1:8880/v1/audio/speech",
        json={
            "input": "Long text...",
-           "voice": "auto",
            "stream": True,
-           "position_temperature": 0.0  # Deterministic voice selection
+           "position_temperature": 0.0  # Deterministic voice rendering
        }
    ) as response:
        for chunk in response.iter_bytes():
            play_audio(chunk)
    ```
-   This ensures the same voice is selected for each sentence, providing consistency across the stream.
+   This minimizes chunk-to-chunk variation and provides more consistent streaming output.
 
-2. **Use voice cloning for consistent streaming:**
+2. **Use one-shot voice cloning for consistent results:**
    ```python
-   # Create a profile first
    with open("reference.wav", "rb") as f:
-       httpx.post(
-           "http://127.0.0.1:8880/v1/voices/profiles",
-           data={"profile_id": "consistent_voice"},
+       response = httpx.post(
+           "http://127.0.0.1:8880/v1/audio/speech/clone",
+           data={"text": "Long text..."},
            files={"ref_audio": f}
        )
-   
-   # Stream with consistent voice
-   with httpx.stream(
-       "POST",
-       "http://127.0.0.1:8880/v1/audio/speech",
-       json={
-           "input": "Long text...",
-           "voice": "clone:consistent_voice",
-           "stream": True
-       }
-   ) as response:
-       for chunk in response.iter_bytes():
-           play_audio(chunk)
+   if response.status_code == 200:
+       audio_bytes = response.content
    ```
 
-3. **Use design mode with specific attributes:**
+3. **Use explicit instructions for a stable voice character:**
    ```python
    {
-       "voice": "design:female,british accent",
+       "instructions": "female,british accent",
        "stream": True
    }
    ```

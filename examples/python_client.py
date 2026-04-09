@@ -24,18 +24,17 @@ def get_headers():
     return headers
 
 
-# ── Example 1: Basic synthesis (auto voice) ─────────────────────────────────
+# ── Example 1: Basic synthesis (default design prompt) ──────────────────────
 
 
 def basic_synthesis():
-    """Generate speech with automatic voice selection."""
+    """Generate speech with the server's default design prompt."""
     response = httpx.post(
         f"{BASE_URL}/v1/audio/speech",
         headers=get_headers(),
         json={
             "model": "omnivoice",
             "input": "Hello, this is a test of the OmniVoice text-to-speech system.",
-            "voice": "auto",
             "response_format": "wav",
         },
         timeout=30.0,
@@ -49,7 +48,7 @@ def basic_synthesis():
     print(f"  Latency: {response.headers.get('X-Synthesis-Latency-S')}s")
 
 
-# ── Example 2: Voice design ──────────────────────────────────────────────────
+# ── Example 2: Voice design override ─────────────────────────────────────────
 
 
 def voice_design():
@@ -60,7 +59,7 @@ def voice_design():
         json={
             "model": "omnivoice",
             "input": "This voice has been designed with specific attributes.",
-            "voice": "design:female,british accent,young adult",
+            "instructions": "female,british accent,young adult",
             "response_format": "wav",
         },
         timeout=30.0,
@@ -76,7 +75,7 @@ def voice_design():
 
 
 def voice_cloning_with_profile():
-    """Clone a voice using a saved profile."""
+    """Create a reusable profile for management and inspection."""
     # Step 1: Create a profile (upload reference audio)
     ref_audio_path = Path("reference_audio.wav")
     if not ref_audio_path.exists():
@@ -105,23 +104,8 @@ def voice_cloning_with_profile():
     else:
         response.raise_for_status()
 
-    # Step 2: Synthesize using the profile
-    response = httpx.post(
-        f"{BASE_URL}/v1/audio/speech",
-        headers=get_headers(),
-        json={
-            "model": "omnivoice",
-            "input": "This speech uses the cloned voice from the profile.",
-            "voice": "clone:my_voice",
-            "response_format": "wav",
-        },
-        timeout=30.0,
-    )
-    response.raise_for_status()
-
-    output_path = Path("output_clone.wav")
-    output_path.write_bytes(response.content)
-    print(f"✓ Cloned voice saved to {output_path}")
+    print("✓ Profile is available via /v1/voices and /v1/voices/profiles/{id}")
+    print("  /v1/audio/speech ignores `voice`; use /v1/audio/speech/clone to clone audio.")
 
 
 # ── Example 4: One-shot voice cloning ────────────────────────────────────────
@@ -168,7 +152,6 @@ async def streaming_synthesis():
                 "input": "This is a longer text that will be streamed in chunks. "
                          "Each sentence is synthesized and sent as soon as it's ready. "
                          "This enables lower latency for long-form content.",
-                "voice": "auto",
                 "stream": True,
             },
         ) as response:

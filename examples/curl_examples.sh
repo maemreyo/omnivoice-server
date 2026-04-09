@@ -20,16 +20,15 @@ auth_header() {
 echo "=== OmniVoice Server cURL Examples ==="
 echo
 
-# ── Example 1: Basic synthesis (auto voice) ─────────────────────────────────
+# ── Example 1: Basic synthesis (default design prompt) ──────────────────────
 
-echo "1. Basic synthesis (auto voice)"
+echo "1. Basic synthesis (default design prompt)"
 curl -X POST "$BASE_URL/v1/audio/speech" \
   $(auth_header) \
   -H "Content-Type: application/json" \
   -d '{
     "model": "omnivoice",
     "input": "Hello, this is a test of the OmniVoice text-to-speech system.",
-    "voice": "auto",
     "response_format": "wav"
   }' \
   --output output_basic.wav \
@@ -46,7 +45,7 @@ curl -X POST "$BASE_URL/v1/audio/speech" \
   -d '{
     "model": "omnivoice",
     "input": "This voice has been designed with specific attributes.",
-    "voice": "design:female,british accent,young adult",
+    "instructions": "female,british accent,young adult",
     "response_format": "wav"
   }' \
   --output output_design.wav \
@@ -63,7 +62,6 @@ curl -X POST "$BASE_URL/v1/audio/speech" \
   -d '{
     "model": "omnivoice",
     "input": "This is a longer text that will be streamed in chunks. Each sentence is synthesized and sent as soon as it is ready.",
-    "voice": "auto",
     "stream": true
   }' \
   --output output_stream.pcm \
@@ -100,21 +98,10 @@ else
     echo
 fi
 
-# ── Example 6: Synthesize with cloned voice ──────────────────────────────────
+# ── Example 6: Stored profile note ───────────────────────────────────────────
 
-echo "6. Synthesize with cloned voice profile"
-curl -X POST "$BASE_URL/v1/audio/speech" \
-  $(auth_header) \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "omnivoice",
-    "input": "This speech uses the cloned voice from the profile.",
-    "voice": "clone:my_voice",
-    "response_format": "wav"
-  }' \
-  --output output_clone.wav \
-  --silent --show-error --write-out "\n✓ Saved to output_clone.wav (HTTP %{http_code})\n" \
-  || echo "  ⚠ Profile 'my_voice' not found"
+echo "6. Stored profiles are listed via /v1/voices, but /v1/audio/speech ignores voice"
+echo "  Use /v1/audio/speech/clone for actual voice cloning synthesis"
 
 echo
 

@@ -1,5 +1,5 @@
 """
-/v1/audio/speech        - OpenAI-compatible TTS (auto, design, clone via profile)
+/v1/audio/speech        - OpenAI-compatible TTS (instructions-driven design)
 /v1/audio/speech/clone  - One-shot voice cloning (multipart upload)
 """
 
@@ -18,12 +18,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from ..services.inference import InferenceService, SynthesisRequest
 from ..services.metrics import MetricsService
-from ..services.profiles import ProfileNotFoundError, ProfileService
+from ..services.profiles import ProfileService
 from ..utils.audio import tensor_to_pcm16_bytes, tensors_to_wav_bytes
 from ..utils.text import split_sentences
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+DEFAULT_DESIGN_INSTRUCTIONS = "male, middle-aged, moderate pitch, british accent"
 
 
 class SpeechRequest(BaseModel):
@@ -32,6 +34,7 @@ class SpeechRequest(BaseModel):
     model: str = Field(default="omnivoice")
     input: str = Field(..., min_length=1, max_length=10_000)
     voice: str = Field(default="auto")
+    instructions: str | None = Field(default=None)
     response_format: Literal["wav", "pcm"] = Field(default="wav")
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     stream: bool = Field(default=False)
@@ -67,43 +70,18 @@ def _get_cfg(request: Request):
     return request.app.state.cfg
 
 
-def _parse_voice(
-    voice_str: str,
+def _resolve_synthesis_mode(
+    body: SpeechRequest,
     profile_svc: ProfileService,
 ) -> tuple[str, str | None, str | None, str | None]:
-    """Parse voice string into (mode, instruct, ref_audio_path, ref_text)."""
-    v = voice_str.strip()
+    """Resolve synthesis mode for /v1/audio/speech, ignoring the `voice` field."""
+    del profile_svc
+    instructions = body.instructions.strip() if body.instructions else None
 
-    if v == "auto" or v == "":
-        return "auto", None, None, None
+    if instructions:
+        return "design", instructions, None, None
 
-    if v.startswith("design:"):
-        instruct = v[len("design:") :].strip()
-        if not instruct:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="'design:' prefix requires attributes",
-            )
-        return "design", instruct, None, None
-
-    if v.startswith("clone:"):
-        profile_id = v[len("clone:") :].strip()
-        if not profile_id:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="'clone:' prefix requires a profile_id",
-            )
-        try:
-            ref_path = profile_svc.get_ref_audio_path(profile_id)
-            ref_text = profile_svc.get_ref_text(profile_id)
-            return "clone", None, str(ref_path), ref_text
-        except ProfileNotFoundError:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Voice profile '{profile_id}' not found",
-            )
-
-    return "design", v, None, None
+    return "design", DEFAULT_DESIGN_INSTRUCTIONS, None, None
 
 
 @router.post("/audio/speech")
@@ -115,7 +93,7 @@ async def create_speech(
     cfg=Depends(_get_cfg),
 ):
     """Generate speech from text."""
-    mode, instruct, ref_audio_path, ref_text = _parse_voice(body.voice, profile_svc)
+    mode, instruct, ref_audio_path, ref_text = _resolve_synthesis_mode(body, profile_svc)
 
     req = SynthesisRequest(
         text=body.input,
@@ -268,7 +246,7 @@ async def create_speech_clone(
         validate_audio_bytes(audio_bytes)
     except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(e),
         )
 
