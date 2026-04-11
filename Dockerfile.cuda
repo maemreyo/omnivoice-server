@@ -11,9 +11,7 @@ RUN apt update && apt install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN (getent group 1000 || groupadd -g 1000 ubuntu) && \
-    (getent passwd 1000 || useradd -m -s /bin/bash -u 1000 -g 1000 ubuntu) && mkdir -p /etc/sudoers.d/ && \
-    echo "ubuntu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu && \
-    chmod 0440 /etc/sudoers.d/ubuntu && \
+    (getent passwd 1000 || useradd -m -s /bin/bash -u 1000 -g 1000 ubuntu) && \
     usermod -aG video ubuntu && mkdir -p /home/ubuntu/app/profiles && \
     chown -R ubuntu:ubuntu /home/ubuntu
 
@@ -28,8 +26,6 @@ export CUDA_HOME=/usr/local/cuda
 export PATH=$CUDA_HOME/bin:$HOME/.local/bin:/usr/bin:$PATH
 export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
 EOF
-
-RUN touch /home/ubuntu/.sudo_as_admin_successful
 
 # Set ENV for non-interactive CMD
 ENV CUDA_HOME=/usr/local/cuda
