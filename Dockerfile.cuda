@@ -6,7 +6,7 @@ WORKDIR /home/ubuntu/app
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y \
     build-essential libsndfile1 libgomp1 \
-    python3-full python3-pip \
+    python3 python3-venv \
     curl git ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
@@ -45,9 +45,10 @@ ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 #OMNIVOICE ENVs
 ENV OMNIVOICE_LOG_LEVEL=info
 
-RUN --mount=type=cache,target=/home/ubuntu/.cache/pip pip install ffmpy && \
-        pip install torchcodec==0.11 torch==2.8.0+cu128 torchaudio==2.8.0+cu128 --index-url https://download.pytorch.org/whl/cu128 && \
-        pip install git+https://github.com/maemreyo/omnivoice-server.git
+RUN --mount=type=cache,target=/home/ubuntu/.cache/pip pip install \
+    torchcodec==0.11 torch==2.8.0+cu128 torchaudio==2.8.0+cu128 \
+    --index-url https://download.pytorch.org/whl/cu128 && \
+    pip install git+https://github.com/maemreyo/omnivoice-server.git
 
 # Expose server port
 EXPOSE 8880
