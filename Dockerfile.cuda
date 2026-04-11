@@ -1,3 +1,8 @@
+# CUDA-enabled build for omnivoice-server
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
+
+WORKDIR /home/ubuntu/app
+# Install Python and build dependencies
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt install -y \
     build-essential libsndfile1 libgomp1 \
