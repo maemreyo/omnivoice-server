@@ -42,10 +42,10 @@ OpenAI-compatible HTTP server for [OmniVoice](https://github.com/k2-fsa/OmniVoic
 
 ```bash
 # CPU only (works everywhere, but slow)
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install torchcodec==0.11 torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
 
 # NVIDIA GPU (CUDA) - recommended for production
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install torchcodec==0.11 torch==2.8.0+cu128 torchaudio==2.8.0+cu128 --index-url https://download.pytorch.org/whl/cu128
 
 # Apple Silicon (MPS) - currently broken, use CPU instead
 # See docs/verification/MPS_ISSUE.md for details

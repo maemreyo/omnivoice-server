@@ -1,0 +1,57 @@
+# CUDA-enabled build for omnivoice-server
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
+
+WORKDIR /home/ubuntu/app
+# Install Python and build dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt install -y \
+    build-essential libsndfile1 libgomp1 \
+    python3 python3-venv \
+    curl git ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN (getent group 1000 || groupadd -g 1000 ubuntu) && \
+    (getent passwd 1000 || useradd -m -s /bin/bash -u 1000 -g 1000 ubuntu) && \
+    usermod -aG video ubuntu && mkdir -p /home/ubuntu/app/profiles && \
+    chown -R ubuntu:ubuntu /home/ubuntu
+
+# Switch to ubuntu user
+USER ubuntu
+
+# Append to .bashrc (for interactive sessions)
+RUN cat >> /home/ubuntu/.bashrc << 'EOF'
+
+# Environment setup
+export CUDA_HOME=/usr/local/cuda
+export PATH=$CUDA_HOME/bin:$HOME/.local/bin:/usr/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+EOF
+
+# Set ENV for non-interactive CMD
+ENV CUDA_HOME=/usr/local/cuda
+ENV HOME=/home/ubuntu
+ENV PATH=$CUDA_HOME/bin:$HOME/.local/bin:$PATH
+ENV LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+ENV VIRTUAL_ENV=/home/ubuntu/venv
+
+# Create venv and install deps
+RUN python3 -m venv --system-site-packages $VIRTUAL_ENV
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+
+#OMNIVOICE ENVs
+ENV OMNIVOICE_LOG_LEVEL=info
+
+RUN --mount=type=cache,target=/home/ubuntu/.cache/pip pip install \
+    torchcodec==0.11 torch==2.8.0+cu128 torchaudio==2.8.0+cu128 \
+    --index-url https://download.pytorch.org/whl/cu128 && \
+    pip install git+https://github.com/maemreyo/omnivoice-server.git
+
+# Expose server port
+EXPOSE 8880
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8880/health')" || exit 1
+
+# Run server
+CMD ["omnivoice-server", "--host", "0.0.0.0", "--port", "8880", "--profile-dir", "/home/ubuntu/app/profiles", "--device", "cuda"]
