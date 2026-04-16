@@ -89,7 +89,23 @@ class ModelService:
 
     @staticmethod
     def _has_nan(tensors: list) -> bool:
-        return any(torch.isnan(t).any() for t in tensors)
+        try:
+            import numpy as np
+        except Exception:
+            np = None
+
+        def contains_nan(x) -> bool:
+            if x is None:
+                return False
+            if torch.is_tensor(x):
+                return bool(torch.isnan(x).any().item())
+            if np is not None and isinstance(x, np.ndarray):
+                return bool(np.isnan(x).any())
+            if isinstance(x, (list, tuple)):
+                return any(contains_nan(i) for i in x)
+            return False
+
+        return contains_nan(tensors)
 
     @property
     def model(self) -> OmniVoice:
