@@ -12,6 +12,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+import torch
 from fastapi import HTTPException
 
 from omnivoice_server.config import Settings
@@ -133,6 +134,11 @@ class ScriptOrchestrator:
         self._settings = settings
         self._metrics = ScriptMetrics(metrics_service)
         self._semaphore = asyncio.Semaphore(1)
+
+    @property
+    def script_metrics(self) -> ScriptMetrics:
+        """Expose script metrics for external access."""
+        return self._metrics
 
     async def _resolve_voices(
         self,
@@ -281,7 +287,7 @@ class ScriptOrchestrator:
                 result.synthesized_segments.append(
                     {
                         "type": "pause",
-                        "duration_ms": insert_pause_ms,
+                        "duration_s": insert_pause_ms / 1000.0,
                     }
                 )
 
@@ -296,16 +302,16 @@ class ScriptOrchestrator:
             )
 
             try:
-                # Synthesize segment
                 synthesis_result = await self._inference.synthesize(req)
+                audio_tensor = torch.cat(synthesis_result.tensors, dim=-1)
 
                 result.synthesized_segments.append(
                     {
                         "type": "audio",
                         "index": segment.index,
                         "speaker": speaker,
-                        "audio_base64": synthesis_result.audio_base64,
-                        "duration_ms": synthesis_result.duration_ms,
+                        "audio": audio_tensor,
+                        "duration_s": synthesis_result.duration_s,
                         "voice": voice,
                     }
                 )

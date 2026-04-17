@@ -46,4 +46,10 @@ async def metrics(request: Request):
     metrics_svc = request.app.state.metrics_svc
     snapshot = metrics_svc.snapshot()
     snapshot["ram_mb"] = round(psutil.Process().memory_info().rss / 1024 / 1024, 1)
+
+    # Include script metrics if orchestrator is available
+    script_orchestrator = getattr(request.app.state, "script_orchestrator", None)
+    if script_orchestrator is not None:
+        snapshot.update(script_orchestrator.script_metrics.snapshot())
+
     return snapshot
