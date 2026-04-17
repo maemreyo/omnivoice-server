@@ -10,7 +10,6 @@ import logging
 import tempfile
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
@@ -19,7 +18,12 @@ from pydantic import BaseModel, Field, field_validator
 from ..services.inference import InferenceService, SynthesisRequest
 from ..services.metrics import MetricsService
 from ..services.profiles import ProfileService
-from ..utils.audio import tensor_to_pcm16_bytes, tensors_to_wav_bytes
+from ..utils.audio import (
+    ResponseFormat,
+    tensor_to_pcm16_bytes,
+    tensors_to_formatted_bytes,
+    tensors_to_wav_bytes,
+)
 from ..utils.text import split_sentences
 from ..voice_presets import DEFAULT_DESIGN_INSTRUCTIONS, OPENAI_VOICE_PRESETS
 
@@ -35,7 +39,7 @@ class SpeechRequest(BaseModel):
     voice: str = Field(default="auto")
     speaker: str | None = Field(default=None)
     instructions: str | None = Field(default=None)
-    response_format: Literal["wav", "pcm"] = Field(default="wav")
+    response_format: ResponseFormat = Field(default="wav")
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     stream: bool = Field(default=False)
     num_step: int | None = Field(default=None, ge=1, le=64)
@@ -125,6 +129,15 @@ async def create_speech(
     )
 
     if body.stream:
+        # Streaming only supports PCM
+        # (WAV streaming requires implementation of streaming RIFF headers)
+        if body.response_format != "pcm":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Streaming only supports response_format='pcm', got '{body.response_format}'"
+                ),
+            )
         return StreamingResponse(
             _stream_sentences(body.input, req, inference_svc, metrics_svc, cfg),
             media_type="audio/pcm",
@@ -153,12 +166,16 @@ async def create_speech(
             detail=f"Synthesis failed: {e}",
         )
 
-    if body.response_format == "pcm":
-        audio_bytes = b"".join(tensor_to_pcm16_bytes(t) for t in result.tensors)
-        media_type = "audio/pcm"
-    else:
-        audio_bytes = tensors_to_wav_bytes(result.tensors)
-        media_type = "audio/wav"
+    # Generate audio in requested format
+    try:
+        audio_bytes, media_type = tensors_to_formatted_bytes(result.tensors, body.response_format)
+    except RuntimeError as e:
+        # Format not available (e.g., pydub or ffmpeg missing)
+        logger.warning(f"Format conversion failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"Audio format '{body.response_format}' not available: {e}",
+        )
 
     return Response(
         content=audio_bytes,

@@ -36,14 +36,8 @@ dependencies = [
     "soundfile>=0.12.0",
 ]
 
-[project.urls]
-Homepage = "https://github.com/maemreyo/omnivoice-server"
-Documentation = "https://github.com/maemreyo/omnivoice-server#readme"
-Repository = "https://github.com/maemreyo/omnivoice-server"
-Issues = "https://github.com/maemreyo/omnivoice-server/issues"
-Changelog = "https://github.com/maemreyo/omnivoice-server/blob/main/CHANGELOG.md"
-
 [project.optional-dependencies]
+formats = ["pydub>=0.25.0"]  # For mp3, opus, aac, flac support (also requires ffmpeg)
 benchmark = ["psutil", "tqdm"]
 dev = [
     "pytest>=8.0.0",
@@ -54,6 +48,13 @@ dev = [
     "mypy>=1.11.0",
     "torchcodec>=0.11",
 ]
+
+[project.urls]
+Homepage = "https://github.com/maemreyo/omnivoice-server"
+Documentation = "https://github.com/maemreyo/omnivoice-server#readme"
+Repository = "https://github.com/maemreyo/omnivoice-server"
+Issues = "https://github.com/maemreyo/omnivoice-server/issues"
+Changelog = "https://github.com/maemreyo/omnivoice-server/blob/main/CHANGELOG.md"
 
 [project.scripts]
 omnivoice-server = "omnivoice_server.cli:main"
