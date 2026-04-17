@@ -3,32 +3,32 @@
 **Version:** 1.0  
 **Date:** 2026-04-05  
 **Base commit:** `ec8b4a458d551949e369c9d127e36f6cd8bc67b8`  
-**Scope:** Server-side enhancements only — không phụ thuộc vào consumer cụ thể
+**Scope:** Server-side enhancements only — agnostic to any specific consumer
 
 ---
 
-## 1. Tổng quan
+## 1. Overview
 
-omnivoice-server hiện tại là một FastAPI application hoạt động tốt trong môi trường development. Tuy nhiên, khi nhìn nhận như một standalone deployable service — dù là chạy trực tiếp trên máy user, trong Docker, hay được quản lý bởi process supervisor — một số vấn đề cơ bản về vận hành chưa được giải quyết.
+omnivoice-server currently is a FastAPI application that works well in development environments. However, when viewed as a standalone deployable service — whether running directly on a user's machine, in Docker, or managed by a process supervisor — several fundamental operational issues remain unaddressed.
 
-Plan này tổ chức các enhancement theo 5 nhóm, đi từ nền tảng (runtime behavior) đến tính năng (API maturity), có thể thực hiện độc lập nhau.
+This plan organizes enhancements into 5 groups, ranging from runtime behavior (the foundation) to API maturity (features), which can be implemented independently.
 
 ---
 
-## 2. Hiện trạng & Gap Analysis
+## 2. Current State & Gap Analysis
 
-| Hạng mục | Hiện trạng | Gap |
-|----------|-----------|-----|
-| Port binding | Cứng port 8880, không hỗ trợ OS auto-assign | Không thể chạy nhiều instance; conflict-prone |
-| Startup announcement | Không có cơ chế thông báo port sau khi bind | Process supervisor không biết server ready ở đâu |
-| Signal handling | Không có SIGTERM/SIGINT handler | Server không cleanup khi bị terminate |
-| Logging | Mix stdout/stderr, không structured, không level | Không thể monitor, parse, hoặc route logs |
-| Configuration | Một số params hardcoded, một số qua env var | Không nhất quán, khó deploy ở môi trường khác |
-| Health check | `{"status": "healthy"}` trả về ngay cả khi model chưa load | False positive gây confusion cho monitoring |
-| Memory footprint | ~1.7GB RAM trên CPU — không được document | User không có expectation, app crash âm thầm |
-| Error responses | Một số endpoint trả empty body khi validation fail | Client không biết lý do thực sự |
-| Storage | Profile directory hardcoded tương đối | Không portable, conflict khi nhiều instance |
-| Model loading | Chưa rõ lazy vs eager loading | Latency spike trên request đầu tiên nếu lazy |
+| Category | Current State | Gap |
+|----------|---------------|-----|
+| Port binding | Hardcoded to port 8880, no support for OS auto-assignment | Cannot run multiple instances; conflict-prone |
+| Startup announcement | No mechanism to announce the port after binding | Process supervisor doesn't know where the server is ready |
+| Signal handling | No SIGTERM/SIGINT handlers | Server doesn't clean up when terminated |
+| Logging | Mix of stdout/stderr, unstructured, no levels | Impossible to monitor, parse, or route logs |
+| Configuration | Some params hardcoded, some via env vars | Inconsistent, difficult to deploy in different environments |
+| Health check | `{"status": "healthy"}` returns even if model isn't loaded | False positives cause confusion for monitoring |
+| Memory footprint | ~1.7GB RAM on CPU — undocumented | Users have no expectations; app crashes silently |
+| Error responses | Some endpoints return empty bodies on validation failure | Client doesn't know the actual reason |
+| Storage | Profile directory hardcoded relatively | Not portable, conflicts with multiple instances |
+| Model loading | Unclear lazy vs. eager loading | Latency spikes on the first request if lazy |
 
 ---
 
@@ -36,17 +36,17 @@ Plan này tổ chức các enhancement theo 5 nhóm, đi từ nền tảng (runt
 
 ---
 
-### Group 1 — Runtime Behavior (Nền tảng)
+### Group 1 — Runtime Behavior (Foundation)
 
-**Mục tiêu:** Server phải hoạt động như một well-behaved Unix process.
+**Goal:** The server must act like a well-behaved Unix process.
 
 #### 1.1 Dynamic Port Binding
 
-**Vấn đề:** Port 8880 hardcoded. Nếu port bận, server crash thay vì fallback.
+**Problem:** Port 8880 is hardcoded. If the port is busy, the server crashes instead of falling back.
 
 **Enhancement:**
-- Khi `port = 0`, yêu cầu OS assign port available (ephemeral port)
-- Khi port bận, log lý do rõ ràng và exit với non-zero code thay vì traceback
+- When `port = 0`, request the OS to assign an available port (ephemeral port).
+- When the port is busy, log a clear reason and exit with a non-zero code instead of a traceback.
 
 ```python
 # config.py
@@ -54,42 +54,42 @@ port: int = Field(default=8880, ge=0, le=65535)
 # port=0 → OS assigns ephemeral port
 ```
 
-**Acceptance:** Server start thành công với `OMNIVOICE_PORT=0` và bind được port.
+**Acceptance:** Server starts successfully with `OMNIVOICE_PORT=0` and binds to a port.
 
 ---
 
 #### 1.2 Startup Announcement
 
-**Vấn đề:** Sau khi bind, không có cơ chế nào để caller biết server đang listen ở địa chỉ nào. Đặc biệt quan trọng khi dùng port dynamic.
+**Problem:** After binding, there's no mechanism for the caller to know which address the server is listening on. This is especially important when using dynamic ports.
 
 **Enhancement:**
 
-Ngay sau khi bind thành công, print ra stdout một dòng duy nhất theo format chuẩn:
+Immediately after a successful bind, print a single line to stdout in a standard format:
 
 ```
 OMNIVOICE_READY host=127.0.0.1 port=8880
 ```
 
-Yêu cầu:
-- Flush ngay (`flush=True`)
-- Xuất hiện **trước** bất kỳ log nào khác
-- Chỉ print một lần
-- Stdout còn lại im lặng — toàn bộ logs đi stderr
+Requirements:
+- Flush immediately (`flush=True`).
+- Appears **before** any other logs.
+- Printed only once.
+- Remaining stdout is silent — all logs go to stderr.
 
-**Lý do dùng key=value thay vì URL:** Dễ parse bằng regex, dễ extend thêm field sau (pid, version...) mà không break parser cũ.
+**Reason for using key=value instead of URL:** Easier to parse with regex, easier to extend with more fields later (pid, version...) without breaking old parsers.
 
-**Acceptance:** `grep "OMNIVOICE_READY" <(python -m omnivoice_server)` trả về kết quả trong 10s.
+**Acceptance:** `grep "OMNIVOICE_READY" <(python -m omnivoice_server)` returns a result within 10s.
 
 ---
 
 #### 1.3 Graceful Shutdown
 
-**Vấn đề:** Hiện không có signal handler. Khi nhận SIGTERM (từ systemd, supervisor, Docker stop...), Python terminate ngay, không cleanup.
+**Problem:** Currently no signal handlers. When receiving SIGTERM (from systemd, supervisor, Docker stop...), Python terminates immediately without cleanup.
 
 **Enhancement:**
 
 ```python
-# Trong lifespan hoặc signal handler
+# Within lifespan or signal handler
 async def shutdown():
     # 1. Stop accepting new connections
     # 2. Wait for in-flight requests (timeout: 10s)
@@ -99,22 +99,22 @@ async def shutdown():
 ```
 
 Behavior:
-- SIGTERM → graceful shutdown, exit 0, trong vòng 10s
-- SIGINT (Ctrl+C) → tương tự SIGTERM
-- Nếu in-flight requests không xong trong 10s → force exit, log warning
+- SIGTERM → graceful shutdown, exit 0, within 10s.
+- SIGINT (Ctrl+C) → same as SIGTERM.
+- If in-flight requests don't finish within 10s → force exit, log warning.
 
-**Acceptance:** `kill -TERM <pid>` → server exit code 0 trong <10s; không còn process zombie.
+**Acceptance:** `kill -TERM <pid>` → server exits with code 0 in < 10s; no zombie processes left.
 
 ---
 
 #### 1.4 Startup Readiness — Model Loading
 
-**Vấn đề:** Không rõ model được load khi nào (startup hay request đầu tiên). Nếu lazy loading, request đầu tiên sẽ có latency đột biến.
+**Problem:** Unclear when the model is loaded (at startup or first request). If lazy loading, the first request will have a significant latency spike.
 
 **Enhancement:**
-- Model phải được load trong `lifespan` startup hook — không lazy
-- `OMNIVOICE_READY` announcement chỉ được print **sau khi model load xong**
-- Nếu model load fail, server exit với code 1 và log lý do rõ ràng
+- The model must be loaded in the `lifespan` startup hook — no lazy loading.
+- The `OMNIVOICE_READY` announcement is only printed **after the model is fully loaded**.
+- If model loading fails, the server exits with code 1 and logs a clear reason.
 
 ```python
 @asynccontextmanager
@@ -125,21 +125,21 @@ async def lifespan(app: FastAPI):
     await release_model()
 ```
 
-**Acceptance:** Request đầu tiên sau `OMNIVOICE_READY` không có cold-start latency.
+**Acceptance:** The first request after `OMNIVOICE_READY` has no cold-start latency.
 
 ---
 
 ### Group 2 — Observability
 
-**Mục tiêu:** Server phải có thể được monitor và debug mà không cần attach debugger.
+**Goal:** The server must be monitorable and debuggable without attaching a debugger.
 
-#### 2.1 Log Separation và Structure
+#### 2.1 Log Separation and Structure
 
-**Vấn đề:** Logs hiện mix stdout/stderr. Không có level nhất quán. Không có format chuẩn.
+**Problem:** Logs are currently mixed between stdout/stderr. No consistent levels. No standard format.
 
 **Enhancement:**
 
-Tất cả application logs đi stderr theo format:
+All application logs go to stderr in the format:
 
 ```
 2026-04-05T11:23:26Z [INFO ] [startup] Model loaded: k2-fsa/OmniVoice (1.7GB RSS)
@@ -151,22 +151,22 @@ Tất cả application logs đi stderr theo format:
 
 Format: `<timestamp_iso8601> [<LEVEL>] [<component>] <message>`
 
-Log levels: `DEBUG`, `INFO`, `WARN`, `ERROR` — configurable qua `OMNIVOICE_LOG_LEVEL`.
+Log levels: `DEBUG`, `INFO`, `WARN`, `ERROR` — configurable via `OMNIVOICE_LOG_LEVEL`.
 
-**Privacy constraint:** Không log nội dung text synthesis, không log ref audio content, không log voice profile data.
+**Privacy constraint:** Do not log synthesis text content, do not log ref audio content, do not log voice profile data.
 
-**Acceptance:** Chạy server và pipe stderr qua `grep "\[ERROR\]"` hoạt động chính xác.
+**Acceptance:** Running the server and piping stderr through `grep "\[ERROR\]"` works correctly.
 
 ---
 
-#### 2.2 Health Check — Phân biệt Starting vs Ready
+#### 2.2 Health Check — Distinguishing Starting vs. Ready
 
-**Vấn đề:** `/health` trả `{"status": "healthy"}` ngay cả khi model chưa load. Process monitor nghĩ server ready khi thực ra chưa.
+**Problem:** `/health` returns `{"status": "healthy"}` even if the model isn't loaded. The process monitor thinks the server is ready when it actually isn't.
 
 **Enhancement:**
 
 ```json
-// Khi đang khởi động (model chưa load):
+// During startup (model not loaded):
 HTTP 503
 {
   "status": "starting",
@@ -174,7 +174,7 @@ HTTP 503
   "model_loaded": false
 }
 
-// Khi đã sẵn sàng:
+// When ready:
 HTTP 200
 {
   "status": "healthy",
@@ -185,35 +185,35 @@ HTTP 200
 }
 ```
 
-HTTP 503 khi chưa ready — để load balancer / health monitor hiểu đúng trạng thái.
+HTTP 503 when not ready — so load balancers / health monitors correctly understand the state.
 
-**Acceptance:** Poll `/health` liên tục từ lúc spawn; HTTP 200 chỉ xuất hiện sau khi model loaded.
+**Acceptance:** Polling `/health` continuously from spawn; HTTP 200 only appears after the model is loaded.
 
 ---
 
 #### 2.3 Memory Usage Logging
 
-**Vấn đề:** Model chiếm ~1.7GB RAM nhưng không có visibility. Trên máy RAM thấp, OOM killer terminate server mà không có warning trước.
+**Problem:** The model takes ~1.7GB RAM but has no visibility. On low-RAM machines, the OOM killer terminates the server without prior warning.
 
 **Enhancement:**
-- Log RSS khi model load xong: `[INFO] Model loaded, RSS: 1.7GB`
-- Log warning khi RSS vượt ngưỡng: `[WARN] RSS 2.2GB — system may be under pressure`
-- Expose RSS qua `/health` response (optional field `memory_rss_mb`)
+- Log RSS after model loading: `[INFO] Model loaded, RSS: 1.7GB`.
+- Log warning when RSS exceeds a threshold: `[WARN] RSS 2.2GB — system may be under pressure`.
+- Expose RSS via `/health` response (optional field `memory_rss_mb`).
 
-**Acceptance:** Log file có entry RSS sau startup; không cần external monitoring để thấy memory usage.
+**Acceptance:** Log file contains RSS entries after startup; no external monitoring needed to see memory usage.
 
 ---
 
 ### Group 3 — Configuration
 
-**Mục tiêu:** Mọi thứ có thể thay đổi mà không cần sửa code. Tuân thủ 12-factor app principles.
+**Goal:** Everything should be changeable without modifying code. Adhere to 12-factor app principles.
 
 #### 3.1 Unified Configuration
 
-Tất cả config phải available qua environment variables, với prefix `OMNIVOICE_`:
+All configuration must be available via environment variables, prefixed with `OMNIVOICE_`:
 
-| Variable | Type | Default | Mô tả |
-|----------|------|---------|-------|
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
 | `OMNIVOICE_HOST` | string | `127.0.0.1` | Bind host |
 | `OMNIVOICE_PORT` | int | `8880` | Bind port; `0` = OS auto-assign |
 | `OMNIVOICE_MODEL_ID` | string | `k2-fsa/OmniVoice` | HuggingFace model ID |
@@ -223,38 +223,38 @@ Tất cả config phải available qua environment variables, với prefix `OMNI
 | `OMNIVOICE_MAX_CONCURRENT` | int | `1` | Max concurrent inference requests |
 | `OMNIVOICE_SHUTDOWN_TIMEOUT` | int | `10` | Seconds to wait for in-flight requests on shutdown |
 
-Tất cả đã được defined trong `config.py` (Pydantic Settings) — Enhancement là đảm bảo toàn bộ list này nhất quán, documented, và tested.
+Everything has been defined in `config.py` (Pydantic Settings) — The enhancement is to ensure this entire list is consistent, documented, and tested.
 
-**Acceptance:** `OMNIVOICE_PROFILES_DIR=/tmp/test python -m omnivoice_server` → profiles được tạo trong `/tmp/test`.
+**Acceptance:** `OMNIVOICE_PROFILES_DIR=/tmp/test python -m omnivoice_server` → profiles are created in `/tmp/test`.
 
 ---
 
 #### 3.2 Storage Paths — Absolute, Not Relative
 
-**Vấn đề:** `OMNIVOICE_PROFILES_DIR` default là `./profiles` — relative to CWD. Nếu server được spawn từ directory khác, profiles ở chỗ khác.
+**Problem:** `OMNIVOICE_PROFILES_DIR` defaults to `./profiles` — relative to CWD. If the server is spawned from a different directory, profiles end up elsewhere.
 
 **Enhancement:**
-- Default `profiles_dir` → absolute path dựa trên XDG Base Directory Specification:
+- Default `profiles_dir` → absolute path based on XDG Base Directory Specification:
   - Linux: `~/.local/share/omnivoice/profiles/`
   - macOS: `~/Library/Application Support/omnivoice/profiles/`
   - Windows: `%APPDATA%\omnivoice\profiles\`
-- Log absolute path của profiles_dir khi startup
+- Log the absolute path of `profiles_dir` at startup.
 
-**Acceptance:** Server spawn từ `/` và `~` đều dùng cùng profiles directory.
+**Acceptance:** Server spawn from `/` or `~` uses the same profiles directory.
 
 ---
 
 ### Group 4 — API Correctness
 
-**Mục tiêu:** API trả lời đúng và đủ thông tin trong mọi trường hợp.
+**Goal:** The API responds correctly and with sufficient information in all cases.
 
 #### 4.1 Error Response Consistency
 
-**Vấn đề:** Một số endpoint trả HTTP 400/413 với empty body hoặc plain text. Client không thể programmatically xử lý lỗi.
+**Problem:** Some endpoints return HTTP 400/413 with empty bodies or plain text. Clients cannot handle errors programmatically.
 
 **Enhancement:**
 
-Mọi error response phải có JSON body theo schema:
+Every error response must have a JSON body following the schema:
 
 ```json
 {
@@ -267,118 +267,118 @@ Mọi error response phải có JSON body theo schema:
 }
 ```
 
-Error codes chuẩn:
-- `validation_error` — input không hợp lệ
-- `model_not_ready` — model chưa load xong (trả 503)
-- `inference_failed` — lỗi trong quá trình synthesis
-- `rate_limited` — quá max_concurrent requests
-- `storage_error` — không thể đọc/ghi profiles
+Standard error codes:
+- `validation_error` — invalid input.
+- `model_not_ready` — model hasn't finished loading (returns 503).
+- `inference_failed` — error during synthesis.
+- `rate_limited` — exceeded max_concurrent requests.
+- `storage_error` — cannot read/write profiles.
 
-**Acceptance:** Mọi non-200 response đều có `Content-Type: application/json` và body hợp lệ.
+**Acceptance:** Every non-200 response has `Content-Type: application/json` and a valid body.
 
 ---
 
 #### 4.2 Request Size Validation — Fail Fast
 
-**Vấn đề:** Clone mode nhận ref_audio tối đa 25MB. Hiện tại validation xảy ra sau khi upload xong — lãng phí bandwidth.
+**Problem:** Clone mode accepts ref_audio up to 25MB. Currently, validation happens after the upload completes — wasting bandwidth.
 
 **Enhancement:**
-- Check `Content-Length` header trước khi nhận body
-- Trả 413 ngay nếu size vượt limit, không chờ upload
-- Log: `[WARN] Rejected upload: Content-Length 30MB > limit 25MB`
+- Check the `Content-Length` header before accepting the body.
+- Return 413 immediately if the size exceeds the limit, without waiting for the upload.
+- Log: `[WARN] Rejected upload: Content-Length 30MB > limit 25MB`.
 
-**Acceptance:** `curl` với file 30MB bị reject trước khi upload hoàn tất.
+**Acceptance:** `curl` with a 30MB file is rejected before the upload completes.
 
 ---
 
 #### 4.3 Clone Mode — Temp File Cleanup
 
-**Vấn đề:** Clone mode có thể tạo temp files khi xử lý ref audio. Nếu inference fail hoặc server crash, temp files tồn tại mãi.
+**Problem:** Clone mode can create temporary files when processing ref audio. If inference fails or the server crashes, temp files persist forever.
 
 **Enhancement:**
-- Dùng `tempfile.TemporaryDirectory()` với context manager — tự động cleanup
-- Cleanup cả khi exception xảy ra trong inference
-- Log temp dir creation và cleanup ở DEBUG level
+- Use `tempfile.TemporaryDirectory()` with a context manager — automatic cleanup.
+- Clean up even when an exception occurs during inference.
+- Log temp dir creation and cleanup at the DEBUG level.
 
-**Acceptance:** Sau 1000 clone requests, không có orphan temp files trong `/tmp`.
+**Acceptance:** After 1000 clone requests, there are no orphan temp files in `/tmp`.
 
 ---
 
 ### Group 5 — Documentation
 
-**Mục tiêu:** Người vận hành có thể deploy và debug mà không cần đọc source code.
+**Goal:** Operators can deploy and debug without reading source code.
 
 #### 5.1 System Requirements Document
 
-Hiện tại không có document nào về hardware requirements. Cần tạo `docs/system/requirements.md`:
+Currently, there is no documentation on hardware requirements. Create `docs/system/requirements.md`:
 
 ```markdown
 ## Minimum Requirements
-- RAM: 8GB (model chiếm ~1.7GB; cần headroom cho OS và app)
+- RAM: 8GB (model takes ~1.7GB; need headroom for OS and app)
 - Disk: 5GB free (model ~3GB + runtime)
-- CPU: x86_64 hoặc ARM64
+- CPU: x86_64 or ARM64
 
 ## Recommended
 - RAM: 16GB
 - Disk: 10GB free
-- CPU: 4+ cores (inference là single-threaded nhưng OS overhead)
+- CPU: 4+ cores (inference is single-threaded but OS overhead exists)
 ```
 
 #### 5.2 Configuration Reference
 
-`docs/configuration.md` liệt kê toàn bộ env vars, default values, và ví dụ. Auto-generate từ Pydantic model nếu possible.
+`docs/configuration.md` lists all env vars, default values, and examples. Auto-generate from the Pydantic model if possible.
 
 #### 5.3 Runbook — Common Issues
 
-`docs/runbook.md` với troubleshooting cho:
-- Server start nhưng inference fail (thiếu RAM)
-- Port conflict (cách kiểm tra và giải quyết)
-- Model download fail (network, disk space)
-- Profile storage permission denied
+`docs/runbook.md` with troubleshooting for:
+- Server starts but inference fails (insufficient RAM).
+- Port conflict (how to check and resolve).
+- Model download failure (network, disk space).
+- Profile storage permission denied.
 
 ---
 
 ## 4. Implementation Phases
 
-### Phase 1 — Runtime Foundation (4–5 ngày)
+### Phase 1 — Runtime Foundation (4–5 days)
 
-Ưu tiên cao nhất. Không có những thứ này, server không thể được vận hành một cách đáng tin cậy.
-
-| Task | File | Estimated |
-|------|------|-----------|
-| Dynamic port binding (`port=0`) | `config.py`, `cli.py` | 0.5 ngày |
-| `OMNIVOICE_READY` stdout announcement | `app.py`, `cli.py` | 0.5 ngày |
-| SIGTERM/SIGINT graceful shutdown | `app.py` | 1 ngày |
-| Eager model loading trong lifespan | `services/model.py` | 0.5 ngày |
-| Log separation (stdout/stderr) | `app.py`, logging config | 0.5 ngày |
-| Structured logging với level | Logging config | 1 ngày |
-
-### Phase 2 — Observability (2–3 ngày)
+Highest priority. Without these, the server cannot be operated reliably.
 
 | Task | File | Estimated |
 |------|------|-----------|
-| Health check — starting vs ready | `routers/health.py` | 0.5 ngày |
-| RSS logging trên startup | `services/model.py` | 0.5 ngày |
-| Memory warning log | `services/metrics.py` | 0.5 ngày |
-| `/health` response enrichment | `routers/health.py` | 0.5 ngày |
+| Dynamic port binding (`port=0`) | `config.py`, `cli.py` | 0.5 days |
+| `OMNIVOICE_READY` stdout announcement | `app.py`, `cli.py` | 0.5 days |
+| SIGTERM/SIGINT graceful shutdown | `app.py` | 1 day |
+| Eager model loading in lifespan | `services/model.py` | 0.5 days |
+| Log separation (stdout/stderr) | `app.py`, logging config | 0.5 days |
+| Structured logging with levels | Logging config | 1 day |
 
-### Phase 3 — Configuration (1–2 ngày)
-
-| Task | File | Estimated |
-|------|------|-----------|
-| Audit và chuẩn hóa env vars | `config.py` | 0.5 ngày |
-| XDG-compliant default paths | `config.py` | 0.5 ngày |
-| Validate paths tồn tại/writable khi startup | `app.py` | 0.5 ngày |
-
-### Phase 4 — API Correctness (2–3 ngày)
+### Phase 2 — Observability (2–3 days)
 
 | Task | File | Estimated |
 |------|------|-----------|
-| Error response schema chuẩn | `routers/`, exception handlers | 1 ngày |
-| Fail-fast request size validation | `routers/speech.py` | 0.5 ngày |
-| Clone mode temp file cleanup | `services/inference.py` | 0.5 ngày |
+| Health check — starting vs ready | `routers/health.py` | 0.5 days |
+| RSS logging on startup | `services/model.py` | 0.5 days |
+| Memory warning log | `services/metrics.py` | 0.5 days |
+| `/health` response enrichment | `routers/health.py` | 0.5 days |
 
-### Phase 5 — Documentation (1–2 ngày)
+### Phase 3 — Configuration (1–2 days)
+
+| Task | File | Estimated |
+|------|------|-----------|
+| Audit and standardize env vars | `config.py` | 0.5 days |
+| XDG-compliant default paths | `config.py` | 0.5 days |
+| Validate path existence/writability on startup | `app.py` | 0.5 days |
+
+### Phase 4 — API Correctness (2–3 days)
+
+| Task | File | Estimated |
+|------|------|-----------|
+| Standard error response schema | `routers/`, exception handlers | 1 day |
+| Fail-fast request size validation | `routers/speech.py` | 0.5 days |
+| Clone mode temp file cleanup | `services/inference.py` | 0.5 days |
+
+### Phase 5 — Documentation (1–2 days)
 
 | Task | Output |
 |------|--------|
@@ -388,27 +388,27 @@ Hiện tại không có document nào về hardware requirements. Cần tạo `d
 
 ---
 
-## 5. Acceptance Criteria Tổng hợp
+## 5. Summary Acceptance Criteria
 
 | Criterion | Test |
 |-----------|------|
-| Dynamic port | `OMNIVOICE_PORT=0 python -m omnivoice_server` → bind thành công |
-| Ready announcement | stdout có `OMNIVOICE_READY host=... port=...` sau <10s |
-| Announcement timing | `OMNIVOICE_READY` chỉ print sau khi model loaded |
-| Graceful shutdown | `kill -TERM <pid>` → exit 0 trong <10s |
-| Log separation | Stdout chỉ có `OMNIVOICE_READY`; mọi log khác ở stderr |
-| Health starting | `/health` trả 503 khi model chưa load |
-| Health ready | `/health` trả 200 + `ready:true` sau khi model loaded |
-| Error body | Mọi 4xx/5xx có JSON body với `error.code` và `error.message` |
-| Profiles dir | `OMNIVOICE_PROFILES_DIR=/tmp/x` → profiles trong `/tmp/x`, không phải `./profiles` |
+| Dynamic port | `OMNIVOICE_PORT=0 python -m omnivoice_server` → bind successful |
+| Ready announcement | stdout has `OMNIVOICE_READY host=... port=...` after < 10s |
+| Announcement timing | `OMNIVOICE_READY` only prints after model is loaded |
+| Graceful shutdown | `kill -TERM <pid>` → exit 0 in < 10s |
+| Log separation | stdout has only `OMNIVOICE_READY`; all other logs in stderr |
+| Health starting | `/health` returns 503 while model is loading |
+| Health ready | `/health` returns 200 + `ready:true` after model is loaded |
+| Error body | All 4xx/5xx have JSON body with `error.code` and `error.message` |
+| Profiles dir | `OMNIVOICE_PROFILES_DIR=/tmp/x` → profiles in `/tmp/x`, not `./profiles` |
 | Temp cleanup | 1000 clone requests → 0 orphan temp files |
-| No sensitive log | Grep log file → không có text synthesis content |
+| No sensitive logs | grep log file → no synthesis text content |
 
 ---
 
 ## 6. Non-Goals
 
-Những thứ nằm ngoài scope của plan này:
+Things outside the scope of this plan:
 
 - GPU support
 - Streaming TTS (real-time output)
@@ -424,14 +424,14 @@ Những thứ nằm ngoài scope của plan này:
 
 | Phase | Effort |
 |-------|--------|
-| Phase 1 — Runtime Foundation | 4–5 ngày |
-| Phase 2 — Observability | 2–3 ngày |
-| Phase 3 — Configuration | 1–2 ngày |
-| Phase 4 — API Correctness | 2–3 ngày |
-| Phase 5 — Documentation | 1–2 ngày |
-| **Total** | **10–15 ngày (2–3 tuần)** |
+| Phase 1 — Runtime Foundation | 4–5 days |
+| Phase 2 — Observability | 2–3 days |
+| Phase 3 — Configuration | 1–2 days |
+| Phase 4 — API Correctness | 2–3 days |
+| Phase 5 — Documentation | 1–2 days |
+| **Total** | **10–15 days (2–3 weeks)** |
 
-Các phase có thể chạy song song một phần (Phase 3 và 4 độc lập nhau). Phase 1 phải hoàn thành trước Phase 2.
+Phases can partially run in parallel (Phases 3 and 4 are independent). Phase 1 must be completed before Phase 2.
 
 ---
 
