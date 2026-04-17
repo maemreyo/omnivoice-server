@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-17T06:24:04Z",
-  "base_url": "http://127.0.0.1:8880",
-  "total": 37,
-  "passed": 37,
+  "generated_at": "2026-04-17T18:08:03Z",
+  "base_url": "http://127.0.0.1:8890",
+  "total": 34,
+  "passed": 34,
   "failed": 0,
   "errors": 0,
   "results": [
@@ -15,7 +15,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 21.23,
+      "latency_s": 17.26,
       "saved_path": "samples/qa/A01_default_no_params.wav"
     },
     {
@@ -27,7 +27,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.09,
+      "latency_s": 14.4,
       "saved_path": "samples/qa/A02_preset_alloy.wav"
     },
     {
@@ -39,7 +39,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.77,
+      "latency_s": 14.21,
       "saved_path": "samples/qa/A03_preset_nova.wav"
     },
     {
@@ -51,7 +51,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.65,
+      "latency_s": 13.49,
       "saved_path": "samples/qa/A04_instructions_female_british.wav"
     },
     {
@@ -63,7 +63,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.06,
+      "latency_s": 13.61,
       "saved_path": "samples/qa/A05_instructions_male_low_pitch.wav"
     },
     {
@@ -75,7 +75,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.69,
+      "latency_s": 13.48,
       "saved_path": "samples/qa/B01_layer_penalty_factor_default.wav"
     },
     {
@@ -87,7 +87,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.35,
+      "latency_s": 14.01,
       "saved_path": "samples/qa/B02_layer_penalty_factor_low.wav"
     },
     {
@@ -99,7 +99,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.87,
+      "latency_s": 14.02,
       "saved_path": "samples/qa/B03_layer_penalty_factor_high.wav"
     },
     {
@@ -111,7 +111,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.21,
+      "latency_s": 13.44,
       "saved_path": "samples/qa/B04_preprocess_prompt_true.wav"
     },
     {
@@ -123,7 +123,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.33,
+      "latency_s": 13.5,
       "saved_path": "samples/qa/B05_preprocess_prompt_false.wav"
     },
     {
@@ -135,7 +135,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.35,
+      "latency_s": 14.42,
       "saved_path": "samples/qa/B06_postprocess_output_true.wav"
     },
     {
@@ -147,7 +147,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.06,
+      "latency_s": 14.47,
       "saved_path": "samples/qa/B07_postprocess_output_false.wav"
     },
     {
@@ -159,7 +159,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 94.58,
+      "latency_s": 101.67,
       "saved_path": "samples/qa/B08_audio_chunk_on_long_text.wav"
     },
     {
@@ -171,7 +171,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 35.26,
+      "latency_s": 33.13,
       "saved_path": "samples/qa/B09_all_new_params_combined.wav"
     },
     {
@@ -183,7 +183,7 @@
       "status": "PASS",
       "expect_status": 422,
       "actual_status": 422,
-      "latency_s": 0.0,
+      "latency_s": 0.01,
       "saved_path": null
     },
     {
@@ -207,7 +207,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.53,
+      "latency_s": 13.35,
       "saved_path": "samples/qa/C01_alias_british.wav"
     },
     {
@@ -219,7 +219,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.59,
+      "latency_s": 13.17,
       "saved_path": "samples/qa/C02_alias_american.wav"
     },
     {
@@ -231,7 +231,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.12,
+      "latency_s": 15.43,
       "saved_path": "samples/qa/C03_young_female_high_pitch.wav"
     },
     {
@@ -243,7 +243,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.57,
+      "latency_s": 13.24,
       "saved_path": "samples/qa/C04_whisper_style.wav"
     },
     {
@@ -255,7 +255,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.86,
+      "latency_s": 13.44,
       "saved_path": "samples/qa/C05_full_canonical_design.wav"
     },
     {
@@ -315,7 +315,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 28.53,
+      "latency_s": 26.47,
       "saved_path": "samples/qa/D01_nonverbal_tags.wav"
     },
     {
@@ -327,7 +327,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 20.92,
+      "latency_s": 22.57,
       "saved_path": "samples/qa/D02_english_cmu.wav"
     },
     {
@@ -339,107 +339,71 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 15.68,
+      "latency_s": 15.22,
       "saved_path": "samples/qa/D03_chinese_pinyin.wav"
     },
     {
       "id": "E01",
-      "label": "script_two_speakers_basic",
-      "group": "script_api",
-      "desc": "Two-speaker basic dialogue mixed into a single WAV track",
+      "label": "script_single_track",
+      "group": "script",
+      "desc": "Script endpoint: single_track output (default)",
       "endpoint": "/v1/audio/script",
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 41.89,
-      "saved_path": "samples/qa/E01_script_two_speakers_basic.wav"
+      "latency_s": 18.85,
+      "saved_path": "samples/qa/E01_script_single_track.wav"
     },
     {
       "id": "E02",
-      "label": "script_same_speaker_no_pause",
-      "group": "script_api",
-      "desc": "Multiple segments from the same speaker without inserted speaker-change pauses",
+      "label": "script_multi_track",
+      "group": "script",
+      "desc": "Script endpoint: multi_track output with metadata",
       "endpoint": "/v1/audio/script",
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 55.29,
-      "saved_path": "samples/qa/E02_script_same_speaker_no_pause.wav"
+      "latency_s": 18.7,
+      "saved_path": "samples/qa/E02_script_multi_track.wav"
     },
     {
       "id": "E03",
-      "label": "script_alternating_with_pause",
-      "group": "script_api",
-      "desc": "Alternating speakers with pauses inserted only when the speaker changes",
+      "label": "script_with_speed_override",
+      "group": "script",
+      "desc": "Script endpoint: per-segment speed override",
       "endpoint": "/v1/audio/script",
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 57.41,
-      "saved_path": "samples/qa/E03_script_alternating_with_pause.wav"
+      "latency_s": 19.03,
+      "saved_path": "samples/qa/E03_script_with_speed_override.wav"
     },
     {
       "id": "E04",
-      "label": "script_default_voice",
-      "group": "script_api",
-      "desc": "Request-level default voice inherited by multiple speakers",
+      "label": "script_with_voice_override",
+      "group": "script",
+      "desc": "Script endpoint: per-segment voice override",
       "endpoint": "/v1/audio/script",
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 29.31,
-      "saved_path": "samples/qa/E04_script_default_voice.wav"
+      "latency_s": 19.93,
+      "saved_path": "samples/qa/E04_script_with_voice_override.wav"
     },
     {
       "id": "E05",
-      "label": "script_multi_speaker_story",
-      "group": "script_api",
-      "desc": "Three-speaker story mixed into a single WAV track",
+      "label": "script_with_pause",
+      "group": "script",
+      "desc": "Script endpoint: custom pause between speakers",
       "endpoint": "/v1/audio/script",
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 73.14,
-      "saved_path": "samples/qa/E05_script_multi_speaker_story.wav"
+      "latency_s": 19.67,
+      "saved_path": "samples/qa/E05_script_with_pause.wav"
     },
     {
-      "id": "E06",
-      "label": "script_openai_presets",
-      "group": "script_api",
-      "desc": "Two-speaker script using OpenAI preset aliases mapped through the script API",
-      "endpoint": "/v1/audio/script",
-      "status": "PASS",
-      "expect_status": 200,
-      "actual_status": 200,
-      "latency_s": 31.13,
-      "saved_path": "samples/qa/E06_script_openai_presets.wav"
-    },
-    {
-      "id": "E07",
-      "label": "script_segment_speed_override",
-      "group": "script_api",
-      "desc": "Segment-level speed override inside one multi-speaker request",
-      "endpoint": "/v1/audio/script",
-      "status": "PASS",
-      "expect_status": 200,
-      "actual_status": 200,
-      "latency_s": 56.34,
-      "saved_path": "samples/qa/E07_script_segment_speed_override.wav"
-    },
-    {
-      "id": "E08",
-      "label": "script_default_voice_three_speakers",
-      "group": "script_api",
-      "desc": "Three speakers all inheriting the same request-level default voice",
-      "endpoint": "/v1/audio/script",
-      "status": "PASS",
-      "expect_status": 200,
-      "actual_status": 200,
-      "latency_s": 53.64,
-      "saved_path": "samples/qa/E08_script_default_voice_three_speakers.wav"
-    },
-    {
-      "id": "F01",
+      "id": "G01",
       "label": "voices_metadata",
       "group": "metadata",
       "desc": "GET /v1/voices: canonical attrs, no unsupported categories",
