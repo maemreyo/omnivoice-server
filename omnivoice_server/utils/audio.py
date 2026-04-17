@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import logging
 import shutil
+from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
@@ -206,3 +207,107 @@ def validate_audio_bytes(data: bytes, field_name: str = "ref_audio") -> None:
             "Supported formats: WAV, MP3, FLAC, OGG. "
             f"Original error: {e}"
         ) from e
+
+
+@dataclass
+class SegmentTimestamp:
+    """Timestamp metadata for a single audio segment in a mixed track."""
+
+    index: int
+    speaker: str
+    offset_s: float
+    duration_s: float
+
+
+def make_silence_tensor(duration_s: float, sample_rate: int = SAMPLE_RATE) -> torch.Tensor:
+    """
+    Create a silent audio tensor of specified duration.
+
+    Args:
+        duration_s: Duration in seconds
+        sample_rate: Sample rate in Hz (default: 24000)
+
+    Returns:
+        torch.Tensor: Shape (1, num_samples) of zeros
+    """
+    num_samples = int(duration_s * sample_rate)
+    return torch.zeros(1, num_samples)
+
+
+def mix_to_single_track(
+    segments: list[dict],
+    pause_s: float = 0.5,
+) -> tuple[torch.Tensor, list[SegmentTimestamp]]:
+    """
+    Concatenate audio segments into a single track with pauses on speaker change.
+
+    Args:
+        segments: List of dicts with keys:
+            - 'audio': torch.Tensor (1, T)
+            - 'speaker': str
+        pause_s: Pause duration in seconds when speaker changes
+
+    Returns:
+        Tuple of:
+            - Mixed audio tensor (1, total_samples)
+            - List of SegmentTimestamp metadata
+    """
+    if not segments:
+        return torch.zeros(1, 0), []
+
+    chunks: list[torch.Tensor] = []
+    timestamps: list[SegmentTimestamp] = []
+    offset_s = 0.0
+    prev_speaker = None
+
+    for idx, seg in enumerate(segments):
+        audio = seg["audio"]
+        speaker = seg["speaker"]
+
+        # Insert pause if speaker changed
+        if prev_speaker is not None and speaker != prev_speaker:
+            silence = make_silence_tensor(pause_s)
+            chunks.append(silence)
+            offset_s += pause_s
+
+        duration_s = audio.shape[-1] / SAMPLE_RATE
+        timestamps.append(
+            SegmentTimestamp(
+                index=idx,
+                speaker=speaker,
+                offset_s=offset_s,
+                duration_s=duration_s,
+            )
+        )
+
+        chunks.append(audio)
+        offset_s += duration_s
+        prev_speaker = speaker
+
+    mixed = torch.cat(chunks, dim=-1)
+    return mixed, timestamps
+
+
+def group_by_speaker(segments: list[dict]) -> dict[str, torch.Tensor]:
+    """
+    Group audio segments by speaker and concatenate each speaker's audio.
+
+    Args:
+        segments: List of dicts with keys:
+            - 'audio': torch.Tensor (1, T)
+            - 'speaker': str
+
+    Returns:
+        Dict mapping speaker ID to concatenated audio tensor
+    """
+    speaker_groups: dict[str, list[torch.Tensor]] = {}
+
+    for seg in segments:
+        speaker = seg["speaker"]
+        audio = seg["audio"]
+
+        if speaker not in speaker_groups:
+            speaker_groups[speaker] = []
+        speaker_groups[speaker].append(audio)
+
+    return {speaker: torch.cat(audios, dim=-1) for speaker, audios in speaker_groups.items()}

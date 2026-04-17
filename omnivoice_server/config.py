@@ -72,8 +72,7 @@ class Settings(BaseSettings):
         ge=0.0,
         le=2.0,
         description=(
-            "Temperature for token sampling at each step. "
-            "0=greedy, higher=more randomness."
+            "Temperature for token sampling at each step. 0=greedy, higher=more randomness."
         ),
     )
 
@@ -118,6 +117,14 @@ class Settings(BaseSettings):
         ge=1,
         le=200,
         description="Max upload size for ref_audio files in megabytes.",
+    )
+
+    default_voice: str = Field(
+        default="male, middle-aged, moderate pitch, neutral accent",
+        description=(
+            "Default voice description used when no voice is specified for a speaker. "
+            "Deployers can customise this for non-English use cases."
+        ),
     )
 
     @property
