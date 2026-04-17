@@ -42,6 +42,11 @@ class SynthesisRequest:
     class_temperature: float | None = None
     duration: float | None = None  # Fixed output duration in seconds
     language: str | None = None  # Optional language code for multilingual pronunciation
+    layer_penalty_factor: float | None = None
+    preprocess_prompt: bool | None = None
+    postprocess_output: bool | None = None
+    audio_chunk_duration: float | None = None
+    audio_chunk_threshold: float | None = None
 
 
 @dataclass
@@ -101,9 +106,19 @@ class OmniVoiceAdapter:
         if req.duration is not None:
             kwargs["duration"] = req.duration
 
-        # Add optional language parameter if provided
         if req.language is not None:
             kwargs["language"] = req.language
+
+        if req.layer_penalty_factor is not None:
+            kwargs["layer_penalty_factor"] = req.layer_penalty_factor
+        if req.preprocess_prompt is not None:
+            kwargs["preprocess_prompt"] = req.preprocess_prompt
+        if req.postprocess_output is not None:
+            kwargs["postprocess_output"] = req.postprocess_output
+        if req.audio_chunk_duration is not None:
+            kwargs["audio_chunk_duration"] = req.audio_chunk_duration
+        if req.audio_chunk_threshold is not None:
+            kwargs["audio_chunk_threshold"] = req.audio_chunk_threshold
 
         if req.mode == "design" and req.instruct:
             kwargs["instruct"] = req.instruct

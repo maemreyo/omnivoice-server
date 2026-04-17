@@ -54,7 +54,6 @@ async def list_voices(
             "id": "design:<attributes>",
             "type": "design",
             "description": "Voice design via attributes. Example: 'design:female,british accent'",
-            "attributes_reference": DESIGN_ATTRIBUTES,
         },
     ] + [
         {

@@ -451,3 +451,283 @@ def test_speech_custom_class_temperature(client):
         },
     )
     assert resp.status_code == 200
+
+
+# === Tests for 5 missing upstream generation parameters ===
+
+
+@pytest.mark.parametrize(
+    "value,expected_status",
+    [
+        (5.0, 200),  # Default value
+        (0.0, 200),  # Minimum valid
+        (10.0, 200),  # High valid
+        (-1.0, 422),  # Invalid: negative
+    ],
+)
+def test_speech_layer_penalty_factor(client, value, expected_status):
+    """layer_penalty_factor parameter validation."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "layer_penalty_factor": value,
+        },
+    )
+    assert resp.status_code == expected_status
+
+
+@pytest.mark.parametrize(
+    "value,expected_status",
+    [
+        (True, 200),  # Default
+        (False, 200),  # Disabled
+    ],
+)
+def test_speech_preprocess_prompt(client, value, expected_status):
+    """preprocess_prompt parameter validation."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "preprocess_prompt": value,
+        },
+    )
+    assert resp.status_code == expected_status
+
+
+@pytest.mark.parametrize(
+    "value,expected_status",
+    [
+        (True, 200),  # Default
+        (False, 200),  # Disabled
+    ],
+)
+def test_speech_postprocess_output(client, value, expected_status):
+    """postprocess_output parameter validation."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "postprocess_output": value,
+        },
+    )
+    assert resp.status_code == expected_status
+
+
+@pytest.mark.parametrize(
+    "value,expected_status",
+    [
+        (15.0, 200),  # Default
+        (5.0, 200),  # Short chunks
+        (30.0, 200),  # Long chunks
+        (0.0, 422),  # Invalid: zero
+        (-1.0, 422),  # Invalid: negative
+    ],
+)
+def test_speech_audio_chunk_duration(client, value, expected_status):
+    """audio_chunk_duration parameter validation."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "audio_chunk_duration": value,
+        },
+    )
+    assert resp.status_code == expected_status
+
+
+@pytest.mark.parametrize(
+    "value,expected_status",
+    [
+        (30.0, 200),  # Default
+        (10.0, 200),  # Low threshold
+        (60.0, 200),  # High threshold
+        (0.0, 422),  # Invalid: zero
+        (-1.0, 422),  # Invalid: negative
+    ],
+)
+def test_speech_audio_chunk_threshold(client, value, expected_status):
+    """audio_chunk_threshold parameter validation."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "audio_chunk_threshold": value,
+        },
+    )
+    assert resp.status_code == expected_status
+
+
+# ============================================================================
+# Instruction Validation Tests (Wave 1 - Task 2)
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "instructions,expected_status",
+    [
+        # Valid canonical instructions
+        ("female", 200),
+        ("british accent", 200),
+        ("young adult", 200),
+        ("high pitch", 200),
+        ("whisper", 200),
+        ("female,british accent,young adult,high pitch", 200),
+        ("male,middle-aged,moderate pitch,american accent", 200),
+        # Short accent aliases (should be canonicalized)
+        ("british", 200),
+        ("american", 200),
+        ("australian", 200),
+        ("canadian", 200),
+        ("indian", 200),
+        ("chinese", 200),
+        ("korean", 200),
+        ("japanese", 200),
+        ("portuguese", 200),
+        ("russian", 200),
+        # Unsupported emotion attributes (MUST FAIL)
+        ("cheerful", 422),
+        ("sad", 422),
+        ("angry", 422),
+        ("surprised", 422),
+        ("happy", 422),
+        ("fearful", 422),
+        ("disgusted", 422),
+        # Unsupported speaking style attributes (MUST FAIL)
+        ("narration", 422),
+        ("customer_service", 422),
+        ("news_presentation", 422),
+        ("sportscasting", 422),
+        # Conflicting categories (MUST FAIL)
+        ("male,female", 422),
+        ("child,elderly", 422),
+        ("very low pitch,very high pitch", 422),
+        # Duplicate handling
+        ("female,female", 200),  # Duplicates should be deduplicated
+        ("british accent,british accent", 200),
+        # Empty instructions
+        ("", 422),
+        ("   ", 422),
+    ],
+    ids=[
+        "valid-female",
+        "valid-british-accent",
+        "valid-young-adult",
+        "valid-high-pitch",
+        "valid-whisper",
+        "valid-combined",
+        "valid-default-preset",
+        "alias-british",
+        "alias-american",
+        "alias-australian",
+        "alias-canadian",
+        "alias-indian",
+        "alias-chinese",
+        "alias-korean",
+        "alias-japanese",
+        "alias-portuguese",
+        "alias-russian",
+        "unsupported-cheerful",
+        "unsupported-sad",
+        "unsupported-angry",
+        "unsupported-surprised",
+        "unsupported-happy",
+        "unsupported-fearful",
+        "unsupported-disgusted",
+        "unsupported-narration",
+        "unsupported-customer-service",
+        "unsupported-news-presentation",
+        "unsupported-sportscasting",
+        "conflict-gender",
+        "conflict-age",
+        "conflict-pitch",
+        "duplicate-gender",
+        "duplicate-accent",
+        "empty-string",
+        "whitespace-only",
+    ],
+)
+def test_speech_instruction_validation(client, instructions, expected_status):
+    """Test instruction validation for supported/unsupported attributes."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "instructions": instructions,
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == expected_status
+
+    if expected_status == 422:
+        body = resp.json()
+        error_msg = body.get("error", {}).get("message") or body.get("detail", "")
+        assert error_msg, "422 response must include error message"
+
+
+def test_speech_instruction_accent_alias_canonicalization(client):
+    """Short accent aliases should be canonicalized to full form."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "instructions": "british",
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 200
+    req = client.app.state.inference_svc.synthesize.await_args.args[0]
+    assert req.mode == "design"
+    # Should be canonicalized to "british accent"
+    assert "british accent" in req.instruct.lower()
+
+
+def test_speech_instruction_unsupported_emotion_error_message(client):
+    """Unsupported emotion attributes should return actionable error."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "instructions": "cheerful",
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 422
+    body = resp.json()
+    error_msg = body.get("error", {}).get("message") or body.get("detail", "")
+    assert "cheerful" in error_msg.lower()
+    assert "not supported" in error_msg.lower() or "unsupported" in error_msg.lower()
+
+
+def test_speech_instruction_conflict_error_message(client):
+    """Conflicting categories should return actionable error."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "instructions": "male,female",
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 422
+    body = resp.json()
+    error_msg = body.get("error", {}).get("message") or body.get("detail", "")
+    assert "conflict" in error_msg.lower() or "multiple" in error_msg.lower()
+    assert "gender" in error_msg.lower() or "male" in error_msg.lower()
+
+
+def test_speech_instruction_chinese_dialect_supported(client):
+    """Chinese dialect attributes should be accepted."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "你好",
+            "instructions": "female,四川话",
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 200
+    req = client.app.state.inference_svc.synthesize.await_args.args[0]
+    assert req.mode == "design"
+    assert "四川话" in req.instruct

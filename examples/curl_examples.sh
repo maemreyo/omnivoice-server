@@ -45,43 +45,70 @@ curl -X POST "$BASE_URL/v1/audio/speech" \
   -d '{
     "model": "omnivoice",
     "input": "This voice has been designed with specific attributes.",
-    "instructions": "female,british accent,young adult",
+    "instructions": "female,british accent,young adult,high pitch",
     "response_format": "wav"
   }' \
   --output output_design.wav \
   --silent --show-error --write-out "\n✓ Saved to output_design.wav (HTTP %{http_code})\n"
 
+echo "  Note: Short aliases like 'british' are accepted but canonicalized to 'british accent'"
 echo
 
-# ── Example 3: Streaming synthesis ───────────────────────────────────────────
+# ── Example 3: Advanced generation parameters ────────────────────────────────
 
-echo "3. Streaming synthesis (PCM output)"
+echo "3. Advanced generation parameters"
+curl -X POST "$BASE_URL/v1/audio/speech" \
+  $(auth_header) \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "omnivoice",
+    "input": "This synthesis uses advanced generation parameters for quality tuning.",
+    "instructions": "female,american accent",
+    "num_step": 32,
+    "guidance_scale": 3.5,
+    "denoise": true,
+    "position_temperature": 0.0,
+    "layer_penalty_factor": 0.5,
+    "preprocess_prompt": true,
+    "postprocess_output": true,
+    "response_format": "wav"
+  }' \
+  --output output_advanced.wav \
+  --silent --show-error --write-out "\n✓ Saved to output_advanced.wav (HTTP %{http_code})\n"
+
+echo
+
+# ── Example 4: Streaming synthesis ───────────────────────────────────────────
+
+echo "4. Streaming synthesis (PCM output)"
 curl -X POST "$BASE_URL/v1/audio/speech" \
   $(auth_header) \
   -H "Content-Type: application/json" \
   -d '{
     "model": "omnivoice",
     "input": "This is a longer text that will be streamed in chunks. Each sentence is synthesized and sent as soon as it is ready.",
-    "stream": true
+    "stream": true,
+    "position_temperature": 0.0
   }' \
   --output output_stream.pcm \
   --silent --show-error --write-out "\n✓ Saved to output_stream.pcm (HTTP %{http_code})\n"
 
+echo "  Note: position_temperature=0.0 ensures consistent voice across chunks"
 echo "  Convert to WAV: ffmpeg -f s16le -ar 24000 -ac 1 -i output_stream.pcm output_stream.wav"
 echo
 
-# ── Example 4: List voices ───────────────────────────────────────────────────
+# ── Example 5: List voices ───────────────────────────────────────────────────
 
-echo "4. List available voices"
+echo "5. List available voices"
 curl -X GET "$BASE_URL/v1/voices" \
   $(auth_header) \
   --silent --show-error | jq '.'
 
 echo
 
-# ── Example 5: Create voice profile ──────────────────────────────────────────
+# ── Example 6: Create voice profile ──────────────────────────────────────────
 
-echo "5. Create voice cloning profile"
+echo "6. Create voice cloning profile"
 echo "  (Requires reference_audio.wav file)"
 
 if [ -f "reference_audio.wav" ]; then
@@ -98,16 +125,16 @@ else
     echo
 fi
 
-# ── Example 6: Stored profile note ───────────────────────────────────────────
+# ── Example 7: Stored profile note ───────────────────────────────────────────
 
-echo "6. Stored profiles are listed via /v1/voices, but /v1/audio/speech ignores voice"
+echo "7. Stored profiles are listed via /v1/voices, but /v1/audio/speech ignores voice"
 echo "  Use /v1/audio/speech/clone for actual voice cloning synthesis"
 
 echo
 
-# ── Example 7: One-shot voice cloning ────────────────────────────────────────
+# ── Example 8: One-shot voice cloning ────────────────────────────────────────
 
-echo "7. One-shot voice cloning (no profile)"
+echo "8. One-shot voice cloning (no profile)"
 echo "  (Requires reference_audio.wav file)"
 
 if [ -f "reference_audio.wav" ]; then
@@ -125,9 +152,9 @@ else
     echo
 fi
 
-# ── Example 8: Get profile details ───────────────────────────────────────────
+# ── Example 9: Get profile details ───────────────────────────────────────────
 
-echo "8. Get profile details"
+echo "9. Get profile details"
 curl -X GET "$BASE_URL/v1/voices/profiles/my_voice" \
   $(auth_header) \
   --silent --show-error | jq '.' \
@@ -135,9 +162,9 @@ curl -X GET "$BASE_URL/v1/voices/profiles/my_voice" \
 
 echo
 
-# ── Example 9: Update profile ────────────────────────────────────────────────
+# ── Example 10: Update profile ────────────────────────────────────────────────
 
-echo "9. Update profile ref_text"
+echo "10. Update profile ref_text"
 curl -X PATCH "$BASE_URL/v1/voices/profiles/my_voice" \
   $(auth_header) \
   -F "ref_text=Updated reference text for the voice profile." \
@@ -146,24 +173,24 @@ curl -X PATCH "$BASE_URL/v1/voices/profiles/my_voice" \
 
 echo
 
-# ── Example 10: Delete profile ───────────────────────────────────────────────
+# ── Example 11: Delete profile ───────────────────────────────────────────────
 
-echo "10. Delete profile (commented out for safety)"
+echo "11. Delete profile (commented out for safety)"
 echo "  # curl -X DELETE \"$BASE_URL/v1/voices/profiles/my_voice\" $(auth_header)"
 echo
 
-# ── Example 11: List models ──────────────────────────────────────────────────
+# ── Example 12: List models ──────────────────────────────────────────────────
 
-echo "11. List available models"
+echo "12. List available models"
 curl -X GET "$BASE_URL/v1/models" \
   $(auth_header) \
   --silent --show-error | jq '.'
 
 echo
 
-# ── Example 12: Health check ─────────────────────────────────────────────────
+# ── Example 13: Health check ─────────────────────────────────────────────────
 
-echo "12. Health check"
+echo "13. Health check"
 curl -X GET "$BASE_URL/health" \
   --silent --show-error | jq '.'
 

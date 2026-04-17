@@ -24,6 +24,10 @@ from ..utils.audio import (
     tensors_to_formatted_bytes,
     tensors_to_wav_bytes,
 )
+from ..utils.instruction_validation import (
+    InstructionValidationError,
+    validate_and_canonicalize_instructions,
+)
 from ..utils.text import split_sentences
 from ..voice_presets import DEFAULT_DESIGN_INSTRUCTIONS, OPENAI_VOICE_PRESETS
 
@@ -53,6 +57,11 @@ class SpeechRequest(BaseModel):
         default=None,
         description="Language code (e.g., 'en', 'vi', 'zh') for multilingual pronunciation",
     )
+    layer_penalty_factor: float | None = Field(default=None, ge=0.0)
+    preprocess_prompt: bool | None = Field(default=None)
+    postprocess_output: bool | None = Field(default=None)
+    audio_chunk_duration: float | None = Field(default=None, gt=0.0)
+    audio_chunk_threshold: float | None = Field(default=None, gt=0.0)
 
     @field_validator("model")
     @classmethod
@@ -84,12 +93,18 @@ def _resolve_synthesis_mode(
 ) -> tuple[str, str | None, str | None, str | None]:
     """Resolve synthesis mode for /v1/audio/speech."""
     del profile_svc
-    instructions = body.instructions.strip() if body.instructions else None
     speaker = body.speaker.strip().lower() if body.speaker else None
     voice = body.voice.strip().lower() if body.voice else None
 
-    if instructions:
-        return "design", instructions, None, None
+    if body.instructions is not None:
+        try:
+            canonicalized = validate_and_canonicalize_instructions(body.instructions)
+            return "design", canonicalized, None, None
+        except InstructionValidationError as e:
+            raise HTTPException(
+                status_code=422,
+                detail=str(e),
+            )
 
     if speaker and speaker in OPENAI_VOICE_PRESETS:
         return "design", OPENAI_VOICE_PRESETS[speaker], None, None
@@ -126,6 +141,11 @@ async def create_speech(
         class_temperature=body.class_temperature,
         duration=body.duration,
         language=body.language,
+        layer_penalty_factor=body.layer_penalty_factor,
+        preprocess_prompt=body.preprocess_prompt,
+        postprocess_output=body.postprocess_output,
+        audio_chunk_duration=body.audio_chunk_duration,
+        audio_chunk_threshold=body.audio_chunk_threshold,
     )
 
     if body.stream:
@@ -216,6 +236,11 @@ async def _stream_sentences(
             class_temperature=base_req.class_temperature,
             duration=base_req.duration,
             language=base_req.language,
+            layer_penalty_factor=base_req.layer_penalty_factor,
+            preprocess_prompt=base_req.preprocess_prompt,
+            postprocess_output=base_req.postprocess_output,
+            audio_chunk_duration=base_req.audio_chunk_duration,
+            audio_chunk_threshold=base_req.audio_chunk_threshold,
         )
         try:
             result = await inference_svc.synthesize(req)
@@ -250,6 +275,11 @@ async def create_speech_clone(
         default=None,
         description="Language code (e.g., 'en', 'vi', 'zh') for multilingual pronunciation",
     ),
+    layer_penalty_factor: float | None = Form(default=None, ge=0.0),
+    preprocess_prompt: bool | None = Form(default=None),
+    postprocess_output: bool | None = Form(default=None),
+    audio_chunk_duration: float | None = Form(default=None, gt=0.0),
+    audio_chunk_threshold: float | None = Form(default=None, gt=0.0),
     inference_svc: InferenceService = Depends(_get_inference),
     metrics_svc: MetricsService = Depends(_get_metrics),
     cfg=Depends(_get_cfg),
@@ -303,6 +333,11 @@ async def create_speech_clone(
             class_temperature=class_temperature,
             duration=duration,
             language=language,
+            layer_penalty_factor=layer_penalty_factor,
+            preprocess_prompt=preprocess_prompt,
+            postprocess_output=postprocess_output,
+            audio_chunk_duration=audio_chunk_duration,
+            audio_chunk_threshold=audio_chunk_threshold,
         )
         try:
             result = await inference_svc.synthesize(req)

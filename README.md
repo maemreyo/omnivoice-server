@@ -21,18 +21,30 @@ OpenAI-compatible HTTP server for [OmniVoice](https://github.com/k2-fsa/OmniVoic
 
 ## Features
 
-- **OpenAI-compatible API** - Drop-in replacement for OpenAI TTS endpoints
-- **Three voice modes**:
-  - **Auto**: Model selects voice automatically
-  - **Design**: Specify voice attributes (gender, age, accent, pitch, style)
-  - **Clone**: Voice cloning from reference audio
-- **Voice profile management** - Save and reuse cloned voices
-- **Streaming synthesis** - Low-latency sentence-level streaming
-- **Concurrent requests** - Configurable thread pool for parallel synthesis
-- **Multiple audio formats** - WAV and raw PCM output
+### Upstream OmniVoice Capabilities (Pass-Through)
+
+omnivoice-server forwards these features directly to the upstream OmniVoice model:
+
+- **Voice design attributes** - Control gender, age, pitch, accent, dialect, and whisper style
+- **Voice cloning** - Clone voices from reference audio samples
+- **Non-verbal expressions** - Inline symbols like `[laughter]`, `[breath]`, `[sigh]`, `[sniff]`
+- **Pronunciation control** - Pinyin hints for Chinese, CMU dictionary format for English
+- **Generation parameters** - Fine-tune quality with `num_step`, `guidance_scale`, `temperature`, `denoise`, and more
 - **Speed control** - 0.25x to 4.0x playback speed
-- **Optional authentication** - Bearer token support
-- **Production-ready** - Request timeouts, health checks, metrics
+- **Multiple languages** - English, Chinese, and other languages supported by OmniVoice
+
+### Server-Only Extensions
+
+omnivoice-server adds these wrapper features on top of OmniVoice:
+
+- **OpenAI-compatible REST API** - Drop-in replacement for OpenAI TTS endpoints
+- **HTTP streaming transport** - Sentence-level chunked transfer for lower perceived latency
+- **Voice profile storage** - Persistent filesystem storage for cloned voice references (CRUD operations)
+- **OpenAI preset mappings** - Convenience aliases (`alloy`, `nova`, `onyx`, etc.) mapped to design prompts
+- **Bearer token authentication** - Optional API key protection
+- **Concurrent request handling** - Configurable thread pool for parallel synthesis
+- **Audio format conversion** - Tensor to WAV/PCM byte conversion
+- **Production features** - Health checks, Prometheus metrics, request timeouts
 
 ## Quick Start
 
@@ -87,9 +99,7 @@ omnivoice-server
 
 The server will start at `http://127.0.0.1:8880` by default.
 
-`/v1/audio/speech` accepts explicit `instructions`, plus OpenAI-style preset names in
-`voice` or `speaker`. If none are provided, it falls back to the default design prompt:
-`male, middle-aged, moderate pitch, british accent`
+**Voice Control**: `/v1/audio/speech` accepts explicit `instructions` (strongest control), plus OpenAI-style preset names in `voice` or `speaker` (server-only convenience mappings). If none are provided, it falls back to the default design prompt: `male, middle-aged, moderate pitch, british accent`
 
 ## ⚠️ Verification Status
 
@@ -186,15 +196,17 @@ is absent, `/v1/audio/speech` also accepts OpenAI-style preset names in `voice` 
 `speaker`, such as `alloy`, `nova`, `onyx`, and `shimmer`. Unknown values are ignored,
 and the server falls back to the default design prompt `male, middle-aged, moderate pitch, british accent`.
 
-Available attributes:
-- **Gender**: male, female
-- **Age**: child, teenager, young adult, middle-aged, elderly
-- **Pitch**: very low pitch, low pitch, moderate pitch, high pitch, very high pitch
-- **Style**: whisper
-- **Accent (English)**: american accent, british accent, australian accent, chinese accent, canadian accent, indian accent, korean accent, portuguese accent, russian accent, japanese accent
-- **Dialect (Chinese)**: 河南话, 陕西话, 四川话, 贵州话, 云南话, 桂林话, 济南话, 石家庄话, 甘肃话, 宁夏话, 青岛话, 东北话
+**Canonical instruction vocabulary** (upstream OmniVoice attributes):
+- **Gender**: `male`, `female`
+- **Age**: `child`, `teenager`, `young adult`, `middle-aged`, `elderly`
+- **Pitch**: `very low pitch`, `low pitch`, `moderate pitch`, `high pitch`, `very high pitch`
+- **Style**: `whisper`
+- **Accent (English)**: `american accent`, `british accent`, `australian accent`, `chinese accent`, `canadian accent`, `indian accent`, `korean accent`, `portuguese accent`, `russian accent`, `japanese accent`
+- **Dialect (Chinese)**: `河南话`, `陕西话`, `四川话`, `贵州话`, `云南话`, `桂林话`, `济南话`, `石家庄话`, `甘肃话`, `宁夏话`, `青岛话`, `东北话`
 
-OpenAI-compatible local presets:
+**Note**: Short accent aliases like `british`, `american` are accepted but canonicalized internally to full forms like `british accent`.
+
+**OpenAI-compatible presets** (server-only convenience mappings):
 - `alloy`, `ash`, `ballad`, `cedar`, `coral`, `echo`, `fable`, `marin`, `nova`, `onyx`, `sage`, `shimmer`, `verse`
 
 Preset mapping table:
@@ -343,14 +355,25 @@ Generate speech from text (OpenAI-compatible).
   "response_format": "wav",
   "speed": 1.0,
   "stream": false,
-  "num_step": 32
+  "num_step": 32,
+  "guidance_scale": 3.0,
+  "denoise": true,
+  "t_shift": 0.1,
+  "position_temperature": 5.0,
+  "class_temperature": 0.0,
+  "duration": 3.5,
+  "layer_penalty_factor": 0.5,
+  "preprocess_prompt": true,
+  "postprocess_output": true,
+  "audio_chunk_duration": 0.5,
+  "audio_chunk_threshold": 0.1
 }
 ```
 
-Precedence:
-- `instructions`
-- `speaker` preset
-- `voice` preset
+**Parameter precedence**:
+- `instructions` (strongest, upstream voice design)
+- `speaker` preset (server-only mapping)
+- `voice` preset (server-only mapping)
 - server default prompt
 
 **Response:** Audio file (WAV or PCM)
@@ -365,6 +388,17 @@ One-shot voice cloning (multipart form).
 - `ref_text` (optional): Reference transcript
 - `speed` (optional): Playback speed (default: 1.0)
 - `num_step` (optional): Inference steps
+- `guidance_scale` (optional): CFG scale
+- `denoise` (optional): Enable denoising
+- `t_shift` (optional): Noise schedule shift
+- `position_temperature` (optional): Voice diversity
+- `class_temperature` (optional): Token sampling temperature
+- `duration` (optional): Fixed output duration
+- `layer_penalty_factor` (optional): Layer penalty factor
+- `preprocess_prompt` (optional): Enable prompt preprocessing
+- `postprocess_output` (optional): Enable output postprocessing
+- `audio_chunk_duration` (optional): Audio chunk duration
+- `audio_chunk_threshold` (optional): Audio chunk threshold
 
 **Response:** Audio file (WAV)
 
@@ -377,22 +411,37 @@ List available voices and profiles.
 {
   "voices": [
     {
-      "id": "auto",
-      "type": "auto",
-      "description": "Ignored by /v1/audio/speech; server default design prompt is male, middle-aged, moderate pitch, british accent"
+      "id": "design:<attributes>",
+      "type": "design",
+      "description": "Custom voice design using upstream OmniVoice attributes"
     },
-    {"id": "design:<attributes>", "type": "design", "description": "..."},
-    {"id": "alloy", "type": "preset", "description": "..."},
-    {"id": "clone:my_voice", "type": "clone", "profile_id": "my_voice"}
+    {
+      "id": "alloy",
+      "type": "preset",
+      "description": "Server-only preset mapped to: female, young adult, moderate pitch, american accent"
+    },
+    {
+      "id": "clone:my_voice",
+      "type": "clone",
+      "profile_id": "my_voice",
+      "description": "Server-stored voice profile (use /v1/audio/speech/clone for synthesis)"
+    }
   ],
-  "design_attributes": {...},
+  "design_attributes": {
+    "gender": ["male", "female"],
+    "age": ["child", "teenager", "young adult", "middle-aged", "elderly"],
+    "pitch": ["very low pitch", "low pitch", "moderate pitch", "high pitch", "very high pitch"],
+    "style": ["whisper"],
+    "accent_en": ["american accent", "british accent", "australian accent", ...],
+    "dialect_zh": ["河南话", "陕西话", "四川话", ...]
+  },
   "total": 3
 }
 ```
 
 #### `POST /v1/voices/profiles`
 
-Create a voice cloning profile.
+Create a voice cloning profile (server-only storage feature).
 
 **Form fields:**
 - `profile_id` (required): Unique identifier (alphanumeric, dashes, underscores)
@@ -409,17 +458,19 @@ Create a voice cloning profile.
 }
 ```
 
+**Note**: Profiles are stored for management and inspection. For synthesis, use `POST /v1/audio/speech/clone` with reference audio.
+
 #### `GET /v1/voices/profiles/{profile_id}`
 
-Get profile details.
+Get profile details (server-only storage feature).
 
 #### `PATCH /v1/voices/profiles/{profile_id}`
 
-Update profile (ref_audio and/or ref_text).
+Update profile ref_audio and/or ref_text (server-only storage feature).
 
 #### `DELETE /v1/voices/profiles/{profile_id}`
 
-Delete a profile.
+Delete a profile (server-only storage feature).
 
 #### `GET /v1/models`
 
@@ -437,7 +488,7 @@ Prometheus-style metrics.
 
 ### Non-Verbal Symbols
 
-OmniVoice natively supports non-verbal symbols inline in text. These are pass-through features from the upstream model:
+OmniVoice natively supports non-verbal symbols inline in text (upstream pass-through feature):
 
 ```python
 response = httpx.post(
@@ -448,16 +499,28 @@ response = httpx.post(
 )
 ```
 
-Supported symbols:
+Supported symbols (from upstream OmniVoice):
 - `[laughter]` - Natural laughter
 - `[breath]` - Breathing sound
 - `[sigh]` - Sighing sound
-- Other non-verbal expressions supported by OmniVoice
+- `[sniff]` - Sniffing sound
+- `[confirmation-en]` - English confirmation sound
+- `[question-en]` - English questioning intonation
+- `[question-ah]` - Questioning "ah" sound
+- `[question-oh]` - Questioning "oh" sound
+- `[question-ei]` - Questioning "ei" sound
+- `[question-yi]` - Questioning "yi" sound
+- `[surprise-ah]` - Surprised "ah" sound
+- `[surprise-oh]` - Surprised "oh" sound
+- `[surprise-wa]` - Surprised "wa" sound
+- `[surprise-yo]` - Surprised "yo" sound
+- `[dissatisfaction-hnn]` - Dissatisfied "hnn" sound
 
-### Pronunciation Correction
+### Pronunciation Control
 
-For Chinese text, you can provide pinyin hints for pronunciation correction:
+Provide pronunciation hints inline in text (upstream pass-through feature):
 
+**Chinese (Pinyin)**:
 ```python
 response = httpx.post(
     "http://127.0.0.1:8880/v1/audio/speech",
@@ -467,24 +530,39 @@ response = httpx.post(
 )
 ```
 
+**English (CMU Dictionary format)**:
+```python
+response = httpx.post(
+    "http://127.0.0.1:8880/v1/audio/speech",
+    json={
+        "input": "The word read(R IY D) is pronounced differently from read(R EH D)"
+    }
+)
+```
+
 The server passes these hints directly to OmniVoice without modification.
 
 ### Advanced Generation Parameters
 
-Fine-tune synthesis quality and characteristics with per-request parameters:
+Fine-tune synthesis quality and characteristics with per-request parameters (upstream OmniVoice pass-through):
 
 ```python
 response = httpx.post(
     "http://127.0.0.1:8880/v1/audio/speech",
     json={
         "input": "Hello world",
-        "num_step": 32,                 # Inference steps (1-64, higher=better quality)
-        "guidance_scale": 3.0,          # CFG scale (0-10, higher=stronger conditioning)
-        "denoise": True,                # Enable denoising (recommended)
-        "t_shift": 0.1,                 # Noise schedule shift (0-2, affects quality/speed)
-        "position_temperature": 5.0,    # Voice diversity (0=deterministic, higher=more variation)
-        "class_temperature": 0.0,       # Token sampling temperature (0=greedy, higher=random)
-        "duration": 3.5                 # Fixed output duration in seconds (overrides speed)
+        "num_step": 32,                    # Inference steps (1-64, higher=better quality)
+        "guidance_scale": 3.0,             # CFG scale (0-10, higher=stronger conditioning)
+        "denoise": True,                   # Enable denoising (recommended)
+        "t_shift": 0.1,                    # Noise schedule shift (0-2, affects quality/speed)
+        "position_temperature": 5.0,       # Voice diversity (0=deterministic, higher=more variation)
+        "class_temperature": 0.0,          # Token sampling temperature (0=greedy, higher=random)
+        "duration": 3.5,                   # Fixed output duration in seconds (overrides speed)
+        "layer_penalty_factor": 0.5,       # Layer penalty factor (≥0.0)
+        "preprocess_prompt": True,         # Enable prompt preprocessing
+        "postprocess_output": True,        # Enable output postprocessing
+        "audio_chunk_duration": 0.5,       # Audio chunk duration in seconds (>0.0)
+        "audio_chunk_threshold": 0.1       # Audio chunk threshold in seconds (>0.0)
     }
 )
 ```
@@ -711,7 +789,7 @@ omnivoice-server --num-step 32
 
 ### Streaming Voice Consistency
 
-When using `stream=True`, each sentence is synthesized independently from the same instructions or default design prompt. With non-zero temperature settings, timbre can still drift across chunks because there is no shared state between sentence-level synthesis calls.
+When using `stream=True` (server-only HTTP streaming transport), each sentence is synthesized independently from the same instructions or default design prompt. With non-zero temperature settings, timbre can still drift across chunks because there is no shared state between sentence-level synthesis calls.
 
 **Workarounds:**
 
