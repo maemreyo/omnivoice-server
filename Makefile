@@ -1,20 +1,22 @@
+PY ?= python3.11
+
 .PHONY: help install dev test test-cov lint format type-check clean build publish docs docker-build docker-run
 
 help: ## Show this help message
 	@echo "Available commands:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 install: ## Install package with basic dependencies
-	pip install -e .
+	$(PY) -m pip install -e .
 
 dev: ## Install package with development dependencies
-	pip install -e ".[dev]"
+	$(PY) -m pip install -e ".[dev]"
 
 test: ## Run tests
-	pytest tests/ -v
+	$(PY) -m pytest tests/ -v
 
 test-cov: ## Run tests with coverage report
-	pytest tests/ -v --cov=omnivoice_server --cov-report=term-missing --cov-report=html
+	$(PY) -m pytest tests/ -v --cov=omnivoice_server --cov-report=term-missing --cov-report=html
 
 lint: ## Run linting with ruff
 	ruff check omnivoice_server/ tests/
@@ -31,13 +33,13 @@ clean: ## Clean build artifacts
 	find . -type f -name "*.pyc" -delete
 
 build: ## Build package wheel and sdist
-	python -m build
+	$(PY) -m build
 
 publish-test: ## Publish to TestPyPI (for testing)
-	python -m twine upload --repository testpypi dist/*
+	$(PY) -m twine upload --repository testpypi dist/*
 
-publish: ## Publish to PyPI (requires authentication)
-	python -m twine upload dist/*
+publish: ## Publish to PyPI (requires authentication token)
+	$(PY) -m twine upload dist/*
 
 docker-build: ## Build Docker image
 	docker build -t omnivoice-server:latest .

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnivoice-server"
-version = "0.1.2"
+version = "0.2.0"
 description = "OpenAI-compatible HTTP server for OmniVoice TTS"
 readme = "README.md"
 license = { text = "MIT" }

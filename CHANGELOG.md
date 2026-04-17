@@ -5,7 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-04-17
+
+### Added
+
+- New upstream generation parameters exposed on `/v1/audio/speech` and `/v1/audio/speech/clone`:
+  - `layer_penalty_factor` (float, ≥0.0) — Layer penalty scaling factor
+  - `preprocess_prompt` (bool) — Enable prompt preprocessing
+  - `postprocess_output` (bool) — Enable output postprocessing (trailing silence removal)
+  - `audio_chunk_duration` (float, >0.0) — Audio chunk duration threshold
+  - `audio_chunk_threshold` (float, >0.0) — Audio chunk length threshold
+- Instruction validation and canonicalization with upstream-aligned attribute allowlists
+- Accent alias short-form expansion (e.g., `british` → `british accent`, `american` → `american accent`)
+- `/v1/voices` metadata now includes `design_attributes` with canonical supported categories
+- QA script (`scripts/generate_qa_samples.py`) covering baseline, new params, instruction validation, and non-verbal pass-through
+
+### Fixed
+
+- Reject invalid or conflicting `instructions` (duplicate gender, unsupported emotion/style, empty string)
+- `/v1/audio/speech/clone` now parity-aligned with generation parameters
+
+### Changed
+
+- Default device changed from `cuda` to `cpu` due to Apple Silicon MPS issues (see `docs/verification/MPS_ISSUE.md`)
 
 ## [0.1.2] - 2026-04-17
 
@@ -79,7 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Type hints throughout codebase
 - Async/await for I/O operations
 
-[unreleased]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.2...HEAD
+[unreleased]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/maemreyo/omnivoice-server/releases/tag/v0.1.0
