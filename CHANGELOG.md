@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-04-17
+
+### Added
+
+- Expanded `response_format` support to all 6 OpenAI API formats: `mp3`, `opus`, `aac`, `flac`, `wav`, `pcm` ([#16](https://github.com/maemreyo/omnivoice-server/issues/16))
+- Optional `pydub` dependency for format conversion (`pip install omnivoice-server[formats]`)
+- Added runtime error handling with 501 Not Implemented when format conversion fails (missing pydub/ffmpeg)
+- Test coverage for both `PYDUB_AVAILABLE=False` and `FFMPEG_AVAILABLE=False` scenarios
+
+### Fixed
+
+- Fixed BytesIO handling: replaced `torchaudio.save()` with `soundfile.write()` for WAV generation ([#15](https://github.com/maemreyo/omnivoice-server/issues/15))
+- Fixed Opus MIME type: changed from incorrect `audio/opus` to `audio/ogg` (FFmpeg wraps Opus in Ogg container)
+- Fixed `FFMPEG_AVAILABLE` caching: now cached at module load time for performance
+- Fixed `ValueError` handling in `_convert_wav_to_format()`: moved check outside try block
+- Fixed defensive access for `media_types` dict: added explicit error handling for unknown formats
+- Added magic byte validation tests for MP3, Opus, AAC, and FLAC formats
+
+### Changed
+
+- Internal refactoring: consolidated format conversion logic in `tensors_to_formatted_bytes()`
+- Audio encoding helpers are now pure functions with no side effects
+
 ## [0.1.1] - 2026-04-16
 
 ### Fixed
@@ -56,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Type hints throughout codebase
 - Async/await for I/O operations
 
-[unreleased]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.1...HEAD
+[unreleased]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/maemreyo/omnivoice-server/releases/tag/v0.1.0
