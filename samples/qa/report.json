@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-17T06:24:04Z",
-  "base_url": "http://127.0.0.1:8880",
-  "total": 29,
-  "passed": 29,
+  "generated_at": "2026-04-18T12:57:11Z",
+  "base_url": "http://127.0.0.1:8899",
+  "total": 34,
+  "passed": 34,
   "failed": 0,
   "errors": 0,
   "results": [
@@ -15,7 +15,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 21.23,
+      "latency_s": 23.11,
       "saved_path": "samples/qa/A01_default_no_params.wav"
     },
     {
@@ -27,7 +27,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.09,
+      "latency_s": 17.22,
       "saved_path": "samples/qa/A02_preset_alloy.wav"
     },
     {
@@ -39,7 +39,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.77,
+      "latency_s": 15.61,
       "saved_path": "samples/qa/A03_preset_nova.wav"
     },
     {
@@ -51,7 +51,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.65,
+      "latency_s": 15.64,
       "saved_path": "samples/qa/A04_instructions_female_british.wav"
     },
     {
@@ -63,7 +63,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.06,
+      "latency_s": 15.89,
       "saved_path": "samples/qa/A05_instructions_male_low_pitch.wav"
     },
     {
@@ -75,7 +75,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.69,
+      "latency_s": 15.88,
       "saved_path": "samples/qa/B01_layer_penalty_factor_default.wav"
     },
     {
@@ -87,7 +87,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.35,
+      "latency_s": 16.94,
       "saved_path": "samples/qa/B02_layer_penalty_factor_low.wav"
     },
     {
@@ -99,7 +99,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.87,
+      "latency_s": 15.87,
       "saved_path": "samples/qa/B03_layer_penalty_factor_high.wav"
     },
     {
@@ -111,7 +111,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.21,
+      "latency_s": 17.84,
       "saved_path": "samples/qa/B04_preprocess_prompt_true.wav"
     },
     {
@@ -123,7 +123,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.33,
+      "latency_s": 16.14,
       "saved_path": "samples/qa/B05_preprocess_prompt_false.wav"
     },
     {
@@ -135,7 +135,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.35,
+      "latency_s": 16.68,
       "saved_path": "samples/qa/B06_postprocess_output_true.wav"
     },
     {
@@ -147,19 +147,19 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.06,
+      "latency_s": 16.79,
       "saved_path": "samples/qa/B07_postprocess_output_false.wav"
     },
     {
       "id": "B08",
       "label": "audio_chunk_on_long_text",
       "group": "new_params",
-      "desc": "audio_chunk_duration=15s + threshold=30s on long text",
+      "desc": "chunked generation path on moderate text with low threshold",
       "endpoint": "/v1/audio/speech",
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 94.58,
+      "latency_s": 11.38,
       "saved_path": "samples/qa/B08_audio_chunk_on_long_text.wav"
     },
     {
@@ -171,7 +171,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 35.26,
+      "latency_s": 35.95,
       "saved_path": "samples/qa/B09_all_new_params_combined.wav"
     },
     {
@@ -183,7 +183,7 @@
       "status": "PASS",
       "expect_status": 422,
       "actual_status": 422,
-      "latency_s": 0.0,
+      "latency_s": 0.01,
       "saved_path": null
     },
     {
@@ -207,7 +207,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.53,
+      "latency_s": 15.31,
       "saved_path": "samples/qa/C01_alias_british.wav"
     },
     {
@@ -219,7 +219,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.59,
+      "latency_s": 14.42,
       "saved_path": "samples/qa/C02_alias_american.wav"
     },
     {
@@ -231,7 +231,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 14.12,
+      "latency_s": 14.75,
       "saved_path": "samples/qa/C03_young_female_high_pitch.wav"
     },
     {
@@ -243,7 +243,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.57,
+      "latency_s": 14.89,
       "saved_path": "samples/qa/C04_whisper_style.wav"
     },
     {
@@ -255,7 +255,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 13.86,
+      "latency_s": 16.03,
       "saved_path": "samples/qa/C05_full_canonical_design.wav"
     },
     {
@@ -315,7 +315,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 28.53,
+      "latency_s": 30.23,
       "saved_path": "samples/qa/D01_nonverbal_tags.wav"
     },
     {
@@ -327,7 +327,7 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 20.92,
+      "latency_s": 23.56,
       "saved_path": "samples/qa/D02_english_cmu.wav"
     },
     {
@@ -339,11 +339,71 @@
       "status": "PASS",
       "expect_status": 200,
       "actual_status": 200,
-      "latency_s": 15.68,
+      "latency_s": 17.39,
       "saved_path": "samples/qa/D03_chinese_pinyin.wav"
     },
     {
-      "id": "F01",
+      "id": "E01",
+      "label": "script_single_track",
+      "group": "script",
+      "desc": "Script endpoint: single_track output (default)",
+      "endpoint": "/v1/audio/script",
+      "status": "PASS",
+      "expect_status": 200,
+      "actual_status": 200,
+      "latency_s": 21.54,
+      "saved_path": "samples/qa/E01_script_single_track.wav"
+    },
+    {
+      "id": "E02",
+      "label": "script_multi_track",
+      "group": "script",
+      "desc": "Script endpoint: multi_track output with metadata",
+      "endpoint": "/v1/audio/script",
+      "status": "PASS",
+      "expect_status": 200,
+      "actual_status": 200,
+      "latency_s": 21.34,
+      "saved_path": "samples/qa/E02_script_multi_track.json"
+    },
+    {
+      "id": "E03",
+      "label": "script_with_speed_override",
+      "group": "script",
+      "desc": "Script endpoint: per-segment speed override",
+      "endpoint": "/v1/audio/script",
+      "status": "PASS",
+      "expect_status": 200,
+      "actual_status": 200,
+      "latency_s": 20.74,
+      "saved_path": "samples/qa/E03_script_with_speed_override.wav"
+    },
+    {
+      "id": "E04",
+      "label": "script_with_voice_override",
+      "group": "script",
+      "desc": "Script endpoint: per-segment voice override",
+      "endpoint": "/v1/audio/script",
+      "status": "PASS",
+      "expect_status": 200,
+      "actual_status": 200,
+      "latency_s": 22.6,
+      "saved_path": "samples/qa/E04_script_with_voice_override.wav"
+    },
+    {
+      "id": "E05",
+      "label": "script_with_pause",
+      "group": "script",
+      "desc": "Script endpoint: custom pause between speakers",
+      "endpoint": "/v1/audio/script",
+      "status": "PASS",
+      "expect_status": 200,
+      "actual_status": 200,
+      "latency_s": 23.77,
+      "saved_path": "samples/qa/E05_script_with_pause.wav"
+    },
+    {
+      "id": "G01",
       "label": "voices_metadata",
       "group": "metadata",
       "desc": "GET /v1/voices: canonical attrs, no unsupported categories",

@@ -61,8 +61,7 @@ def test_streaming_multi_sentence(client):
     assert len(resp.content) >= 48000
 
 
-def test_streaming_ignores_voice_field(client):
-    """Streaming should ignore the voice field and keep working."""
+def test_streaming_clone_prefix_nonexistent_profile_returns_404(client):
     resp = client.post(
         "/v1/audio/speech",
         json={
@@ -72,11 +71,10 @@ def test_streaming_ignores_voice_field(client):
             "response_format": "pcm",
         },
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 404
 
 
 def test_streaming_empty_text_rejected(client):
-    """Empty text should be rejected by Pydantic validation, not silently pass."""
     resp = client.post(
         "/v1/audio/speech",
         json={"input": "", "stream": True},
@@ -84,13 +82,12 @@ def test_streaming_empty_text_rejected(client):
     assert resp.status_code == 422
 
 
-def test_streaming_nonexistent_profile_not_checked(client):
-    """Unknown clone voices should be ignored in streaming mode too."""
+def test_streaming_bare_unknown_voice_falls_back_to_design(client):
     resp = client.post(
         "/v1/audio/speech",
         json={
             "input": "Hello.",
-            "voice": "clone:does-not-exist",
+            "voice": "unknownvoicename",
             "stream": True,
             "response_format": "pcm",
         },

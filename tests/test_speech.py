@@ -4,6 +4,7 @@ Tests for speech synthesis endpoints.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import shutil
 
@@ -41,19 +42,26 @@ def test_speech_design_voice(client):
     assert req.instruct == "male, middle-aged, moderate pitch, british accent"
 
 
-def test_speech_clone_profile_id_in_voice_selects_saved_profile(client, sample_audio_bytes):
+def test_full_clone_voice_workflow(client, sample_audio_bytes):
     resp = client.post(
         "/v1/voices/profiles",
-        data={"profile_id": "voice1"},
+        data={"profile_id": "chandra", "ref_text": "Hello world"},
         files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
     )
     assert resp.status_code == 201
+    assert resp.json()["profile_id"] == "chandra"
+
+    resp = client.get("/v1/voices")
+    assert resp.status_code == 200
+    voices = resp.json()["voices"]
+    clone_ids = [v["id"] for v in voices if v.get("type") == "clone"]
+    assert "clone:chandra" in clone_ids
 
     resp = client.post(
         "/v1/audio/speech",
         json={
-            "input": "Hello",
-            "voice": "clone:voice1",
+            "input": "Hello this is a test",
+            "voice": "clone:chandra",
             "response_format": "pcm",
         },
     )
@@ -61,13 +69,271 @@ def test_speech_clone_profile_id_in_voice_selects_saved_profile(client, sample_a
     req = client.app.state.inference_svc.synthesize.await_args.args[0]
     assert req.mode == "clone"
     assert req.ref_audio_path is not None
+    assert "chandra" in req.ref_audio_path
+    assert req.ref_text == "Hello world"
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "voice": "clone:nonexistent",
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 404
+    assert "nonexistent" in resp.json()["error"]["message"]
+
+
+def test_clone_workflow_bare_name_triggers_clone_mode(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "baretest"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello", "voice": "baretest", "response_format": "pcm"},
+    )
+    assert resp.status_code == 200
+    req = client.app.state.inference_svc.synthesize.await_args.args[0]
+    assert req.mode == "clone"
+    assert "baretest" in req.ref_audio_path
+
+
+def test_clone_workflow_case_insensitive_prefix(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "casetest"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello", "voice": "CLONE:casetest", "response_format": "pcm"},
+    )
+    assert resp.status_code == 200
+    req = client.app.state.inference_svc.synthesize.await_args.args[0]
+    assert req.mode == "clone"
+
+
+def test_clone_workflow_after_profile_deleted(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "deleteme"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    client.delete("/v1/voices/profiles/deleteme")
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello", "voice": "clone:deleteme", "response_format": "pcm"},
+    )
+    assert resp.status_code == 404
+
+
+def test_clone_workflow_profile_update(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "updateme"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    client.patch(
+        "/v1/voices/profiles/updateme",
+        data={"ref_text": "Updated text"},
+        files={"ref_audio": ("updated.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello", "voice": "clone:updateme", "response_format": "pcm"},
+    )
+    assert resp.status_code == 200
+    req = client.app.state.inference_svc.synthesize.await_args.args[0]
+    assert req.ref_text == "Updated text"
+
+
+def test_clone_workflow_duplicate_profile_returns_409(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "duplicate"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "duplicate"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 409
+
+
+def test_clone_workflow_overwrite_true_succeeds(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "overwrite", "overwrite": "true"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "overwrite", "overwrite": "true"},
+        files={"ref_audio": ("ref2.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 201
+
+
+def test_clone_workflow_empty_profile_list(client):
+    resp = client.get("/v1/voices")
+    assert resp.status_code == 200
+    voices = resp.json()["voices"]
+    clone_voices = [v for v in voices if v.get("type") == "clone"]
+    assert len(clone_voices) == 0
+
+
+def test_clone_workflow_get_nonexistent_profile_returns_404(client):
+    resp = client.get("/v1/voices/profiles/nonexistent")
+    assert resp.status_code == 404
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+<<<<<<< HEAD
+            "input": "Hello",
+            "voice": "clone:voice1",
+=======
+            "input": "Hello this is a test",
+            "voice": "clone:chandra",
+>>>>>>> fix/19-tts-profile-id-ignored
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 200
+    req = client.app.state.inference_svc.synthesize.await_args.args[0]
+    assert req.mode == "clone"
+    assert req.ref_audio_path is not None
+<<<<<<< HEAD
     assert req.ref_audio_path.endswith("/voice1/ref_audio.wav") or req.ref_audio_path.endswith(
         "\\voice1\\ref_audio.wav"
     )
+=======
+    assert "chandra" in req.ref_audio_path
+    assert req.ref_text == "Hello world"
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "voice": "clone:nonexistent",
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 404
+    assert "nonexistent" in resp.json()["error"]["message"]
+
+
+def test_clone_workflow_bare_name_triggers_clone_mode(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "baretest"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello", "voice": "baretest", "response_format": "pcm"},
+    )
+    assert resp.status_code == 200
+    req = client.app.state.inference_svc.synthesize.await_args.args[0]
+    assert req.mode == "clone"
+    assert "baretest" in req.ref_audio_path
+
+
+def test_clone_workflow_case_insensitive_prefix(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "casetest"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello", "voice": "CLONE:casetest", "response_format": "pcm"},
+    )
+    assert resp.status_code == 200
+    req = client.app.state.inference_svc.synthesize.await_args.args[0]
+    assert req.mode == "clone"
+
+
+def test_clone_workflow_after_profile_deleted(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "deleteme"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    client.delete("/v1/voices/profiles/deleteme")
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello", "voice": "clone:deleteme", "response_format": "pcm"},
+    )
+    assert resp.status_code == 404
+
+
+def test_clone_workflow_profile_update(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "updateme"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    client.patch(
+        "/v1/voices/profiles/updateme",
+        data={"ref_text": "Updated text"},
+        files={"ref_audio": ("updated.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello", "voice": "clone:updateme", "response_format": "pcm"},
+    )
+    assert resp.status_code == 200
+    req = client.app.state.inference_svc.synthesize.await_args.args[0]
+    assert req.ref_text == "Updated text"
+
+
+def test_clone_workflow_duplicate_profile_returns_409(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "duplicate"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "duplicate"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 409
+
+
+def test_clone_workflow_overwrite_true_succeeds(client, sample_audio_bytes):
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "overwrite", "overwrite": "true"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    resp = client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "overwrite", "overwrite": "true"},
+        files={"ref_audio": ("ref2.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 201
+
+
+def test_clone_workflow_empty_profile_list(client):
+    resp = client.get("/v1/voices")
+    assert resp.status_code == 200
+    voices = resp.json()["voices"]
+    clone_voices = [v for v in voices if v.get("type") == "clone"]
+    assert len(clone_voices) == 0
+
+
+def test_clone_workflow_get_nonexistent_profile_returns_404(client):
+    resp = client.get("/v1/voices/profiles/nonexistent")
+    assert resp.status_code == 404
+>>>>>>> fix/19-tts-profile-id-ignored
 
 
 def test_speech_auto_uses_default_design_prompt(client):
-    """auto should resolve to the server's default design prompt."""
     resp = client.post(
         "/v1/audio/speech",
         json={
@@ -129,6 +395,41 @@ def test_speech_default_voice_uses_default_design_prompt(client):
     assert req.instruct == "male, middle-aged, moderate pitch, british accent"
 
 
+def test_speech_request_timeout_override_is_forwarded(client):
+    """Explicit request timeout should be forwarded to inference."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "request_timeout_s": 300,
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 200
+    assert client.app.state.inference_svc.synthesize.await_args.kwargs == {"timeout_override": 300}
+
+
+def test_speech_timeout_override_appears_in_timeout_error(client):
+    """Timeout response should report the effective request override."""
+
+    async def _timeout_synthesize(_req, **_kwargs):
+        raise asyncio.TimeoutError
+
+    client.app.state.inference_svc.synthesize.side_effect = _timeout_synthesize
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "Hello",
+            "request_timeout_s": 300,
+            "response_format": "pcm",
+        },
+    )
+
+    assert resp.status_code == 504
+    assert resp.json()["error"]["message"] == "Synthesis timed out after 300s"
+
+
 def test_speech_design_instructions_field(client):
     """Explicit instructions should drive design mode."""
     resp = client.post(
@@ -163,8 +464,7 @@ def test_speech_instructions_override_voice_design_shorthand(client):
     assert req.instruct == "female,british accent"
 
 
-def test_speech_ignores_clone_voice_when_instructions_missing(client):
-    """clone:* in the voice field should be ignored by /v1/audio/speech."""
+def test_speech_clone_prefix_nonexistent_profile_returns_404(client):
     resp = client.post(
         "/v1/audio/speech",
         json={
@@ -173,10 +473,8 @@ def test_speech_ignores_clone_voice_when_instructions_missing(client):
             "response_format": "pcm",
         },
     )
-    assert resp.status_code == 200
-    req = client.app.state.inference_svc.synthesize.await_args.args[0]
-    assert req.mode == "design"
-    assert req.instruct == "male, middle-aged, moderate pitch, british accent"
+    assert resp.status_code == 404
+    assert "nonexistent" in resp.json()["error"]["message"]
 
 
 def test_speech_ignores_voice_when_instructions_present(client):
@@ -225,13 +523,12 @@ def test_speech_invalid_text_empty(client):
     assert resp.status_code == 422
 
 
-def test_speech_clone_unknown_profile_ignored(client):
-    """clone:* values are ignored by /v1/audio/speech unless cloning endpoint is used."""
+def test_speech_bare_unknown_name_falls_back_to_design(client):
     resp = client.post(
         "/v1/audio/speech",
         json={
             "input": "Hello",
-            "voice": "clone:nonexistent",
+            "voice": "unknownvoicename",
             "response_format": "pcm",
         },
     )

@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import logging
 import shutil
+from dataclasses import dataclass
 from typing import Literal
 
 import numpy as np
@@ -32,11 +33,38 @@ SAMPLE_RATE = 24_000
 ResponseFormat = Literal["mp3", "opus", "aac", "flac", "wav", "pcm"]
 
 
+def validate_audio_tensor(tensor: torch.Tensor | np.ndarray, context: str = "audio") -> None:
+    """
+    Validate audio tensor shape and values before conversion.
+
+    Args:
+        tensor: Audio tensor to validate
+        context: Context string for error messages
+
+    Raises:
+        ValueError: If tensor is malformed
+    """
+    if isinstance(tensor, np.ndarray):
+        arr = tensor
+    else:
+        arr = tensor.detach().cpu().numpy()
+
+    if arr.size == 0:
+        raise ValueError(f"{context}: tensor is empty (size=0)")
+
+    if arr.ndim > 2:
+        raise ValueError(f"{context}: tensor has too many dimensions ({arr.ndim}), expected 1 or 2")
+
+    if not np.isfinite(arr).all():
+        raise ValueError(f"{context}: tensor contains NaN or Inf values")
+
+
 def tensor_to_wav_bytes(tensor: torch.Tensor | np.ndarray) -> bytes:
     """
     Convert (1, T) float32 tensor or numpy array to 16-bit PCM WAV bytes.
     """
-    # Handle both torch.Tensor and numpy.ndarray (e.g., when running on CUDA)
+    validate_audio_tensor(tensor, "tensor_to_wav_bytes")
+
     if isinstance(tensor, np.ndarray):
         tensor = torch.from_numpy(tensor)
     cpu_tensor = tensor.detach().cpu()
@@ -45,9 +73,9 @@ def tensor_to_wav_bytes(tensor: torch.Tensor | np.ndarray) -> bytes:
 
     if cpu_tensor.dim() == 2:
         if cpu_tensor.shape[0] == 1:
-            cpu_tensor = cpu_tensor.squeeze(0)  # (T,) mono
+            cpu_tensor = cpu_tensor.squeeze(0)
         else:
-            cpu_tensor = cpu_tensor.T  # (C, T) -> (T, C)
+            cpu_tensor = cpu_tensor.T
 
     buf = io.BytesIO()
     sf.write(buf, cpu_tensor.numpy(), SAMPLE_RATE, format="WAV", subtype="PCM_16")
@@ -59,9 +87,15 @@ def tensors_to_wav_bytes(tensors: list[torch.Tensor | np.ndarray]) -> bytes:
     """
     Concatenate multiple (1, T) tensors into a single WAV.
     """
+    if not tensors:
+        raise ValueError("tensors_to_wav_bytes: empty tensor list")
+
+    for i, t in enumerate(tensors):
+        validate_audio_tensor(t, f"tensors_to_wav_bytes[{i}]")
+
     if len(tensors) == 1:
         return tensor_to_wav_bytes(tensors[0])
-    # Convert numpy arrays to tensors if needed, then concatenate
+
     tensor_list = []
     for t in tensors:
         if isinstance(t, np.ndarray):
@@ -76,10 +110,11 @@ def tensor_to_pcm16_bytes(tensor: torch.Tensor | np.ndarray) -> bytes:
     Convert (1, T) float32 tensor or numpy array to raw PCM int16 bytes.
     Used for streaming — no WAV header, continuous byte stream.
     """
-    # Handle both torch.Tensor and numpy.ndarray (e.g., when running on CUDA)
+    validate_audio_tensor(tensor, "tensor_to_pcm16_bytes")
+
     if isinstance(tensor, np.ndarray):
         tensor = torch.from_numpy(tensor)
-    flat = tensor.squeeze(0).detach().cpu()  # (T,)
+    flat = tensor.squeeze(0).detach().cpu()
     return (flat * 32767).clamp(-32768, 32767).to(torch.int16).numpy().tobytes()
 
 
@@ -206,3 +241,116 @@ def validate_audio_bytes(data: bytes, field_name: str = "ref_audio") -> None:
             "Supported formats: WAV, MP3, FLAC, OGG. "
             f"Original error: {e}"
         ) from e
+
+
+@dataclass
+class SegmentTimestamp:
+    """Timestamp metadata for a single audio segment in a mixed track."""
+
+    index: int
+    speaker: str
+    offset_s: float
+    duration_s: float
+
+
+def make_silence_tensor(duration_s: float, sample_rate: int = SAMPLE_RATE) -> torch.Tensor:
+    """
+    Create a silent audio tensor of specified duration.
+
+    Args:
+        duration_s: Duration in seconds
+        sample_rate: Sample rate in Hz (default: 24000)
+
+    Returns:
+        torch.Tensor: Shape (1, num_samples) of zeros
+    """
+    num_samples = int(duration_s * sample_rate)
+    return torch.zeros(1, num_samples)
+
+
+def mix_to_single_track(
+    segments: list[dict],
+    pause_s: float = 0.5,
+) -> tuple[torch.Tensor, list[SegmentTimestamp]]:
+    """
+    Concatenate audio segments into a single track with pauses on speaker change.
+
+    Args:
+        segments: List of dicts with keys:
+            - 'audio': torch.Tensor (1, T)
+            - 'speaker': str
+        pause_s: Pause duration in seconds when speaker changes
+
+    Returns:
+        Tuple of:
+            - Mixed audio tensor (1, total_samples)
+            - List of SegmentTimestamp metadata
+    """
+    if not segments:
+        return torch.zeros(1, 0), []
+
+    for idx, seg in enumerate(segments):
+        if "audio" not in seg:
+            raise ValueError(f"mix_to_single_track: segment {idx} missing 'audio' key")
+        validate_audio_tensor(seg["audio"], f"mix_to_single_track segment {idx}")
+
+    chunks: list[torch.Tensor] = []
+    timestamps: list[SegmentTimestamp] = []
+    offset_s = 0.0
+    prev_speaker = None
+
+    for idx, seg in enumerate(segments):
+        audio = seg["audio"]
+        speaker = seg["speaker"]
+
+        if prev_speaker is not None and speaker != prev_speaker:
+            silence = make_silence_tensor(pause_s)
+            chunks.append(silence)
+            offset_s += pause_s
+
+        duration_s = audio.shape[-1] / SAMPLE_RATE
+        timestamps.append(
+            SegmentTimestamp(
+                index=idx,
+                speaker=speaker,
+                offset_s=offset_s,
+                duration_s=duration_s,
+            )
+        )
+
+        chunks.append(audio)
+        offset_s += duration_s
+        prev_speaker = speaker
+
+    mixed = torch.cat(chunks, dim=-1)
+    return mixed, timestamps
+
+
+def group_by_speaker(segments: list[dict]) -> dict[str, torch.Tensor]:
+    """
+    Group audio segments by speaker and concatenate each speaker's audio.
+
+    Args:
+        segments: List of dicts with keys:
+            - 'audio': torch.Tensor (1, T)
+            - 'speaker': str
+
+    Returns:
+        Dict mapping speaker ID to concatenated audio tensor
+    """
+    for idx, seg in enumerate(segments):
+        if "audio" not in seg:
+            raise ValueError(f"group_by_speaker: segment {idx} missing 'audio' key")
+        validate_audio_tensor(seg["audio"], f"group_by_speaker segment {idx}")
+
+    speaker_groups: dict[str, list[torch.Tensor]] = {}
+
+    for seg in segments:
+        speaker = seg["speaker"]
+        audio = seg["audio"]
+
+        if speaker not in speaker_groups:
+            speaker_groups[speaker] = []
+        speaker_groups[speaker].append(audio)
+
+    return {speaker: torch.cat(audios, dim=-1) for speaker, audios in speaker_groups.items()}

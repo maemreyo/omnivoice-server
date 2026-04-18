@@ -167,13 +167,19 @@ class InferenceService:
         self._semaphore = asyncio.Semaphore(cfg.max_concurrent)
         self._adapter = OmniVoiceAdapter(cfg)
 
-    async def synthesize(self, req: SynthesisRequest) -> SynthesisResult:
+    async def synthesize(
+        self,
+        req: SynthesisRequest,
+        timeout_override: int | None = None,
+    ) -> SynthesisResult:
         """
         Run synthesis in thread pool.
         Blocks at semaphore if MAX_CONCURRENT already running.
         Raises asyncio.TimeoutError if exceeds request_timeout_s.
         """
         loop = asyncio.get_running_loop()
+
+        timeout_s = timeout_override or self._cfg.request_timeout_s
 
         async with self._semaphore:
             result = await asyncio.wait_for(
@@ -182,7 +188,7 @@ class InferenceService:
                     self._run_sync,
                     req,
                 ),
-                timeout=self._cfg.request_timeout_s,
+                timeout=timeout_s,
             )
 
         return result

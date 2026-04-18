@@ -50,7 +50,7 @@ def make_wav_bytes(duration_frames: int = 0, sample_rate: int = 24000) -> bytes:
 # ── Mock inference ────────────────────────────────────────────────────────────
 
 
-def _mock_synthesize(req):
+def _mock_synthesize(req, **_kwargs):
     """Fake synthesis — returns 1s of silence immediately."""
     from omnivoice_server.services.inference import SynthesisResult
 

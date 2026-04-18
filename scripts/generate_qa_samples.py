@@ -49,7 +49,7 @@ TEXT_PRONUNCIATION_EN = (
 TEXT_PRONUNCIATION_ZH = (
     "\u4eca\u5929\u5929\u6c14\u5f88\u597d\u3002{ni3 hao3}\uff0c\u4f60\u597d\u5417\uff1f"
 )
-TEXT_LONG = ("This is a long text designed to trigger audio chunking behavior. " * 6).strip()
+TEXT_LONG = ("This is a chunking verification sample. " * 4).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -188,16 +188,18 @@ def build_cases(ref_audio_path: str | None) -> list[dict]:
             "id": "B08",
             "group": "new_params",
             "label": "audio_chunk_on_long_text",
-            "desc": "audio_chunk_duration=15s + threshold=30s on long text",
+            "desc": "chunked generation path on moderate text with low threshold",
             "endpoint": "/v1/audio/speech",
             "method": "json",
             "body": {
                 "input": TEXT_LONG,
-                "audio_chunk_duration": 15.0,
-                "audio_chunk_threshold": 30.0,
+                "num_step": 4,
+                "audio_chunk_duration": 1.0,
+                "audio_chunk_threshold": 0.1,
+                "request_timeout_s": 120,
             },
             "expect_status": 200,
-            "timeout_override": 300,
+            "timeout_override": 120,
         },
         {
             "id": "B09",
@@ -287,7 +289,9 @@ def build_cases(ref_audio_path: str | None) -> list[dict]:
             "id": "C05",
             "group": "instructions_valid",
             "label": "full_canonical_design",
-            "desc": "Full canonical instructions: male, middle-aged, moderate pitch, british accent",
+            "desc": (
+                "Full canonical instructions: male, middle-aged, moderate pitch, british accent"
+            ),
             "endpoint": "/v1/audio/speech",
             "method": "json",
             "body": {
@@ -377,11 +381,101 @@ def build_cases(ref_audio_path: str | None) -> list[dict]:
         },
     ]
 
-    # -------------------------------------------------- E. Clone parity
+    # -------------------------------------------------- E. Script endpoint cases
+    cases += [
+        {
+            "id": "E01",
+            "group": "script",
+            "label": "script_single_track",
+            "desc": "Script endpoint: single_track output (default)",
+            "endpoint": "/v1/audio/script",
+            "method": "json",
+            "body": {
+                "script": [
+                    {"speaker": "alice", "text": "Hello world"},
+                    {"speaker": "bob", "text": "Hi there"},
+                ],
+                "default_voice": "female, british accent",
+            },
+            "expect_status": 200,
+        },
+        {
+            "id": "E02",
+            "group": "script",
+            "label": "script_multi_track",
+            "desc": "Script endpoint: multi_track output with metadata",
+            "endpoint": "/v1/audio/script",
+            "method": "json",
+            "body": {
+                "script": [
+                    {"speaker": "alice", "text": "Hello world"},
+                    {"speaker": "bob", "text": "Hi there"},
+                ],
+                "output_format": "multi_track",
+                "default_voice": "female, british accent",
+            },
+            "expect_status": 200,
+        },
+        {
+            "id": "E03",
+            "group": "script",
+            "label": "script_with_speed_override",
+            "desc": "Script endpoint: per-segment speed override",
+            "endpoint": "/v1/audio/script",
+            "method": "json",
+            "body": {
+                "script": [
+                    {"speaker": "alice", "text": "Fast speech", "speed": 1.5},
+                    {"speaker": "bob", "text": "Slow speech", "speed": 0.8},
+                ],
+                "default_voice": "female, british accent",
+            },
+            "expect_status": 200,
+        },
+        {
+            "id": "E04",
+            "group": "script",
+            "label": "script_with_voice_override",
+            "desc": "Script endpoint: per-segment voice override",
+            "endpoint": "/v1/audio/script",
+            "method": "json",
+            "body": {
+                "script": [
+                    {
+                        "speaker": "alice",
+                        "text": "British accent",
+                        "voice": "female,british accent",
+                    },
+                    {"speaker": "bob", "text": "American accent", "voice": "male,american accent"},
+                ],
+                "default_voice": "female, british accent",
+            },
+            "expect_status": 200,
+        },
+        {
+            "id": "E05",
+            "group": "script",
+            "label": "script_with_pause",
+            "desc": "Script endpoint: custom pause between speakers",
+            "endpoint": "/v1/audio/script",
+            "method": "json",
+            "body": {
+                "script": [
+                    {"speaker": "alice", "text": "First line"},
+                    {"speaker": "bob", "text": "Second line"},
+                ],
+                "pause_between_speakers": 1.0,
+                "default_voice": "female, british accent",
+            },
+            "expect_status": 200,
+        },
+    ]
+
+    # -------------------------------------------------- F. Clone parity
     if ref_audio_path:
         cases += [
             {
-                "id": "E01",
+                "id": "F01",
                 "group": "clone_parity",
                 "label": "clone_basic",
                 "desc": "Clone basic request",
@@ -393,7 +487,7 @@ def build_cases(ref_audio_path: str | None) -> list[dict]:
                 "expect_status": 200,
             },
             {
-                "id": "E02",
+                "id": "F02",
                 "group": "clone_parity",
                 "label": "clone_all_new_params",
                 "desc": "Clone with all 5 new params",
@@ -412,7 +506,7 @@ def build_cases(ref_audio_path: str | None) -> list[dict]:
                 "expect_status": 200,
             },
             {
-                "id": "E03",
+                "id": "F03",
                 "group": "clone_parity_invalid",
                 "label": "clone_neg_penalty_REJECT",
                 "desc": "Clone layer_penalty_factor=-1.0 -> must return 422",
@@ -426,7 +520,7 @@ def build_cases(ref_audio_path: str | None) -> list[dict]:
             },
         ]
     else:
-        print("[INFO] No --ref-audio provided. Skipping clone endpoint cases (E01-E03).")
+        print("[INFO] No --ref-audio provided. Skipping clone endpoint cases (F01-F03).")
 
     return cases
 
@@ -468,7 +562,9 @@ def run_case(case: dict, base_url: str, out_dir: Path, timeout: int = 120) -> di
 
     saved_path = None
     if not no_save and resp.status_code == 200:
-        filename = f"{case['id']}_{case['label']}.wav"
+        content_type = resp.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        suffix = ".json" if content_type == "application/json" else ".wav"
+        filename = f"{case['id']}_{case['label']}{suffix}"
         saved_path = str(out_dir / filename)
         with open(saved_path, "wb") as f:
             f.write(resp.content)
@@ -512,7 +608,7 @@ def run_voices_check(base_url: str) -> dict:
         contaminated = list(forbidden & all_attr_keys)
         ok = is_list and has_design_attrs and not contaminated
         return {
-            "id": "F01",
+            "id": "G01",
             "label": "voices_metadata",
             "group": "metadata",
             "desc": "GET /v1/voices: canonical attrs, no unsupported categories",
@@ -525,7 +621,7 @@ def run_voices_check(base_url: str) -> dict:
         }
     except Exception as exc:
         return {
-            "id": "F01",
+            "id": "G01",
             "label": "voices_metadata",
             "group": "metadata",
             "status": "ERROR",
@@ -566,13 +662,12 @@ def main() -> None:
         result = run_case(case, args.base_url, out_dir, timeout=args.timeout)
         results.append(result)
         emoji = "\u2705" if result["status"] == "PASS" else "\u274c"
-        print(
-            f"{emoji} {result['status']}  ({result.get('actual_status')} in {result.get('latency_s', '?')}s)"
-        )
+        status_info = f"{result.get('actual_status')} in {result.get('latency_s', '?')}s"
+        print(f"{emoji} {result['status']}  ({status_info})")
         if result["status"] != "PASS":
             print(f"    >> {result.get('error_body', result.get('error', 'unknown'))}")
 
-    print("\n[F01] GET /v1/voices metadata...", end=" ", flush=True)
+    print("\n[G01] GET /v1/voices metadata...", end=" ", flush=True)
     vr = run_voices_check(args.base_url)
     results.append(vr)
     vr_icon = "✅" if vr["status"] == "PASS" else "❌"

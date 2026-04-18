@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-04-18
+
+### Added
+
+- Multi-speaker script synthesis endpoint (`POST /v1/audio/script`) for generating audio from multi-speaker scripts
+
+### Fixed
+
+- Voice cloning silently falling back to random/auto voice when using `clone:<profile>` prefix ([#22](https://github.com/maemreyo/omnivoice-server/issues/22))
+  - Now returns **HTTP 404** with clear error message when profile is not found
+- `voice`/`speaker` field in `/v1/audio/speech` now correctly resolves to cloned profile when a matching profile exists ([#22](https://github.com/maemreyo/omnivoice-server/issues/22))
+- `profile_id` parameter in clone synthesis respects explicitly passed profile IDs
+- Defensive tensor validation in script audio mixing to prevent runtime crashes
+- Script endpoint validation and runtime failure path hardening
+- Python 3.9 compatibility: replaced `asyncio.timeout` with `asyncio.wait_for`
+
 ## [0.2.0] - 2026-04-17
 
 ### Added
@@ -101,7 +117,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Type hints throughout codebase
 - Async/await for I/O operations
 
-[unreleased]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.0...v0.1.1

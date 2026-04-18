@@ -15,11 +15,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .config import Settings
-from .routers import health, models, speech, voices
+from .routers import health, models, script, speech, voices
 from .services.inference import InferenceService
 from .services.metrics import MetricsService
 from .services.model import ModelService
 from .services.profiles import ProfileService
+from .services.script import ScriptOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,12 @@ async def lifespan(app: FastAPI):
 
     app.state.profile_svc = ProfileService(profile_dir=cfg.profile_dir)
     app.state.metrics_svc = MetricsService()
+    app.state.script_orchestrator = ScriptOrchestrator(
+        inference_service=app.state.inference_svc,
+        profile_service=app.state.profile_svc,
+        metrics_service=app.state.metrics_svc,
+        settings=cfg,
+    )
     app.state.start_time = time.monotonic()
 
     elapsed = time.monotonic() - t0
@@ -116,13 +123,23 @@ def create_app(cfg: Settings) -> FastAPI:
     # ── Global error handlers ─────────────────────────────────────────────────
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        # Use mode='json' to ensure all values are JSON-serializable
+        # (avoids ValueError objects in 'ctx' from field_validator)
+        try:
+            errors = exc.errors(include_url=False)
+            # Ensure ctx values are strings
+            for err in errors:
+                if "ctx" in err:
+                    err["ctx"] = {k: str(v) for k, v in err["ctx"].items()}
+        except Exception:
+            errors = [{"msg": "validation error"}]
         return JSONResponse(
             status_code=422,
             content={
                 "error": {
                     "code": "validation_error",
                     "message": "Request validation failed",
-                    "detail": exc.errors(),
+                    "detail": errors,
                 }
             },
         )
@@ -143,6 +160,7 @@ def create_app(cfg: Settings) -> FastAPI:
     app.include_router(speech.router, prefix="/v1")
     app.include_router(voices.router, prefix="/v1")
     app.include_router(models.router, prefix="/v1")
+    app.include_router(script.router, prefix="/v1")
     app.include_router(health.router)
 
     return app
