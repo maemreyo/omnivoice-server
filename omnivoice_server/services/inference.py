@@ -135,7 +135,9 @@ class OmniVoiceAdapter:
             if req.ref_text:
                 kwargs["ref_text"] = req.ref_text
             logger.info(
-                f"[TRACE] CLONE mode kwargs prepared: ref_audio={req.ref_audio_path}, ref_text={req.ref_text!r}"
+                "[TRACE] CLONE mode kwargs prepared: ref_audio=%s, ref_text=%r",
+                req.ref_audio_path,
+                req.ref_text,
             )
         else:
             logger.warning(f"[TRACE] Unknown/unsupported mode: {req.mode!r}")

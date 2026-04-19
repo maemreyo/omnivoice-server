@@ -158,7 +158,7 @@ def create_app(cfg: Settings) -> FastAPI:
         # Use mode='json' to ensure all values are JSON-serializable
         # (avoids ValueError objects in 'ctx' from field_validator)
         try:
-            errors = exc.errors(include_url=False)
+            errors = exc.errors()
             # Ensure ctx values are strings
             for err in errors:
                 if "ctx" in err:

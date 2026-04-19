@@ -102,7 +102,10 @@ def _resolve_synthesis_mode(
 ) -> tuple[str, str | None, str | None, str | None]:
     """Resolve synthesis mode for /v1/audio/speech."""
     logger.debug(
-        f"[TRACE] _resolve_synthesis_mode called: speaker={body.speaker!r}, voice={body.voice!r}, instructions={body.instructions!r}"
+        "[TRACE] _resolve_synthesis_mode called: speaker=%r, voice=%r, instructions=%r",
+        body.speaker,
+        body.voice,
+        body.instructions,
     )
     speaker_raw = body.speaker.strip() if body.speaker else None
     voice_raw = body.voice.strip() if body.voice else None
@@ -118,7 +121,7 @@ def _resolve_synthesis_mode(
         voice_clone = voice_raw.lower().startswith("clone:")
         if speaker_clone != voice_clone:
             logger.warning(
-                "[TRACE] Ambiguous voice request: speaker=%r voice=%r mix clone/non-clone semantics",
+                "[TRACE] Ambiguous voice request: speaker=%r, voice=%r mix clone/non-clone",
                 body.speaker,
                 body.voice,
             )
@@ -156,7 +159,9 @@ def _resolve_synthesis_mode(
             ref_audio_path = profile_svc.get_ref_audio_path(profile_id)
             ref_text = profile_svc.get_ref_text(profile_id)
             logger.info(
-                f"[TRACE] Resolved to CLONE mode: profile_id={profile_id!r}, ref_audio={ref_audio_path}"
+                "[TRACE] Resolved to CLONE mode: profile_id=%r, ref_audio=%s",
+                profile_id,
+                ref_audio_path,
             )
             return "clone", None, str(ref_audio_path), ref_text
         except ProfileNotFoundError:
@@ -173,13 +178,14 @@ def _resolve_synthesis_mode(
 
     if speaker_raw and not speaker_preset and not speaker_raw.lower().startswith("clone:"):
         logger.warning(
-            "[TRACE] Unrecognized speaker field value=%r; speaker is reserved for preset/clone compatibility",
+            "[TRACE] Unrecognized speaker value=%r; use preset/clone or omit",
             body.speaker,
         )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
-                f"Unsupported speaker value '{body.speaker}'. Use a known preset, clone:<profile_id>, "
+                f"Unsupported speaker value '{body.speaker}'. "
+                "Use a known preset, clone:<profile_id>, "
                 "or omit `speaker` and use `voice`/`instructions`."
             ),
         )
@@ -198,14 +204,18 @@ def _resolve_synthesis_mode(
     if speaker_preset:
         preset_instruct = speaker_preset
         logger.info(
-            f"[TRACE] Resolved to DESIGN mode (speaker preset): speaker={speaker_key!r} -> {preset_instruct}"
+            "[TRACE] Resolved to DESIGN (speaker preset): speaker=%r -> %s",
+            speaker_key,
+            preset_instruct,
         )
         return "design", preset_instruct, None, None
 
     if voice_preset:
         preset_instruct = voice_preset
         logger.info(
-            f"[TRACE] Resolved to DESIGN mode (voice preset): voice={voice_key!r} -> {preset_instruct}"
+            "[TRACE] Resolved to DESIGN (voice preset): voice=%r -> %s",
+            voice_key,
+            preset_instruct,
         )
         return "design", preset_instruct, None, None
 
@@ -231,7 +241,8 @@ def _resolve_synthesis_mode(
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=(
-                        f"Unsupported voice value '{body.voice}'. Use a known preset, clone:<profile_id>, "
+                        f"Unsupported voice value '{body.voice}'. "
+                        "Use a known preset, clone:<profile_id>, "
                         "or supported design attributes from /v1/voices."
                     ),
                 ) from e

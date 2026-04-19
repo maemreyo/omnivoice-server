@@ -175,14 +175,19 @@ class ScriptOrchestrator:
         _logger = logging.getLogger(__name__)
 
         _logger.debug(
-            f"[TRACE] _resolve_voices called: {len(segments)} segments, default_voice={default_voice!r}"
+            "[TRACE] _resolve_voices called: %d segments, default_voice=%r",
+            len(segments),
+            default_voice,
         )
         speaker_voices: dict[str, ResolvedVoice] = {}
 
         for segment in segments:
             speaker = segment.speaker
             _logger.debug(
-                f"[TRACE] Processing segment index={segment.index}, speaker={speaker!r}, voice={segment.voice!r}"
+                "[TRACE] Segment index=%d, speaker=%r, voice=%r",
+                segment.index,
+                speaker,
+                segment.voice,
             )
 
             # Skip if already resolved
@@ -247,7 +252,10 @@ class ScriptOrchestrator:
             if bare_preset:
                 speaker_voices[speaker] = ResolvedVoice(kind="design", value=bare_preset)
                 _logger.info(
-                    f"[TRACE] Speaker {speaker!r} resolved to bare OpenAI preset {voice!r} -> {bare_preset}"
+                    "[TRACE] Speaker %r resolved to bare preset %r -> %s",
+                    speaker,
+                    voice,
+                    bare_preset,
                 )
                 continue
 
@@ -261,23 +269,32 @@ class ScriptOrchestrator:
                 raise HTTPException(
                     status_code=422,
                     detail=(
-                        f"Unsupported voice value '{voice}' for speaker '{speaker}'. "
-                        "Use a known preset, openai:<preset>, clone:<profile_id>, or supported design attributes."
+                        f"Unsupported voice '{voice}' for speaker '{speaker}'. "
+                        "Use a known preset, openai:<preset>, clone:<profile_id>, "
+                        "or supported design attributes."
                     ),
                 ) from exc
 
             # Design voices validated lazily at synthesis time
             speaker_voices[speaker] = ResolvedVoice(kind="design", value=canonicalized)
             _logger.info(
-                f"[TRACE] Speaker {speaker!r} resolved to design voice: {voice!r} -> {canonicalized!r}"
+                "[TRACE] Speaker %r resolved to design voice: %r -> %r",
+                speaker,
+                voice,
+                canonicalized,
             )
 
         _logger.info(
-            f"[TRACE] _resolve_voices completed: {len(speaker_voices)} unique speakers resolved"
+            "[TRACE] _resolve_voices completed: %d unique speakers",
+            len(speaker_voices),
         )
         for spk, rv in speaker_voices.items():
             _logger.info(
-                f"  - {spk!r}: kind={rv.kind}, value={rv.value!r}, ref_audio_path={rv.ref_audio_path}"
+                "  - %r: kind=%s, value=%r, ref_audio_path=%s",
+                spk,
+                rv.kind,
+                rv.value,
+                rv.ref_audio_path,
             )
         return speaker_voices
 

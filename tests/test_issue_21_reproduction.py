@@ -3,7 +3,7 @@ Reproduction test for Issue #21: Voice Clone Bug
 https://github.com/maemreyo/omnivoice-server/issues/21
 
 Bug description:
-- Clone voice not working - two male voices when using clone:<male_profile> and clone:<female_profile>
+- Clone not working - two male voices when using clone:male_profile and clone:female_profile
 - Voice inconsistency - same transcript produces different voices each generation
 - Wrong gender output - Voice ID like "ash" produces wrong gender
 
@@ -34,7 +34,6 @@ def test_script_clone_two_speakers_two_different_profiles(client, sample_audio_b
     EXPECTED: alice should use male_profile, bob should use female_profile
     ACTUAL (BUG): Both use the same profile or one falls back to design mode
     """
-    import json
 
     # Create male profile
     resp = client.post(
@@ -125,7 +124,7 @@ def test_speech_clone_single_profile(client, sample_audio_bytes):
     # Check the synthesize mock
     synthesize_call = client.app.state.inference_svc.synthesize.call_args
     req = synthesize_call[0][0]
-    print(f"\nSynthesisRequest:")
+    print("\nSynthesisRequest:")
     print(f"  text: {req.text!r}")
     print(f"  mode: {req.mode}")
     print(f"  ref_audio_path: {req.ref_audio_path}")
@@ -185,8 +184,9 @@ def test_script_clone_same_profile_different_speakers(client, sample_audio_bytes
 
 if __name__ == "__main__":
     # Run manually with pytest to see trace output
-    import pytest
     import sys
+
+    import pytest
 
     # Run with -s -v to see print statements and trace logging
     sys.exit(pytest.main([__file__, "-s", "-v", "--log-cli-level=DEBUG"]))
