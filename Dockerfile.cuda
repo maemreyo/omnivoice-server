@@ -1,5 +1,5 @@
 # CUDA-enabled build for omnivoice-server
-FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:13.2.1-cudnn-runtime-ubuntu22.04
 
 WORKDIR /home/ubuntu/app
 # Install Python and build dependencies
