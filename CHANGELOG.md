@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-04-20
+
+### Added
+
+- Configurable CORS support with auth interoperability ([#24](https://github.com/maemreyo/omnivoice-server/issues/24))
+  - Support for multiple origins via `CORS_ORIGINS` env var
+  - Pre-flight OPTIONS handling with proper `Access-Control-Allow-Credentials`
+  - Seamless integration with Bearer token authentication
+
+### Fixed
+
+- Voice cloning: strict validation for profile existence
+  - Returns **HTTP 404** with clear error when `clone:<profile>` prefix used but profile not found ([#22](https://github.com/maemreyo/omnivoice-server/issues/22))
+- `voice`/`speaker` field now correctly resolves to cloned profile when matching profile exists ([#22](https://github.com/maemreyo/omnivoice-server/issues/22))
+- `profile_id` parameter in clone synthesis now respects explicitly passed profile IDs
+- Windows torchcodec compatibility troubleshooting guide added to documentation
+
+### Changed
+
+- Dependency constraints updated in pyproject.toml for better platform compatibility
+
+### Technical
+
+- CI: resolved mypy and ruff lint errors
+- Tests: updated voice validation assertions to match current behavior
+
 ## [0.2.1] - 2026-04-18
 
 ### Added
@@ -117,7 +143,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Type hints throughout codebase
 - Async/await for I/O operations
 
-[unreleased]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.1...HEAD
+[unreleased]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.1...v0.1.2
