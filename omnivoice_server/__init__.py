@@ -1,3 +1,3 @@
 """omnivoice-server — OpenAI-compatible HTTP server for OmniVoice TTS."""
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
