@@ -125,6 +125,14 @@ class Settings(BaseSettings):
     )
 
     # Streaming
+    stream: bool = Field(
+        default=False,
+        description="Force-enable sentence-level streaming for all requests.",
+    )
+    stream_overlap: bool = Field(
+        default=False,
+        description="Enable overlapped producer-consumer sentence streaming.",
+    )
     stream_chunk_max_chars: int = Field(
         default=400,
         description="Max chars per sentence chunk when streaming",

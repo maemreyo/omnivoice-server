@@ -9,13 +9,14 @@ import asyncio
 import logging
 import tempfile
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-from ..services.inference import InferenceService, SynthesisRequest
+from ..services.inference import InferenceService, SynthesisRequest, SynthesisResult
 from ..services.metrics import MetricsService
 from ..services.profiles import ProfileNotFoundError, ProfileService
 from ..utils.audio import (
@@ -284,7 +285,7 @@ async def create_speech(
         audio_chunk_threshold=body.audio_chunk_threshold,
     )
 
-    if body.stream:
+    if body.stream or cfg.stream:
         # Streaming only supports PCM
         # (WAV streaming requires implementation of streaming RIFF headers)
         if body.response_format != "pcm":
@@ -294,8 +295,13 @@ async def create_speech(
                     f"Streaming only supports response_format='pcm', got '{body.response_format}'"
                 ),
             )
+        stream_iter = (
+            _stream_sentences_overlapped(body.input, req, inference_svc, metrics_svc, cfg)
+            if cfg.stream_overlap
+            else _stream_sentences(body.input, req, inference_svc, metrics_svc, cfg)
+        )
         return StreamingResponse(
-            _stream_sentences(body.input, req, inference_svc, metrics_svc, cfg),
+            stream_iter,
             media_type="audio/pcm",
             headers={
                 "X-Audio-Sample-Rate": "24000",
@@ -348,6 +354,30 @@ async def create_speech(
     )
 
 
+def _chunk_request(sentence: str, base_req: SynthesisRequest) -> SynthesisRequest:
+    return SynthesisRequest(
+        text=sentence,
+        mode=base_req.mode,
+        instruct=base_req.instruct,
+        ref_audio_path=base_req.ref_audio_path,
+        ref_text=base_req.ref_text,
+        speed=base_req.speed,
+        num_step=base_req.num_step,
+        guidance_scale=base_req.guidance_scale,
+        denoise=base_req.denoise,
+        t_shift=base_req.t_shift,
+        position_temperature=base_req.position_temperature,
+        class_temperature=base_req.class_temperature,
+        duration=base_req.duration,
+        language=base_req.language,
+        layer_penalty_factor=base_req.layer_penalty_factor,
+        preprocess_prompt=base_req.preprocess_prompt,
+        postprocess_output=base_req.postprocess_output,
+        audio_chunk_duration=base_req.audio_chunk_duration,
+        audio_chunk_threshold=base_req.audio_chunk_threshold,
+    )
+
+
 async def _stream_sentences(
     text: str,
     base_req: SynthesisRequest,
@@ -362,27 +392,7 @@ async def _stream_sentences(
         return
 
     for sentence in sentences:
-        req = SynthesisRequest(
-            text=sentence,
-            mode=base_req.mode,
-            instruct=base_req.instruct,
-            ref_audio_path=base_req.ref_audio_path,
-            ref_text=base_req.ref_text,
-            speed=base_req.speed,
-            num_step=base_req.num_step,
-            guidance_scale=base_req.guidance_scale,
-            denoise=base_req.denoise,
-            t_shift=base_req.t_shift,
-            position_temperature=base_req.position_temperature,
-            class_temperature=base_req.class_temperature,
-            duration=base_req.duration,
-            language=base_req.language,
-            layer_penalty_factor=base_req.layer_penalty_factor,
-            preprocess_prompt=base_req.preprocess_prompt,
-            postprocess_output=base_req.postprocess_output,
-            audio_chunk_duration=base_req.audio_chunk_duration,
-            audio_chunk_threshold=base_req.audio_chunk_threshold,
-        )
+        req = _chunk_request(sentence, base_req)
         try:
             result = await inference_svc.synthesize(req)
             metrics_svc.record_success(result.latency_s)
@@ -396,6 +406,68 @@ async def _stream_sentences(
             metrics_svc.record_error()
             logger.exception(f"Streaming chunk failed: '{sentence[:50]}...'")
             return
+
+
+async def _stream_sentences_overlapped(
+    text: str,
+    base_req: SynthesisRequest,
+    inference_svc: InferenceService,
+    metrics_svc: MetricsService,
+    cfg,
+) -> AsyncIterator[bytes]:
+    sentences = split_sentences(text, max_chars=cfg.stream_chunk_max_chars)
+
+    if not sentences:
+        return
+
+    queue: asyncio.Queue[tuple[str, SynthesisResult | Exception | None]] = asyncio.Queue(maxsize=1)
+
+    async def produce() -> None:
+        try:
+            for sentence in sentences:
+                req = _chunk_request(sentence, base_req)
+                try:
+                    result = await inference_svc.synthesize(req)
+                    metrics_svc.record_success(result.latency_s)
+                    await queue.put(("result", result))
+                except asyncio.TimeoutError:
+                    metrics_svc.record_timeout()
+                    logger.warning(f"Streaming chunk timed out: '{sentence[:50]}...'")
+                    await queue.put(("stop", None))
+                    return
+                except Exception as exc:
+                    metrics_svc.record_error()
+                    logger.exception(f"Streaming chunk failed: '{sentence[:50]}...'")
+                    await queue.put(("error", exc))
+                    return
+            await queue.put(("stop", None))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Unexpected error in streaming producer")
+            with suppress(Exception):
+                await queue.put(("stop", None))
+            raise
+
+    producer = asyncio.create_task(produce())
+    try:
+        while True:
+            kind, payload = await queue.get()
+            if kind == "result":
+                for tensor in payload.tensors:  # type: ignore[union-attr]
+                    yield tensor_to_pcm16_bytes(tensor)
+            elif kind == "error":
+                return
+            else:
+                return
+    finally:
+        if not producer.done():
+            producer.cancel()
+            with suppress(asyncio.CancelledError):
+                await producer
+        else:
+            with suppress(Exception):
+                producer.result()
 
 
 @router.post("/audio/speech/clone")

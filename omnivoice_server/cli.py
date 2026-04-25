@@ -87,6 +87,32 @@ def main() -> None:
 
     # Inference
     parser.add_argument(
+        "--stream",
+        action="store_true",
+        default=None,
+        dest="stream",
+        help="Force-enable streaming for all requests (env: OMNIVOICE_STREAM)",
+    )
+    parser.add_argument(
+        "--no-stream",
+        action="store_false",
+        dest="stream",
+        help="Disable forced streaming",
+    )
+    parser.add_argument(
+        "--stream-overlap",
+        action="store_true",
+        default=None,
+        dest="stream_overlap",
+        help="Enable overlapped sentence streaming (env: OMNIVOICE_STREAM_OVERLAP)",
+    )
+    parser.add_argument(
+        "--no-stream-overlap",
+        action="store_false",
+        dest="stream_overlap",
+        help="Disable overlapped sentence streaming",
+    )
+    parser.add_argument(
         "--max-concurrent",
         type=int,
         default=None,
