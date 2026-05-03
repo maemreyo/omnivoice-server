@@ -39,9 +39,5 @@ RUN mkdir -p /app/profiles
 # Expose server port
 EXPOSE 8880
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8880/health')" || exit 1
-
 # Run server
 CMD ["omnivoice-server", "--host", "0.0.0.0", "--port", "8880", "--profile-dir", "/app/profiles"]
