@@ -191,17 +191,6 @@ def _resolve_synthesis_mode(
             ),
         )
 
-    if body.instructions is not None:
-        try:
-            canonicalized = validate_and_canonicalize_instructions(body.instructions)
-            logger.info(f"[TRACE] Resolved to DESIGN mode (instructions): {canonicalized}")
-            return "design", canonicalized, None, None
-        except InstructionValidationError as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=str(e),
-            )
-
     if speaker_preset:
         preset_instruct = speaker_preset
         logger.info(
@@ -247,6 +236,17 @@ def _resolve_synthesis_mode(
                         "or supported design attributes from /v1/voices."
                     ),
                 ) from e
+
+    if body.instructions is not None:
+        try:
+            canonicalized = validate_and_canonicalize_instructions(body.instructions)
+            logger.info(f"[TRACE] Resolved to DESIGN mode (instructions): {canonicalized}")
+            return "design", canonicalized, None, None
+        except InstructionValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(e),
+            )
 
     logger.info(f"[TRACE] Resolved to DESIGN mode (default): {DEFAULT_DESIGN_INSTRUCTIONS}")
     return "design", DEFAULT_DESIGN_INSTRUCTIONS, None, None
