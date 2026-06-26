@@ -1,0 +1,51 @@
+Task 18: Summary - Rollout State Assessment
+============================================
+
+Date: 2026-04-20T02:14:00Z
+Status: IMPLEMENTED-BUT-BLOCKED
+
+## Quick Summary
+
+**Implementation**: ✅ COMPLETE
+- transformers is default across all surfaces
+- faster-whisper is opt-in via env var / CLI flag / config field
+- Documentation accurate and comprehensive
+- Runtime behavior matches documented rollout state
+
+**Acceptance Criteria**: ✅ 3/3 MET
+- Default remains transformers
+- Opt-in path exposed and documented
+- Rollout state matches behavior
+
+**Dependency Blocker**: ❌ Task 17 NOT COMPLETE
+- Task 17 fixture comparison blocked by environment constraints
+- Plan dependency matrix: Task 17 → Task 18
+- Cannot mark Task 18 complete until Task 17 completes
+
+## Verdict
+
+**TASK 18 VERDICT: IMPLEMENTED-BUT-BLOCKED**
+
+**Justification**:
+1. All Task 18 work is complete
+2. All Task 18 acceptance criteria are met
+3. Task 17 dependency is not satisfied (per corrected verdict)
+4. Plan requires Task 17 completion before Task 18 can be marked complete
+
+## What Remains
+
+**For Task 18**: Nothing. Implementation and acceptance criteria complete.
+
+**For Unblocking**: Task 17 must complete in proper environment.
+
+## Evidence Files
+
+- task-18-rollout-assessment.txt (detailed assessment)
+- task-18-summary.txt (this file)
+
+## References
+
+- Plan: .sisyphus/plans/torchcodec-windows-long-term-fix.md (Task 18, lines 1184-1243)
+- Task 17 verdict: .sisyphus/evidence/task-17-corrected-verdict.txt
+- Command matrix: .sisyphus/evidence/task-15-command-matrix.txt
+- Rollback tests: tests/test_asr_rollback.py (10/10 pass)

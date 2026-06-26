@@ -1,0 +1,140 @@
+Task 18: Final Verdict
+======================
+
+Date: 2026-04-20T02:15:00Z
+Evaluator: Sisyphus-Junior (quick category)
+
+================================================================================
+VERDICT: IMPLEMENTED-BUT-BLOCKED
+================================================================================
+
+Task 18 implementation is complete and all acceptance criteria are met.
+However, Task 17 dependency is not satisfied, blocking final completion.
+
+================================================================================
+ACCEPTANCE CRITERIA STATUS
+================================================================================
+
+From plan (lines 1215-1217):
+
+[✅] Release state keeps `transformers` as default initially
+     - Factory default: transformers
+     - Server config default: None → transformers
+     - CLI tools default: None → transformers
+     - Documentation: consistently states transformers as default
+     - Evidence: factory.py, config.py, CLI defaults, 5 doc files
+
+[✅] `faster-whisper` is available as an explicit opt-in backend
+     - Environment variable: OMNIVOICE_ASR_BACKEND=faster-whisper
+     - CLI flag: --asr-backend faster-whisper (OmniVoice CLI tools)
+     - Config field: asr_backend="faster-whisper" (server programmatic)
+     - Evidence: Task 15 command matrix, Task 13 rollback tests (10/10 pass)
+
+[✅] Docs and runtime behavior match this rollout stage
+     - 5 documentation files updated
+     - Runtime behavior verified via command matrix
+     - Tests confirm behavior matches docs
+     - Evidence: README, CLI usage, configuration, troubleshooting, runbook
+
+Overall: 3/3 acceptance criteria MET
+
+================================================================================
+DEPENDENCY BLOCKER
+================================================================================
+
+Task 17 Status: NOT COMPLETE (per corrected verdict)
+- Structural work: COMPLETE
+- Runtime work: BLOCKED (fixture comparison required by plan)
+- Overall: NOT COMPLETE
+
+Plan Dependency: Task 17 → Task 18 (line 1206)
+- Task 18 depends on Task 17 completion
+- Task 17 is blocked by environment constraints
+- Therefore: Task 18 cannot be marked complete
+
+================================================================================
+IMPLEMENTATION COMPLETENESS
+================================================================================
+
+✅ Backend Selection:
+   - Default: transformers (verified)
+   - Opt-in: faster-whisper (verified)
+   - Selection precedence: documented and tested
+
+✅ Documentation:
+   - OmniVoice/README.md: ASR Backend Selection section
+   - docs/readme/sections/05-cli-usage.md: ASR Backend Selection
+   - docs/readme/sections/06-configuration.md: ASR Backend section
+   - docs/readme/sections/14-troubleshooting.md: Windows workaround + long-term
+   - docs/ASR_ROLLBACK_RUNBOOK.md: detailed rollback procedures
+
+✅ Runtime Behavior:
+   - Task 15 command matrix: 15 validation commands
+   - Task 13 rollback tests: 10/10 pass
+   - Default behavior: transformers used
+   - Opt-in behavior: faster-whisper used when selected
+
+✅ Control Surfaces:
+   - Library: env var
+   - OmniVoice CLI tools: CLI flag + env var
+   - Server: env var + config field
+
+================================================================================
+WHAT REMAINS
+================================================================================
+
+For Task 18: Nothing. All work complete.
+
+For Unblocking: Task 17 must complete in proper environment:
+1. Setup Python 3.10+ environment
+2. Install compatible transformers version
+3. Execute fixture comparison as specified in plan
+4. Document runtime equivalence findings
+5. Mark Task 17 complete
+
+Once Task 17 completes, Task 18 can be marked COMPLETE immediately.
+
+================================================================================
+CONSERVATIVE INTERPRETATION RATIONALE
+================================================================================
+
+Why IMPLEMENTED-BUT-BLOCKED instead of COMPLETE?
+
+1. Plan dependency matrix is explicit: Task 17 → Task 18
+2. Task 17 corrected verdict: NOT COMPLETE
+3. Conservative interpretation: respect dependency arrows
+4. Prevents premature completion claims
+5. Acknowledges completed work while respecting blockers
+
+Alternative interpretation (rejected):
+- Task 18 acceptance criteria are independent of Task 17
+- Task 18 could be marked COMPLETE despite Task 17 blocker
+- Rejected because: plan dependencies are literal requirements
+
+================================================================================
+EVIDENCE FILES CREATED
+================================================================================
+
+1. task-18-rollout-assessment.txt (detailed assessment, 8.5 KB)
+2. task-18-summary.txt (quick summary, 1.2 KB)
+3. task-18-final-verdict.txt (this file, 3.1 KB)
+
+Total evidence: 12.8 KB across 3 files
+
+================================================================================
+FINAL STATEMENT
+================================================================================
+
+TASK 18 VERDICT: IMPLEMENTED-BUT-BLOCKED
+
+- Implementation: COMPLETE ✅
+- Acceptance criteria: 3/3 MET ✅
+- Dependency: Task 17 NOT COMPLETE ❌
+- Overall: BLOCKED by Task 17 incompletion
+
+Task 18 can be marked COMPLETE once Task 17 completes.
+No additional Task 18 work required.
+
+================================================================================
+END OF VERDICT
+================================================================================

@@ -1,0 +1,60 @@
+Task 10: Config Diff Review
+============================
+
+Date: 2026-04-17
+Reviewer: Sisyphus-Junior (quick)
+
+## Scope Verification
+
+**Task 10 requirement**: "Perform targeted CLI/config alignment review and minimal direct updates only if required"
+
+**Result**: No config changes made (review-only task)
+
+## Files Changed
+
+**None.** This was a review task that determined no changes were required.
+
+## Verification
+
+### No Unrelated Config Churn
+
+Since no files were modified, there is zero risk of unrelated config churn.
+
+### Config Story Coherence
+
+**Server-level defaults (config.py):**
+- 6 parameters with CLI flags and env vars
+- All are deployment-level quality/performance tuning parameters
+- Pattern is consistent and well-documented
+
+**Request-only parameters:**
+- 7 parameters without server defaults (duration, language, + 5 new params)
+- All are per-request overrides or experimental parameters
+- Correctly omitted from CLI/config surfaces
+
+**Documentation alignment:**
+- Configuration table (README lines 329-337): Documents only CLI-exposed parameters
+- API Reference (README lines 356-365): Documents all request parameters
+- No mismatch between code and docs
+
+### Intentional Design Confirmed
+
+The absence of CLI flags for the 5 new parameters is **intentional and correct**, not an oversight.
+
+Evidence:
+1. Existing pattern: `duration` and `language` are also request-only
+2. Config comment (lines 43-44): "Expose the ones users are likely to tune; leave the rest at upstream defaults"
+3. Implementation: New params default to `None` and are omitted from kwargs when not provided
+4. Documentation: README correctly distinguishes server config from request parameters
+
+## Conclusion
+
+**PASS**: No unrelated config churn introduced (zero files changed).
+
+Config alignment is intentionally minimal and surgical:
+- Server config: Deployment-level settings only
+- Request params: Per-request overrides only
+- Clear boundary maintained
+- Documentation accurate
+
+The implementation from Task 5 requires no CLI/config changes.

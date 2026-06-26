@@ -1,0 +1,96 @@
+Task 3: Define compatibility matrix, fallback rules, and rollback triggers
+Timestamp: 2026-04-19T15:30:42Z
+
+=== QA Scenario: Rollback trigger criteria are measurable ===
+
+Preconditions: Rollback rules documented
+Location: .sisyphus/notepads/torchcodec-windows-long-term-fix/compatibility-matrix.md
+
+Verification Steps:
+
+1. Inspect rollback section
+   ✅ "Rollback Trigger Criteria (Measurable)" section exists
+   ✅ "Rollback Procedure" section exists with step-by-step instructions
+   ✅ "Rollback Safety Guarantees" section exists
+
+2. Verify conditions are binary or threshold-based (not vague text like "if it seems bad")
+   
+   Quantitative Triggers (threshold-based):
+   ✅ Import failure rate > 5% in production logs over 24h window
+      - Measurable: Yes (log analysis, percentage calculation)
+      - Time-bound: Yes (24h window)
+      - Threshold: Yes (5%)
+   
+   ✅ Transcription failure rate > 10% for previously working audio fixtures
+      - Measurable: Yes (fixture test results, percentage calculation)
+      - Baseline: Yes (previously working fixtures)
+      - Threshold: Yes (10%)
+   
+   ✅ Clone mode success rate < 90% compared to baseline with same fixtures
+      - Measurable: Yes (fixture test results, percentage calculation)
+      - Baseline: Yes (comparison to baseline)
+      - Threshold: Yes (90%)
+   
+   Qualitative Trigger (binary):
+   ✅ Operator decision based on environment-specific issues
+      - Binary: Yes (operator decides yes/no)
+      - Escape hatch: Yes (allows human judgment for edge cases)
+
+3. Verify switching action is documented
+   
+   Rollback Procedure:
+   ✅ Step 1: Change backend selector to transformers
+      - Method 1: export OMNIVOICE_ASR_BACKEND=transformers
+      - Method 2: omnivoice-server --asr-backend transformers
+      - Method 3: Edit config.yaml: asr_backend: transformers
+   
+   ✅ Step 2: Restart service/process
+      - Action: Explicit restart required
+   
+   ✅ Step 3: Verify rollback success
+      - Check logs for backend selection confirmation
+      - Run clone mode test with ref_text=None
+      - Verify transcript generation succeeds
+   
+   Expected Result:
+   ✅ Service returns to pre-migration behavior with no code changes required
+   
+   Rollback Safety Guarantees:
+   ✅ No code edits required
+   ✅ No database migration required
+   ✅ No model re-download required (separate model caches)
+   ✅ Rollback executable in < 5 minutes
+
+Expected Result: Rollback can be executed consistently
+Status: ✅ PASS
+
+Failure Indicators: None detected
+- All criteria are numeric thresholds or binary decisions
+- No subjective-only criteria like "if it seems bad" or "when quality degrades"
+- Switching action is explicit with 3 documented methods
+- Verification steps are concrete and executable
+- Time estimate provided (< 5 minutes)
+
+=== Comparison to Anti-Pattern ===
+
+Anti-Pattern (subjective): "Rollback if quality seems degraded or users complain"
+✅ Avoided: All triggers are measurable or binary operator decisions
+
+Anti-Pattern (missing action): "Rollback when needed"
+✅ Avoided: 3-step procedure with explicit commands documented
+
+Anti-Pattern (code changes): "Edit backend.py to switch back"
+✅ Avoided: Rollback via env/config/CLI only, no code changes
+
+=== Summary ===
+
+Rollback trigger criteria verification:
+✅ All quantitative triggers have numeric thresholds
+✅ All quantitative triggers have time bounds or baselines
+✅ Qualitative trigger is binary (operator yes/no decision)
+✅ Switching action is documented with 3 methods
+✅ Verification steps are concrete and executable
+✅ No code changes required for rollback
+✅ Time estimate provided (< 5 minutes)
+
+Evidence captured: 2026-04-19T15:30:42Z

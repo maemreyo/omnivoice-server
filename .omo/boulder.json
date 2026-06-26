@@ -1,0 +1,85 @@
+{
+  "active_plan": "/Users/trung.ngo/Documents/zaob-dev/omnivoice-server/.sisyphus/plans/torchcodec-windows-long-term-fix.md",
+  "started_at": "2026-04-19T15:24:44.365Z",
+  "session_ids": [
+    "ses_259c178b0ffe9u2iH7h5kwMXcQ"
+  ],
+  "session_origins": {
+    "ses_259c178b0ffe9u2iH7h5kwMXcQ": "direct"
+  },
+  "plan_name": "torchcodec-windows-long-term-fix",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Define ASR backend contract and selection policy",
+      "session_id": "ses_259a437ffffe2nQylbK8WKdQei",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-19T15:31:44.006Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "Wrap the current transformers Whisper path in a legacy backend adapter",
+      "session_id": "ses_2597e1d64ffex7rLdLTw1LRQuF",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-19T16:31:18.015Z"
+    },
+    "todo:13": {
+      "task_key": "todo:13",
+      "task_label": "13",
+      "task_title": "Implement fallback behavior tests and rollback runbook",
+      "session_id": "ses_259370979ffewAnxDr4aqJkdpH",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-19T17:30:55.342Z"
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "Update README and troubleshooting docs for long-term backend rollout",
+      "session_id": "ses_259332c20ffeiqHQEoZ9fNebvA",
+      "agent": "Sisyphus-Junior",
+      "category": "writing",
+      "updated_at": "2026-04-19T17:35:28.842Z"
+    },
+    "todo:15": {
+      "task_key": "todo:15",
+      "task_label": "15",
+      "task_title": "Add environment-specific validation commands/scripts",
+      "session_id": "ses_259288715ffeWKkx1z7EJsZaU4",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-19T17:46:33.374Z"
+    },
+    "todo:16": {
+      "task_key": "todo:16",
+      "task_label": "16",
+      "task_title": "Validate supported matrix and document unsupported combinations",
+      "session_id": "ses_257a2f5bcffeVu6OtNe45QaoKo",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-20T00:52:59.277Z"
+    },
+    "todo:17": {
+      "task_key": "todo:17",
+      "task_label": "17",
+      "task_title": "Compare transcript equivalence across backends on fixtures",
+      "session_id": "ses_2579ea409ffeN5WWrOUJIgJ6ZW",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-20T01:39:53.245Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_2576cf164ffeKZvLNQ0mbp9ymh",
+      "agent": "oracle",
+      "updated_at": "2026-04-20T01:52:58.770Z"
+    }
+  }
+}

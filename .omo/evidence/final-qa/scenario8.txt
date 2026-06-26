@@ -1,0 +1,1 @@
+PASS: Compatibility matrix exists and covers key combinations

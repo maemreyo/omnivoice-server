@@ -1,0 +1,70 @@
+Task 13: Fallback Behavior Tests Evidence
+==========================================
+
+QA Scenario 1: Fallback behavior matches policy
+
+Implementation:
+---------------
+File: tests/test_asr_rollback.py
+Test class: TestFallbackPolicy
+
+Tests implemented:
+1. test_explicit_backend_selection_not_overridden
+   - Sets OMNIVOICE_ASR_BACKEND=faster-whisper
+   - Verifies get_default_backend() returns "faster-whisper"
+   - Validates no silent fallback to transformers
+
+2. test_invalid_backend_raises_value_error
+   - Attempts to create backend with invalid name
+   - Verifies ValueError is raised
+   - Validates error message lists valid options
+
+3. test_no_silent_fallback_on_explicit_selection
+   - Sets OMNIVOICE_ASR_BACKEND=faster-whisper
+   - Verifies backend selection is respected
+   - Validates no automatic switching occurs
+
+Fallback Policy Encoded:
+------------------------
+**No silent fallback**: Explicit backend selection is always respected.
+
+- If operator selects `faster-whisper`, system will NOT silently fall back to `transformers`
+- If selected backend fails to load, system raises clear error with actionable guidance
+- No automatic switching between backends
+- Backend selection is deterministic and explicit
+
+Error Handling:
+---------------
+- Invalid backend: ValueError with list of valid options
+- Backend load failure: RuntimeError with actionable workarounds
+- No silent degradation: All failures are explicit and logged
+
+Verification Commands:
+----------------------
+Command: PYTHONPATH=OmniVoice:$PYTHONPATH pytest tests/test_asr_rollback.py::TestFallbackPolicy -v
+Result: 3 passed
+
+Test Output:
+------------
+tests/test_asr_rollback.py::TestFallbackPolicy::test_explicit_backend_selection_not_overridden PASSED
+tests/test_asr_rollback.py::TestFallbackPolicy::test_invalid_backend_raises_value_error PASSED
+tests/test_asr_rollback.py::TestFallbackPolicy::test_no_silent_fallback_on_explicit_selection PASSED
+
+What This Validates:
+---------------------
+✓ No silent fallback occurs when explicit backend selected
+✓ Invalid backend selection raises clear error
+✓ Error messages list valid backend options
+✓ Explicit selection is always respected
+
+What This Does NOT Validate:
+-----------------------------
+- Real backend loading with actual model files
+- Actual transcription quality or behavior
+- Full end-to-end clone workflow with real backends
+
+These will be validated in Task 17 (fixture-based equivalence tests).
+
+VERDICT: PASS
+Fallback policy is deterministic and matches documented behavior.
+No silent fallback occurs. Explicit selection is always respected.

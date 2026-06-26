@@ -1,0 +1,1842 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.12, pytest-9.0.3, pluggy-1.6.0 -- /opt/homebrew/opt/python@3.13/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /Users/trung.ngo/Documents/zaob-dev/omnivoice-server
+configfile: pyproject.toml
+plugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 85 items / 40 deselected / 45 selected
+
+tests/test_speech.py::test_speech_openai_voice_preset_maps_to_design_prompt PASSED [  2%]
+tests/test_speech.py::test_speech_design_instructions_field PASSED       [  4%]
+tests/test_speech.py::test_speech_instructions_override_voice_design_shorthand PASSED [  6%]
+tests/test_speech.py::test_speech_ignores_clone_voice_when_instructions_missing PASSED [  8%]
+tests/test_speech.py::test_speech_ignores_voice_when_instructions_present PASSED [ 11%]
+tests/test_speech.py::test_speech_speaker_takes_precedence_over_voice_preset PASSED [ 13%]
+tests/test_speech.py::test_speech_instruction_validation[valid-female] PASSED [ 15%]
+tests/test_speech.py::test_speech_instruction_validation[valid-british-accent] PASSED [ 17%]
+tests/test_speech.py::test_speech_instruction_validation[valid-young-adult] PASSED [ 20%]
+tests/test_speech.py::test_speech_instruction_validation[valid-high-pitch] PASSED [ 22%]
+tests/test_speech.py::test_speech_instruction_validation[valid-whisper] PASSED [ 24%]
+tests/test_speech.py::test_speech_instruction_validation[valid-combined] PASSED [ 26%]
+tests/test_speech.py::test_speech_instruction_validation[valid-default-preset] PASSED [ 28%]
+tests/test_speech.py::test_speech_instruction_validation[alias-british] PASSED [ 31%]
+tests/test_speech.py::test_speech_instruction_validation[alias-american] PASSED [ 33%]
+tests/test_speech.py::test_speech_instruction_validation[alias-australian] PASSED [ 35%]
+tests/test_speech.py::test_speech_instruction_validation[alias-canadian] PASSED [ 37%]
+tests/test_speech.py::test_speech_instruction_validation[alias-indian] PASSED [ 40%]
+tests/test_speech.py::test_speech_instruction_validation[alias-chinese] PASSED [ 42%]
+tests/test_speech.py::test_speech_instruction_validation[alias-korean] PASSED [ 44%]
+tests/test_speech.py::test_speech_instruction_validation[alias-japanese] PASSED [ 46%]
+tests/test_speech.py::test_speech_instruction_validation[alias-portuguese] PASSED [ 48%]
+tests/test_speech.py::test_speech_instruction_validation[alias-russian] PASSED [ 51%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-cheerful] FAILED [ 53%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-sad] FAILED [ 55%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-angry] FAILED [ 57%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-surprised] FAILED [ 60%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-happy] FAILED [ 62%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-fearful] FAILED [ 64%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-disgusted] FAILED [ 66%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-narration] FAILED [ 68%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-customer-service] FAILED [ 71%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-news-presentation] FAILED [ 73%]
+tests/test_speech.py::test_speech_instruction_validation[unsupported-sportscasting] FAILED [ 75%]
+tests/test_speech.py::test_speech_instruction_validation[conflict-gender] FAILED [ 77%]
+tests/test_speech.py::test_speech_instruction_validation[conflict-age] FAILED [ 80%]
+tests/test_speech.py::test_speech_instruction_validation[conflict-pitch] FAILED [ 82%]
+tests/test_speech.py::test_speech_instruction_validation[duplicate-gender] PASSED [ 84%]
+tests/test_speech.py::test_speech_instruction_validation[duplicate-accent] PASSED [ 86%]
+tests/test_speech.py::test_speech_instruction_validation[empty-string] FAILED [ 88%]
+tests/test_speech.py::test_speech_instruction_validation[whitespace-only] FAILED [ 91%]
+tests/test_speech.py::test_speech_instruction_accent_alias_canonicalization FAILED [ 93%]
+tests/test_speech.py::test_speech_instruction_unsupported_emotion_error_message FAILED [ 95%]
+tests/test_speech.py::test_speech_instruction_conflict_error_message FAILED [ 97%]
+tests/test_speech.py::test_speech_instruction_chinese_dialect_supported PASSED [100%]
+
+=================================== FAILURES ===================================
+___________ test_speech_instruction_validation[unsupported-cheerful] ___________
+
+client = <starlette.testclient.TestClient object at 0x111592f10>
+instructions = 'cheerful', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+_____________ test_speech_instruction_validation[unsupported-sad] ______________
+
+client = <starlette.testclient.TestClient object at 0x110fc0c00>
+instructions = 'sad', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+____________ test_speech_instruction_validation[unsupported-angry] _____________
+
+client = <starlette.testclient.TestClient object at 0x110f867a0>
+instructions = 'angry', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+__________ test_speech_instruction_validation[unsupported-surprised] ___________
+
+client = <starlette.testclient.TestClient object at 0x110f846b0>
+instructions = 'surprised', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+____________ test_speech_instruction_validation[unsupported-happy] _____________
+
+client = <starlette.testclient.TestClient object at 0x110fc1ae0>
+instructions = 'happy', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+___________ test_speech_instruction_validation[unsupported-fearful] ____________
+
+client = <starlette.testclient.TestClient object at 0x1116cf460>
+instructions = 'fearful', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+__________ test_speech_instruction_validation[unsupported-disgusted] ___________
+
+client = <starlette.testclient.TestClient object at 0x11162d480>
+instructions = 'disgusted', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+__________ test_speech_instruction_validation[unsupported-narration] ___________
+
+client = <starlette.testclient.TestClient object at 0x110f868b0>
+instructions = 'narration', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+_______ test_speech_instruction_validation[unsupported-customer-service] _______
+
+client = <starlette.testclient.TestClient object at 0x110f847c0>
+instructions = 'customer_service', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+______ test_speech_instruction_validation[unsupported-news-presentation] _______
+
+client = <starlette.testclient.TestClient object at 0x1116cfbd0>
+instructions = 'news_presentation', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+________ test_speech_instruction_validation[unsupported-sportscasting] _________
+
+client = <starlette.testclient.TestClient object at 0x110fc29c0>
+instructions = 'sportscasting', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+_____________ test_speech_instruction_validation[conflict-gender] ______________
+
+client = <starlette.testclient.TestClient object at 0x11162c270>
+instructions = 'male,female', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+_______________ test_speech_instruction_validation[conflict-age] _______________
+
+client = <starlette.testclient.TestClient object at 0x11162f8a0>
+instructions = 'child,elderly', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+______________ test_speech_instruction_validation[conflict-pitch] ______________
+
+client = <starlette.testclient.TestClient object at 0x110fc0f30>
+instructions = 'very low pitch,very high pitch', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+_______________ test_speech_instruction_validation[empty-string] _______________
+
+client = <starlette.testclient.TestClient object at 0x110f86250>
+instructions = '', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+_____________ test_speech_instruction_validation[whitespace-only] ______________
+
+client = <starlette.testclient.TestClient object at 0x1116cdae0>
+instructions = '   ', expected_status = 422
+
+    @pytest.mark.parametrize(
+        "instructions,expected_status",
+        [
+            # Valid canonical instructions
+            ("female", 200),
+            ("british accent", 200),
+            ("young adult", 200),
+            ("high pitch", 200),
+            ("whisper", 200),
+            ("female,british accent,young adult,high pitch", 200),
+            ("male,middle-aged,moderate pitch,american accent", 200),
+            # Short accent aliases (should be canonicalized)
+            ("british", 200),
+            ("american", 200),
+            ("australian", 200),
+            ("canadian", 200),
+            ("indian", 200),
+            ("chinese", 200),
+            ("korean", 200),
+            ("japanese", 200),
+            ("portuguese", 200),
+            ("russian", 200),
+            # Unsupported emotion attributes (MUST FAIL)
+            ("cheerful", 422),
+            ("sad", 422),
+            ("angry", 422),
+            ("surprised", 422),
+            ("happy", 422),
+            ("fearful", 422),
+            ("disgusted", 422),
+            # Unsupported speaking style attributes (MUST FAIL)
+            ("narration", 422),
+            ("customer_service", 422),
+            ("news_presentation", 422),
+            ("sportscasting", 422),
+            # Conflicting categories (MUST FAIL)
+            ("male,female", 422),
+            ("child,elderly", 422),
+            ("very low pitch,very high pitch", 422),
+            # Duplicate handling
+            ("female,female", 200),  # Duplicates should be deduplicated
+            ("british accent,british accent", 200),
+            # Empty instructions
+            ("", 422),
+            ("   ", 422),
+        ],
+        ids=[
+            "valid-female",
+            "valid-british-accent",
+            "valid-young-adult",
+            "valid-high-pitch",
+            "valid-whisper",
+            "valid-combined",
+            "valid-default-preset",
+            "alias-british",
+            "alias-american",
+            "alias-australian",
+            "alias-canadian",
+            "alias-indian",
+            "alias-chinese",
+            "alias-korean",
+            "alias-japanese",
+            "alias-portuguese",
+            "alias-russian",
+            "unsupported-cheerful",
+            "unsupported-sad",
+            "unsupported-angry",
+            "unsupported-surprised",
+            "unsupported-happy",
+            "unsupported-fearful",
+            "unsupported-disgusted",
+            "unsupported-narration",
+            "unsupported-customer-service",
+            "unsupported-news-presentation",
+            "unsupported-sportscasting",
+            "conflict-gender",
+            "conflict-age",
+            "conflict-pitch",
+            "duplicate-gender",
+            "duplicate-accent",
+            "empty-string",
+            "whitespace-only",
+        ],
+    )
+    def test_speech_instruction_validation(client, instructions, expected_status):
+        """Test instruction validation for supported/unsupported attributes."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": instructions,
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == expected_status
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:661: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+____________ test_speech_instruction_accent_alias_canonicalization _____________
+
+client = <starlette.testclient.TestClient object at 0x1110086b0>
+
+    def test_speech_instruction_accent_alias_canonicalization(client):
+        """Short accent aliases should be canonicalized to full form."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": "british",
+                "response_format": "pcm",
+            },
+        )
+        assert resp.status_code == 200
+        req = client.app.state.inference_svc.synthesize.await_args.args[0]
+        assert req.mode == "design"
+        # Should be canonicalized to "british accent"
+>       assert "british accent" in req.instruct.lower()
+E       AssertionError: assert 'british accent' in 'british'
+E        +  where 'british' = <built-in method lower of str object at 0x111b44120>()
+E        +    where <built-in method lower of str object at 0x111b44120> = 'british'.lower
+E        +      where 'british' = SynthesisRequest(text='Hello', mode='design', instruct='british', ref_audio_path=None, ref_text=None, speed=1.0, num_step=None, guidance_scale=None, denoise=None, t_shift=None, position_temperature=None, class_temperature=None, duration=None, language=None).instruct
+
+tests/test_speech.py:683: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+__________ test_speech_instruction_unsupported_emotion_error_message ___________
+
+client = <starlette.testclient.TestClient object at 0x111b645a0>
+
+    def test_speech_instruction_unsupported_emotion_error_message(client):
+        """Unsupported emotion attributes should return actionable error."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": "cheerful",
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == 422
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:696: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+________________ test_speech_instruction_conflict_error_message ________________
+
+client = <starlette.testclient.TestClient object at 0x110f848d0>
+
+    def test_speech_instruction_conflict_error_message(client):
+        """Conflicting categories should return actionable error."""
+        resp = client.post(
+            "/v1/audio/speech",
+            json={
+                "input": "Hello",
+                "instructions": "male,female",
+                "response_format": "pcm",
+            },
+        )
+>       assert resp.status_code == 422
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_speech.py:713: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+=========================== short test summary info ============================
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-cheerful]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-sad]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-angry]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-surprised]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-happy]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-fearful]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-disgusted]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-narration]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-customer-service]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-news-presentation]
+FAILED tests/test_speech.py::test_speech_instruction_validation[unsupported-sportscasting]
+FAILED tests/test_speech.py::test_speech_instruction_validation[conflict-gender]
+FAILED tests/test_speech.py::test_speech_instruction_validation[conflict-age]
+FAILED tests/test_speech.py::test_speech_instruction_validation[conflict-pitch]
+FAILED tests/test_speech.py::test_speech_instruction_validation[empty-string]
+FAILED tests/test_speech.py::test_speech_instruction_validation[whitespace-only]
+FAILED tests/test_speech.py::test_speech_instruction_accent_alias_canonicalization
+FAILED tests/test_speech.py::test_speech_instruction_unsupported_emotion_error_message
+FAILED tests/test_speech.py::test_speech_instruction_conflict_error_message
+================= 19 failed, 26 passed, 40 deselected in 0.69s =================

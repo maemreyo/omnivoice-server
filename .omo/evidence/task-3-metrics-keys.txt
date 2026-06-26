@@ -1,0 +1,37 @@
+ScriptMetrics.snapshot() Verification
+======================================
+Date: 2026-04-17T15:47:31.208Z
+
+Test Command:
+-------------
+python3 -c "from omnivoice_server.services.script import ScriptMetrics; ..."
+
+Expected Keys (9):
+------------------
+- script_requests_total
+- script_requests_success
+- script_requests_error
+- script_requests_timeout
+- script_mean_latency_ms
+- script_p95_latency_ms
+- script_segments_synthesized
+- script_segments_skipped
+- script_voice_resolution_failures
+
+Actual Keys (9):
+----------------
+- script_mean_latency_ms
+- script_p95_latency_ms
+- script_requests_error
+- script_requests_success
+- script_requests_timeout
+- script_requests_total
+- script_segments_skipped
+- script_segments_synthesized
+- script_voice_resolution_failures
+
+Result:
+-------
+✓ All keys present: True
+✓ Key count: 9
+✓ VERIFICATION: PASS

@@ -1,0 +1,77 @@
+Task 1 Final Verification - Evidence
+
+SCOPE COMPLIANCE:
+
+[✓] Task 1 is contract-only (no implementations)
+    Files present:
+    - base.py (ASRBackend interface, ASRConfig)
+    - factory.py (selection logic, factory function)
+    - __init__.py (public API exports)
+    - CONTRACT.md (documentation)
+    
+    Files NOT present (correctly deferred):
+    - transformers_backend.py (Task 6)
+    - faster_whisper_backend.py (Task 7)
+
+[✓] Documentation reflects current vs future state
+    - CONTRACT.md: "Task 1 (Current)" vs "Future Tasks"
+    - CONTRACT.md: "Planned Backend Implementations" (not "Supported")
+    - CONTRACT.md: "Status: To be implemented in Task X"
+    - __init__.py: "Architecture (Task 1 - Contract Definition)"
+    - __init__.py: "Will wrap" (future tense, not present)
+
+[✓] Factory function handles missing implementations gracefully
+    - Imports wrapped in try/except
+    - ImportError messages reference specific tasks
+    - Error for transformers: "will be added in Task 6"
+    - Error for faster-whisper: "will be added in Task 7"
+
+[✓] Contract remains complete and testable
+    - ASRBackend interface: load_model(), transcribe(), backend_name
+    - ASRConfig: model_name, device, dtype
+    - Selection: get_default_backend() works independently
+    - Validation: ValueError for invalid backends
+    - Rollback: OMNIVOICE_ASR_BACKEND env var documented
+
+LSP DIAGNOSTICS:
+
+Files scanned: 3
+Files with errors: 0
+Total diagnostics: 3 (all warnings, non-blocking)
+- UP007: type annotation style (cosmetic)
+- F401: unused import in TYPE_CHECKING guard (false positive)
+
+ACCEPTANCE CRITERIA (ORIGINAL TASK 1):
+
+[✓] Documented internal contract exists
+    Location: base.py (ASRBackend), CONTRACT.md
+    
+[✓] Selection policy specified
+    Location: factory.py (get_default_backend), CONTRACT.md
+    Default: "transformers"
+    Opt-in: "faster-whisper"
+    
+[✓] Fallback semantics documented
+    Location: CONTRACT.md (Error Handling section)
+    Behavior: Explicit errors, no silent fallback
+    
+[✓] Rollback semantics documented
+    Location: CONTRACT.md (Rollback Path section)
+    Mechanism: OMNIVOICE_ASR_BACKEND env var
+    Requirement: No code changes
+    
+[✓] Initial default remains transformers
+    Location: factory.py:32
+    Verified: get_default_backend() returns "transformers"
+    
+[✓] Rollback requires only config/env/CLI switching
+    Verified: Backend selection via env var only
+    No code changes needed to switch backends
+
+CONCLUSION:
+
+Task 1 scope fix complete. All artifacts correctly scoped to contract definition only.
+Backend implementations properly deferred to Tasks 6 and 7.
+All original acceptance criteria remain satisfied.
+No errors in lsp_diagnostics.
+Documentation and code agree on current vs future state.

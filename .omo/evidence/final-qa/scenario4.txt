@@ -1,0 +1,9 @@
+/Users/trung.ngo/Library/Python/3.9/lib/python/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+Traceback (most recent call last):
+  File "<string>", line 7, in <module>
+  File "/Users/trung.ngo/Documents/zaob-dev/omnivoice-server/OmniVoice/omnivoice/__init__.py", line 22, in <module>
+    from omnivoice.models.omnivoice import (
+  File "/Users/trung.ngo/Documents/zaob-dev/omnivoice-server/OmniVoice/omnivoice/models/omnivoice.py", line 45, in <module>
+    from transformers import (
+ImportError: cannot import name 'HiggsAudioV2TokenizerModel' from 'transformers' (/Users/trung.ngo/Library/Python/3.9/lib/python/site-packages/transformers/__init__.py)

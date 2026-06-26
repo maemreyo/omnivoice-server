@@ -1,0 +1,67 @@
+Task 12: Server Backend Selection Evidence
+===========================================
+
+QA Scenario 1: Server can force each backend
+
+Implementation:
+---------------
+File: omnivoice_server/config.py
+Added field:
+  asr_backend: Literal["transformers", "faster-whisper"] | None = Field(
+      default=None,
+      description="ASR backend for auto-transcription. "
+      "None = use OMNIVOICE_ASR_BACKEND env var or default (transformers). "
+      "Supported: 'transformers' (default), 'faster-whisper'."
+  )
+
+File: omnivoice_server/app.py
+Added startup logic:
+  if cfg.asr_backend:
+      import os
+      os.environ["OMNIVOICE_ASR_BACKEND"] = cfg.asr_backend
+      logger.info(f"  asr_backend={cfg.asr_backend} (set via config)")
+
+Backend Selection Mechanism:
+-----------------------------
+Precedence: CLI/config > env > default
+
+1. Via config field:
+   OMNIVOICE_ASR_BACKEND=transformers omnivoice-server
+   → Server uses transformers backend
+
+2. Via env var:
+   OMNIVOICE_ASR_BACKEND=faster-whisper omnivoice-server
+   → Server uses faster-whisper backend
+
+3. Default (no config, no env var):
+   omnivoice-server
+   → Server uses default (transformers)
+
+Testing Commands:
+-----------------
+Command 1 (config field):
+  OMNIVOICE_ASR_BACKEND=transformers omnivoice-server
+  Expected: Server logs show "asr_backend=transformers (set via config)"
+
+Command 2 (env var):
+  OMNIVOICE_ASR_BACKEND=faster-whisper omnivoice-server
+  Expected: Server logs show ASR backend selection via env var
+
+Command 3 (default):
+  omnivoice-server
+  Expected: Server uses default transformers backend
+
+Backward Compatibility:
+-----------------------
+✓ Existing users do not need to set asr_backend field
+✓ Default behavior unchanged (transformers)
+✓ Config field is optional (default=None)
+
+Verification:
+-------------
+Command: python3 -m py_compile omnivoice_server/config.py omnivoice_server/app.py
+Result: ✓ Passed
+
+VERDICT: PASS
+Server now supports explicit backend selection via config field.
+Precedence: config > env > default.

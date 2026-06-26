@@ -1,0 +1,46 @@
+TASK 17: RUNTIME TRANSCRIPT RESULTS
+===================================
+Date: 2026-04-20
+Audio Fixture: voice_samples/test_english.wav (4.1s at 24000Hz)
+Model: openai/whisper-tiny (both backends)
+Device: CPU
+Python: 3.11.15
+
+TRANSFORMERS BACKEND OUTPUT
+---------------------------
+Raw Transcript:
+"Hello, this is a test of the Omni Voice Texas Beach System running on CPU."
+
+Normalized Words (15 total):
+['hello', 'this', 'is', 'a', 'test', 'of', 'the', 'omni', 'voice', 'texas', 'beach', 'system', 'running', 'on', 'cpu']
+
+Backend Status: ✓ Loaded successfully
+Execution: ✓ Completed without errors
+Output Type: str
+Output Length: 74 characters
+
+
+FASTER-WHISPER BACKEND OUTPUT
+------------------------------
+Raw Transcript:
+"Hello, this is a test of the Omni-voice text-to-speech system running on CPU."
+
+Normalized Words (13 total):
+['hello', 'this', 'is', 'a', 'test', 'of', 'the', 'omnivoice', 'texttospeech', 'system', 'running', 'on', 'cpu']
+
+Backend Status: ✓ Loaded successfully
+Execution: ✓ Completed without errors
+Output Type: str
+Output Length: 77 characters
+
+
+OBSERVATIONS
+------------
+1. Both backends successfully transcribed the audio
+2. Both produced non-empty string outputs
+3. Transcripts differ in word segmentation:
+   - Transformers: "omni voice" (2 words) vs Faster-Whisper: "omnivoice" (1 word)
+   - Transformers: "texas beach" vs Faster-Whisper: "texttospeech"
+4. Word count differs: 15 vs 13 words
+5. Both backends interpreted the audio differently (hallucination/misrecognition)
+6. No runtime errors or exceptions from either backend

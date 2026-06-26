@@ -1,0 +1,265 @@
+Task 19: Default Switch Criteria Evidence
+==========================================
+
+Date: 2026-04-20
+Task: Define criteria and procedure for future default switch
+Status: COMPLETE
+
+================================================================================
+ACCEPTANCE CRITERION 1: Future Default-Switch Criteria Are Explicit
+================================================================================
+
+Document Location: docs/architecture/asr-default-switch-criteria.md
+
+Criteria Defined: 7 criteria (from Task 3 compatibility matrix)
+
+Criterion 1: All Supported Environments Validated
+--------------------------------------------------
+Status: ⚠️ PENDING RUNTIME DATA
+Evidence Required: Execute Task 15 command matrix in Python 3.10+ environment
+Acceptance Rule: All 15 validation commands execute successfully
+Structural Evidence: Task 15 command matrix exists, compatibility matrix documented
+What Remains: Runtime execution in proper environment
+
+Criterion 2: Transcript Equivalence Verified
+---------------------------------------------
+Status: ⚠️ PENDING RUNTIME DATA
+Evidence Required: Execute both backends on fixture set, compare outputs
+Acceptance Rule: Transcripts match on ≥95% of fixtures after normalization
+Structural Evidence: Contract equivalence validated, 29/29 tests pass
+What Remains: Runtime fixture comparison in proper environment
+
+Criterion 3: Clone Success Rate ≥ 90%
+--------------------------------------
+Status: ⚠️ PENDING RUNTIME DATA
+Evidence Required: Execute clone mode with faster-whisper on fixtures
+Acceptance Rule: Clone success rate ≥ 90% across fixture set
+Structural Evidence: Clone path integration complete, no backend-specific branching
+What Remains: Runtime clone validation in proper environment
+
+Criterion 4: No Critical Regressions Found
+-------------------------------------------
+Status: ⚠️ PENDING RUNTIME DATA
+Evidence Required: Issue tracker review, regression testing, performance testing
+Acceptance Rule: Zero open P0/P1 bugs related to faster-whisper
+Structural Evidence: 137 tests passing (contract + rollback + speech)
+What Remains: Production deployment, 2+ weeks monitoring, regression suite execution
+
+Criterion 5: Rollback Procedure Tested
+---------------------------------------
+Status: ✅ MET
+Evidence: 10/10 rollback tests pass, runbook validated
+Acceptance Rule: All rollback tests pass + runbook validated
+Evidence Location: .sisyphus/evidence/task-13-rollback-runbook.txt
+
+Criterion 6: Documentation Complete
+------------------------------------
+Status: ✅ MET (for opt-in stage)
+Evidence: 5 documentation files updated (Task 14)
+Acceptance Rule: All documentation files updated and reviewed before switch
+Evidence Location: .sisyphus/evidence/task-14-documentation-updates.txt
+What Remains: Update docs to reflect faster-whisper as default (after switch decision)
+
+Criterion 7: Minimum 2 Weeks Opt-In Feedback Period
+----------------------------------------------------
+Status: ⚠️ PENDING (rollout not started)
+Evidence Required: Deployment date, 2+ weeks elapsed, feedback collected
+Acceptance Rule: Minimum 2 weeks opt-in period with no blocking issues
+What Remains: Deploy Task 18, monitor for 2+ weeks, collect feedback
+
+Overall Status: 2/7 MET, 5/7 PENDING
+
+Evidence-Based Approach:
+-------------------------
+✓ Criteria based on structural evidence where available (Tasks 13, 14, 15, 16, 17)
+✓ Clear placeholders for runtime data still needed (Criteria 1-4, 7)
+✓ Each criterion has explicit acceptance rule (binary/threshold-based)
+✓ No vague criteria ("if it seems good")
+✓ Runtime-blocked criteria explicitly marked as PENDING
+
+================================================================================
+ACCEPTANCE CRITERION 2: Procedure for Changing Default Backend Is Documented
+================================================================================
+
+Document Location: docs/architecture/asr-default-switch-criteria.md (Section 2)
+
+Procedure Steps: 6 steps defined
+
+Step 1: Pre-Switch Verification
+--------------------------------
+Duration: 1 day
+Checklist: 5 items (criteria verification, evidence review, rollback readiness, stakeholder notification, monitoring setup)
+
+Step 2: Code Changes
+---------------------
+Duration: 5 minutes
+File: OmniVoice/omnivoice/asr/factory.py
+Line: 32
+Change: return "transformers" → return "faster-whisper"
+Verification: Python script to verify default changed
+
+Step 3: Documentation Updates
+------------------------------
+Duration: 30 minutes
+Files: 5 files to update
+  1. OmniVoice/README.md
+  2. docs/readme/sections/05-cli-usage.md
+  3. docs/readme/sections/06-configuration.md
+  4. docs/readme/sections/14-troubleshooting.md
+  5. docs/ASR_ROLLBACK_RUNBOOK.md
+Verification: grep commands to verify consistency
+
+Step 4: Test Execution
+-----------------------
+Duration: 10 minutes
+Tests: 3 test suites (test_asr_contract.py, test_asr_rollback.py, test_speech.py)
+Verification: 2 commands to verify default and rollback
+
+Step 5: Commit and Deploy
+--------------------------
+Duration: 1 hour
+Commit message: Template provided with evidence references
+Deployment: 4 steps (merge, tag, deploy, monitor)
+
+Step 6: Post-Switch Monitoring
+-------------------------------
+Duration: 7 days continuous
+Monitoring: 6 checklist items (logs, import failures, transcription failures, clone success, issues, performance)
+Alert thresholds: 4 thresholds defined (import >5%, transcription >10%, clone <90%, P0/P1 bugs)
+
+Total Duration: ~8 days (1 day prep + 2 hours execution + 7 days monitoring)
+
+Exact Files to Edit:
+--------------------
+✓ OmniVoice/omnivoice/asr/factory.py (line 32)
+✓ OmniVoice/README.md
+✓ docs/readme/sections/05-cli-usage.md
+✓ docs/readme/sections/06-configuration.md
+✓ docs/readme/sections/14-troubleshooting.md
+✓ docs/ASR_ROLLBACK_RUNBOOK.md
+
+Exact Env Vars to Change:
+--------------------------
+✓ OMNIVOICE_ASR_BACKEND (documented in Step 2 verification)
+
+Exact Docs to Update:
+----------------------
+✓ All 5 documentation files listed in Step 3
+
+================================================================================
+ACCEPTANCE CRITERION 3: Immediate Rollback Procedure After Future Default Switch
+================================================================================
+
+Document Location: docs/architecture/asr-default-switch-criteria.md (Section 3)
+
+Rollback Control Surface: SAME as Task 13 rollback runbook
+Reference: docs/ASR_ROLLBACK_RUNBOOK.md
+
+Rollback Trigger Criteria: 5 triggers defined
+----------------------------------------------
+1. Import failure rate > 5%
+2. Transcription failure rate > 10%
+3. Clone success rate < 90%
+4. Critical production issue
+5. P0/P1 bug related to faster-whisper
+
+Rollback Method 1: Environment Variable (Recommended)
+------------------------------------------------------
+Use case: Quick rollback without code changes
+Command: export OMNIVOICE_ASR_BACKEND=transformers
+Rollback time: < 5 minutes (restart required)
+Verification: Check logs for "backend: transformers"
+
+Rollback Method 2: CLI Flag (Immediate)
+----------------------------------------
+Use case: Single invocation rollback
+Command: --asr-backend transformers
+Rollback time: Immediate (no restart)
+Note: OmniVoice CLI tools only (not server)
+
+Rollback Method 3: Server Config Field (Persistent)
+----------------------------------------------------
+Use case: Permanent rollback for server
+Command: export OMNIVOICE_ASR_BACKEND=transformers
+Rollback time: < 5 minutes (restart required)
+
+Rollback Verification Steps: 3 steps defined
+---------------------------------------------
+1. Backend Selection: grep logs for "ASR backend"
+2. Auto-Transcription Works: Test with demo/CLI
+3. No Errors in Logs: grep for ASR errors
+
+Rollback Evidence Collection: 3 items defined
+----------------------------------------------
+1. Log excerpt showing backend selection
+2. Test transcription output
+3. Error rate before and after rollback
+
+Selection Precedence (Post-Switch): 4 levels defined
+-----------------------------------------------------
+1. CLI flag (highest)
+2. Environment variable
+3. Config field
+4. Default: faster-whisper (after switch)
+
+Rollback Safety Guarantees: 5 guarantees documented
+----------------------------------------------------
+✓ No code edits required
+✓ No database migration required
+✓ No model re-download required
+✓ Rollback in < 5 minutes
+✓ Same control surface as pre-switch rollback
+
+Consistency with Task 13 Rollback Runbook:
+-------------------------------------------
+✓ Uses SAME environment variable: OMNIVOICE_ASR_BACKEND
+✓ Uses SAME CLI flag: --asr-backend
+✓ Uses SAME config field: asr_backend
+✓ Uses SAME verification steps
+✓ Uses SAME selection precedence
+✓ Only difference: direction (FROM faster-whisper TO transformers after switch)
+
+================================================================================
+EVIDENCE FILES CREATED
+================================================================================
+
+1. docs/architecture/asr-default-switch-criteria.md (main document, 24.5 KB)
+2. .sisyphus/evidence/task-19-switch-criteria.txt (this file)
+3. .sisyphus/evidence/task-19-post-switch-rollback.txt (next file)
+
+================================================================================
+SUMMARY
+================================================================================
+
+Acceptance Criterion 1: ✅ MET
+- 7 criteria defined (from Task 3 compatibility matrix)
+- Each criterion has explicit status (MET / PENDING)
+- Evidence-based where available (Tasks 13, 14, 15, 16, 17)
+- Clear placeholders for runtime data (Criteria 1-4, 7)
+- Binary/threshold-based acceptance rules
+- No vague criteria
+
+Acceptance Criterion 2: ✅ MET
+- 6-step procedure documented
+- Exact file to change: factory.py line 32
+- Exact docs to update: 5 files listed
+- Exact env var: OMNIVOICE_ASR_BACKEND
+- Verification commands provided
+- Total duration: ~8 days
+
+Acceptance Criterion 3: ✅ MET
+- Post-switch rollback procedure documented
+- Uses SAME control surface as Task 13 runbook
+- 3 rollback methods documented
+- 5 rollback triggers defined
+- Verification steps provided
+- Evidence collection documented
+- Safety guarantees listed
+
+Overall Task 19 Status: ✅ COMPLETE
+
+All acceptance criteria met. Document created with explicit criteria, exact procedure, and immediate rollback procedure.
+
+================================================================================
+END OF EVIDENCE
+================================================================================

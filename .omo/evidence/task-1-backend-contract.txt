@@ -1,0 +1,82 @@
+Task 1: ASR Backend Contract Definition - Evidence
+
+ACCEPTANCE CRITERIA VERIFICATION:
+
+[✓] A documented internal contract exists for ASR backends
+    Location: OmniVoice/omnivoice/asr/base.py (ASRBackend abstract class)
+    Location: OmniVoice/omnivoice/asr/CONTRACT.md (full documentation)
+    
+    Contract elements present:
+    - load_model() method for lazy initialization
+    - transcribe() method with normalized output contract
+    - backend_name property for diagnostics
+    - ASRConfig dataclass for initialization parameters
+    - Error propagation requirements (RuntimeError with context)
+    - Device/dtype handling delegation
+
+[✓] Selection policy specified
+    Location: OmniVoice/omnivoice/asr/factory.py (get_default_backend, create_asr_backend)
+    
+    Selection mechanism:
+    - OMNIVOICE_ASR_BACKEND environment variable
+    - Default: "transformers" (preserves current behavior)
+    - Opt-in: "faster-whisper" (alternative backend)
+    - Validation: raises ValueError on invalid backend name
+
+[✓] Fallback semantics documented
+    Location: OmniVoice/omnivoice/asr/CONTRACT.md (Error Handling section)
+    
+    Fallback behavior:
+    - Backend load failures raise RuntimeError with clear context
+    - No silent fallback - explicit error propagation
+    - Operator must handle backend selection explicitly
+
+[✓] Rollback semantics documented
+    Location: OmniVoice/omnivoice/asr/CONTRACT.md (Rollback Path section)
+    
+    Rollback mechanism:
+    - Set OMNIVOICE_ASR_BACKEND=transformers
+    - No code changes required
+    - Purely operational switch
+
+[✓] Initial default remains transformers
+    Location: OmniVoice/omnivoice/asr/factory.py:24 (get_default_backend)
+    
+    Default behavior:
+    - Returns "transformers" when env var not set
+    - Preserves current OmniVoice behavior
+    - faster-whisper is opt-in only
+
+[✓] Rollback requires only config/env/CLI switching
+    Verification:
+    - Backend selection via OMNIVOICE_ASR_BACKEND env var
+    - No code modification needed to switch backends
+    - Factory pattern isolates backend choice from implementation
+
+IMPLEMENTATION ARTIFACTS:
+
+Files created:
+- OmniVoice/omnivoice/asr/__init__.py (public API)
+- OmniVoice/omnivoice/asr/base.py (interface + config)
+- OmniVoice/omnivoice/asr/factory.py (selection logic)
+- OmniVoice/omnivoice/asr/CONTRACT.md (documentation)
+
+Contract guarantees:
+1. Lazy initialization (load_model() explicit)
+2. Plain text transcript output (normalized)
+3. Clear error propagation (RuntimeError with context)
+4. Device compatibility (delegated to backends)
+
+ROLLBACK VERIFICATION:
+
+Rollback test scenario:
+1. Set OMNIVOICE_ASR_BACKEND=faster-whisper
+2. Verify backend selection: get_default_backend() returns "faster-whisper"
+3. Set OMNIVOICE_ASR_BACKEND=transformers
+4. Verify backend selection: get_default_backend() returns "transformers"
+5. Unset OMNIVOICE_ASR_BACKEND
+6. Verify default: get_default_backend() returns "transformers"
+
+Result: Rollback is operational and requires no code changes.
+
+CONCLUSION: All acceptance criteria satisfied. Contract is complete and rollback-safe.

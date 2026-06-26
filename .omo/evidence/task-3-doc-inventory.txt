@@ -1,0 +1,222 @@
+# Task 3: Documentation Inventory — Public Capability Surfaces
+
+Generated: 2026-04-17
+Scope: All public-facing documentation mentioning OmniVoice capabilities
+
+---
+
+## PRIMARY DOCUMENTATION SURFACES
+
+### 1. README.md (Root)
+Location: /README.md
+Lines: 790 total
+
+**Sections mentioning capabilities:**
+
+- **Line 22-35: Features section**
+  - Lists "Three voice modes: Auto, Design, Clone"
+  - Lists "Voice profile management"
+  - Lists "Streaming synthesis"
+  - Lists "Multiple audio formats"
+  - Lists "Speed control"
+
+- **Line 169-217: Voice Design section**
+  - Documents `instructions` parameter
+  - Lists available attributes: Gender, Age, Pitch, Style, Accent, Dialect
+  - Shows OpenAI-compatible presets (alloy, nova, onyx, shimmer, etc.)
+  - Includes preset mapping table
+
+- **Line 218-250: Voice Cloning section**
+  - Documents profile creation workflow
+  - Documents one-shot cloning endpoint
+
+- **Line 252-271: Streaming section**
+  - Shows streaming API usage with `stream=True`
+  - References `examples/streaming_player.py`
+
+- **Line 327-434: API Reference section**
+  - Documents all endpoints with request/response formats
+  - Shows `POST /v1/audio/speech` with all parameters
+  - Shows `POST /v1/audio/speech/clone`
+  - Shows profile management endpoints
+
+- **Line 436-470: Advanced Features section**
+  - **Non-Verbal Symbols** (line 438-456)
+    - Claims "OmniVoice natively supports non-verbal symbols inline in text"
+    - Lists: [laughter], [breath], [sigh]
+    - States "These are pass-through features from the upstream model"
+  - **Pronunciation Correction** (line 457-470)
+    - Shows pinyin hints for Chinese text
+    - States "The server passes these hints directly to OmniVoice without modification"
+
+- **Line 472-520: Advanced Generation Parameters section**
+  - Documents per-request parameters: num_step, guidance_scale, denoise, t_shift, position_temperature, class_temperature, duration
+  - Explains voice consistency and reproducibility
+  - Explains fixed duration for video sync
+
+- **Line 710-754: Known Limitations section**
+  - Documents streaming voice consistency limitation
+  - Provides workarounds including position_temperature=0
+
+---
+
+## EXAMPLES
+
+### 2. examples/python_client.py
+Location: /examples/python_client.py
+Lines: 286 total
+
+**Capability demonstrations:**
+
+- Line 30-49: Basic synthesis (default design prompt)
+- Line 54-72: Voice design with `instructions` parameter
+- Line 77-109: Voice cloning with profile creation
+- Line 114-138: One-shot cloning
+- Line 143-174: Streaming synthesis
+- Line 179-192: List voices endpoint
+- Line 197-237: Profile management (CRUD operations)
+
+**Key claims:**
+- Line 108: "Profiles are stored for management and inspection. For synthesis, use POST /v1/audio/speech/clone with reference audio."
+
+### 3. examples/streaming_player.py
+Location: /examples/streaming_player.py
+Lines: 115 total
+
+**Capability demonstrations:**
+
+- Line 27-93: Real-time streaming audio player
+- Line 46: Shows `instructions` parameter usage
+- Line 63: Shows `stream=True` parameter
+
+### 4. examples/curl_examples.sh
+Location: /examples/curl_examples.sh
+Lines: 172 total
+
+**Capability demonstrations:**
+
+- Line 25-36: Basic synthesis
+- Line 41-53: Voice design with `instructions`
+- Line 58-71: Streaming synthesis
+- Line 75-79: List voices
+- Line 84-99: Create voice profile
+- Line 103-105: Note about stored profiles vs synthesis
+- Line 110-126: One-shot voice cloning
+- Line 130-146: Profile management (GET, PATCH)
+
+---
+
+## TECHNICAL DOCUMENTATION
+
+### 5. docs/design/dataflow.md
+Location: /docs/design/dataflow.md
+Lines: 282 total
+
+**Capability documentation:**
+
+- Line 21-75: `/v1/audio/speech` non-streaming data flow
+  - Documents voice string parsing: "auto", "design:...", "clone:..."
+  - Documents SynthesisRequest parameters
+  - Documents audio encoding (WAV vs PCM)
+
+- Line 77-110: `/v1/audio/speech` streaming data flow
+  - Documents sentence splitting
+  - Documents chunked transfer encoding
+  - Documents per-sentence synthesis
+
+- Line 113-139: `/v1/audio/speech/clone` data flow
+  - Documents multipart form handling
+  - Documents temp file management for ref_audio
+
+- Line 141-160: `/v1/voices` endpoint
+  - Documents built-in voices (auto, design)
+  - Documents profile listing
+
+- Line 162-208: Profile management endpoints
+  - Documents POST, DELETE, PATCH operations
+
+- Line 247-282: Audio format reference
+  - Documents 24kHz, mono, 16-bit PCM format
+  - Shows client reconstruction example
+
+### 6. docs/system/specification.md
+Location: /docs/system/specification.md
+Lines: 2746 total (first 100 lines read)
+
+**Capability documentation:**
+
+- Line 79-100: OmniVoice Python API overview
+  - Documents model.generate() parameters
+  - Shows auto voice, voice design, voice cloning examples
+
+---
+
+## VERIFICATION DOCUMENTATION
+
+### 7. docs/verification/VERIFICATION_RESULTS.md
+Location: /docs/verification/VERIFICATION_RESULTS.md
+
+**Mentions capabilities in context of testing:**
+- Voice design attributes tested
+- Streaming functionality verified
+- Profile management tested
+
+### 8. docs/verification/MPS_ISSUE.md
+Location: /docs/verification/MPS_ISSUE.md
+
+**Mentions capabilities in context of device compatibility:**
+- Streaming audio quality issues on MPS
+- Voice synthesis behavior on different devices
+
+---
+
+## CONFIGURATION DOCUMENTATION
+
+### 9. docs/configuration.md
+Location: /docs/configuration.md
+
+**Mentions capabilities in context of server configuration:**
+- Device selection (cpu, cuda, mps)
+- num_step parameter
+- Streaming configuration
+
+### 10. docs/runbook.md
+Location: /docs/runbook.md
+
+**Operational documentation mentioning capabilities:**
+- Voice profile directory management
+- Streaming endpoint usage
+- Audio format handling
+
+---
+
+## SUMMARY: PUBLIC CAPABILITY SURFACES
+
+**Total files inventoried: 10**
+
+**Primary user-facing surfaces:**
+1. README.md — Main documentation (790 lines)
+2. examples/python_client.py — Code examples (286 lines)
+3. examples/streaming_player.py — Streaming demo (115 lines)
+4. examples/curl_examples.sh — CLI examples (172 lines)
+
+**Technical reference surfaces:**
+5. docs/design/dataflow.md — API data flow (282 lines)
+6. docs/system/specification.md — System spec (2746 lines)
+7. docs/verification/* — Verification reports (multiple files)
+8. docs/configuration.md — Configuration guide
+9. docs/runbook.md — Operations guide
+
+**Key capability mentions across all surfaces:**
+- Voice design with `instructions` parameter
+- Voice cloning (profile-based and one-shot)
+- Streaming synthesis with `stream=True`
+- Non-verbal symbols ([laughter], [breath], [sigh])
+- Pronunciation correction (pinyin hints)
+- Advanced generation parameters (num_step, guidance_scale, temperature, etc.)
+- Profile management (CRUD operations)
+- Audio format control (WAV vs PCM)
+- Speed control
+- OpenAI-compatible presets
+
+**Next step:** Analyze which capabilities are upstream-native vs server-only extensions.

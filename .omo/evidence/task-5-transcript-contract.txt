@@ -1,0 +1,139 @@
+Task 5: Define canonical transcript normalization contract
+Evidence Collection: 2026-04-19T15:30:52Z
+
+=== QA Scenario 1: Output contract is backend-agnostic ===
+
+PRECONDITIONS: Contract specification created at docs/architecture/transcript-normalization-contract.md
+
+STEP 1: Inspect both backend adapter outputs
+- Transformers backend (current): Returns str from pipeline["text"].strip()
+  Location: OmniVoice/omnivoice/models/omnivoice.py:336, 346
+  Output type: str
+  Normalization: .strip() applied
+
+- Faster-whisper backend (future): Must normalize segments to str
+  Proposed: "".join(segment.text for segment in segments).strip()
+  Output type: str (after normalization)
+  Normalization: concatenate + .strip()
+
+STEP 2: Verify each produces the same transcript-facing schema/return type
+✓ Both backends return: str
+✓ Both apply .strip() normalization
+✓ No metadata objects leak through
+✓ Contract specifies: def transcribe(...) -> str
+
+STEP 3: Verify downstream clone code consumes only the canonical form
+Location: OmniVoice/omnivoice/models/omnivoice.py:672
+Code: ref_text = self.transcribe((ref_wav, self.sampling_rate))
+✓ Consumes plain str
+✓ No backend type checking
+✓ No dict/list handling
+✓ Punctuation applied separately at line 685
+
+EXPECTED RESULT: Adapters normalize to one contract
+✓ PASS: Contract defines str return type
+✓ PASS: Both backends normalize to plain string
+✓ PASS: Downstream code expects only str
+
+FAILURE INDICATORS: None detected
+- No backend-specific fields in contract
+- No metadata leakage paths
+- Clone logic is backend-agnostic
+
+=== QA Scenario 2: Normalization covers punctuation path ===
+
+PRECONDITIONS: Normalization contract documented in transcript-normalization-contract.md
+
+STEP 1: Verify the contract documents where punctuation is applied
+Contract Section: "Punctuation Handling"
+✓ Documents that ASR backends MUST NOT add punctuation
+✓ Documents that add_punctuation() runs in create_voice_clone_prompt()
+✓ Specifies normalization order diagram showing separation
+
+STEP 2: Verify transcription result is still compatible with add_punctuation() path
+Current behavior (OmniVoice/omnivoice/models/omnivoice.py:685):
+  if preprocess_prompt:
+      ref_text = add_punctuation(ref_text)
+
+add_punctuation() implementation (OmniVoice/omnivoice/utils/text.py:207-219):
+  - Checks if text ends with END_PUNCTUATION
+  - Appends "。" (Chinese) or "." (other) if missing
+  - Returns unchanged if punctuation present
+
+Contract compatibility:
+✓ ASR returns raw text (no punctuation added)
+✓ add_punctuation() receives plain str
+✓ No double-punctuation risk
+✓ Existing behavior preserved
+
+EXPECTED RESULT: Normalization order is explicit and safe
+✓ PASS: Contract explicitly forbids ASR punctuation addition
+✓ PASS: Punctuation handling remains in preprocessing path
+✓ PASS: Order documented in normalization flow diagram
+
+FAILURE INDICATORS: None detected
+- No duplicated normalization
+- Punctuation path compatibility maintained
+- Separation of concerns preserved
+
+=== CONTRACT VALIDATION ===
+
+Contract file: docs/architecture/transcript-normalization-contract.md
+Sections verified:
+✓ Canonical Transcript Type (Python signature)
+✓ Return Value Contract (str with guarantees)
+✓ Normalization Requirements by Backend
+✓ Punctuation Handling (order and responsibility)
+✓ Error Handling Contract
+✓ Downstream Consumption (clone prompt integration)
+✓ No Backend Branching requirement
+✓ Adapter Implementation Checklist
+
+Backend-agnostic guarantees:
+✓ Single return type: str
+✓ Whitespace normalized: .strip()
+✓ No metadata leakage
+✓ Punctuation handled separately
+✓ Error surface defined
+
+Compatibility verified:
+✓ Transformers backend: Already compliant
+✓ Faster-whisper backend: Normalization path specified
+✓ Clone prompt generation: Consumes canonical form only
+
+=== ACCEPTANCE CRITERIA ===
+
+[✓] One canonical transcript contract is defined for all ASR backends
+    - Documented in docs/architecture/transcript-normalization-contract.md
+    - Type signature: def transcribe(...) -> str
+    - Single normalization boundary established
+
+[✓] The contract explicitly covers text extraction, normalization, and failure behavior
+    - Text extraction: Backend-specific → str conversion specified
+    - Normalization: .strip() required, no punctuation addition
+    - Failure behavior: RuntimeError/ValueError contract defined
+
+[✓] Downstream clone prompt code does not need backend-specific branching
+    - Verified: create_voice_clone_prompt() consumes str directly
+    - No backend type checks in clone logic
+    - Punctuation handling remains in preprocessing path
+
+=== CONCLUSION ===
+
+Task 5 COMPLETE: Canonical transcript normalization contract defined.
+
+Contract establishes:
+- Single output type (str) for all backends
+- Explicit normalization requirements (strip whitespace, no punctuation)
+- Clear separation: ASR produces raw text, preprocessing adds formatting
+- Error handling surface for backend failures
+- Compatibility with existing clone prompt generation
+
+Next steps (blocked tasks now unblocked):
+- Task 7: Implement faster-whisper adapter using this contract
+- Task 10: Add backend-switchable tests validating contract
+- Task 17: Compare transcript equivalence across backends
+
+Evidence artifacts:
+- Contract specification: docs/architecture/transcript-normalization-contract.md
+- This evidence file: .sisyphus/evidence/task-5-transcript-contract.txt

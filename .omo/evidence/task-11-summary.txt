@@ -1,0 +1,98 @@
+Task 11: Wire Backend Abstraction into Clone Prompt Path - COMPLETE
+====================================================================
+
+Date: 2026-04-19T16:43:00Z
+
+## Files Changed
+
+1. OmniVoice/omnivoice/models/omnivoice.py
+   - Replaced `self._asr_pipe` with `self._asr_backend` (3 locations)
+   - Updated `load_asr_model()` to use ASR backend factory
+   - Updated `transcribe()` to delegate to backend abstraction
+   - Removed direct transformers pipeline imports
+
+## Integration Summary
+
+Before:
+-------
+- Direct transformers pipeline import and usage
+- Backend-specific logic in clone prompt generation
+- No abstraction layer between clone path and ASR implementation
+
+After:
+------
+- ASR backend abstraction via factory pattern
+- Backend selection via OMNIVOICE_ASR_BACKEND env var
+- Backend-specific logic isolated in adapter modules
+- Clean separation between clone logic and ASR implementation
+
+## Verification Results
+
+Command: python3 -m py_compile OmniVoice/omnivoice/models/omnivoice.py
+Result: ✓ Passed
+
+Command: pytest -q tests/test_asr_contract.py
+Result: 29 passed in 0.06s
+
+## Acceptance Criteria
+
+✓ Clone prompt generation uses backend abstraction rather than direct backend implementation
+  - load_asr_model() now calls create_asr_backend()
+  - transcribe() now delegates to self._asr_backend.transcribe()
+  - No direct transformers imports in clone path
+
+✓ ref_text=None path remains functional through abstraction
+  - Lazy loading preserved: backend loaded on-demand
+  - Trigger semantics unchanged: if ref_text is None
+  - Auto-transcription flow intact
+
+✓ ref_text-provided path remains unchanged in behavior
+  - Explicit ref_text bypasses ASR backend loading
+  - No unnecessary backend initialization
+  - Original user-facing behavior preserved
+
+## Behavior Preserved
+
+1. Lazy Loading:
+   - Backend loaded on-demand when ref_text=None
+   - No backend load when ref_text provided
+
+2. Trigger Semantics:
+   - ref_text=None → auto-transcription
+   - ref_text provided → bypass ASR
+
+3. Error Handling:
+   - RuntimeError when backend unavailable
+   - Clear error messages with workaround guidance
+
+4. Transcript Contract:
+   - Backends return plain string
+   - Normalization happens at backend boundary
+   - Punctuation applied after transcription
+
+## Evidence Files
+
+1. .sisyphus/evidence/task-11-clone-integration.txt
+   - Integration changes and verification
+   - What is/isn't validated
+
+2. .sisyphus/evidence/task-11-ref-text-bypass.txt
+   - Explicit ref_text bypass behavior
+   - Code analysis showing preserved logic
+
+3. .sisyphus/notepads/torchcodec-windows-long-term-fix/issues.md
+   - Timestamped completion documentation
+
+## Remaining Gaps
+
+None for Task 11 scope. Integration is complete and verified at the contract level.
+
+Future work (Task 17): Add fixture-based equivalence tests with real backend
+implementations to validate actual transcription quality and clone compatibility.
+
+## Verification
+
+Syntax: ✓ python3 -m py_compile OmniVoice/omnivoice/models/omnivoice.py
+Tests: ✓ pytest -q tests/test_asr_contract.py (29 passed)
+
+TASK 11 STATUS: COMPLETE ✓

@@ -1,0 +1,290 @@
+# Task 15: Command Expectations Verification
+
+**Date**: 2026-04-19
+**Task**: Verify all validation commands include pass/fail expectations
+**Status**: COMPLETE
+
+## Overview
+
+This document verifies that every validation command in the command matrix includes explicit pass/fail criteria, enabling runners to judge success without guesswork.
+
+---
+
+## Command Expectations Audit
+
+### 1. Library: transformers Backend (Default)
+
+**Command**: Python script with transformers backend
+**Expected Result**: Documented ✓
+- Exit code: 0
+- Output file: out.wav exists and is valid audio
+- Log contains: "ASR backend selection: transformers"
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Exit 0, out.wav created, no exceptions
+- FAIL: Non-zero exit, missing output, or exception raised
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 2. Library: faster-whisper Backend (Opt-In)
+
+**Command**: Python script with faster-whisper backend
+**Expected Result**: Documented ✓
+- Exit code: 0
+- Output file: out.wav exists and is valid audio
+- Log contains: "ASR backend selection: faster-whisper"
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Exit 0, out.wav created, no exceptions
+- FAIL: Non-zero exit, missing output, or exception raised
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 3. CLI: omnivoice-infer with transformers (Default)
+
+**Command**: omnivoice-infer with default backend
+**Expected Result**: Documented ✓
+- Exit code: 0
+- Output file: out.wav exists
+- Log contains: "ASR backend selection: transformers"
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Exit 0, out.wav created, log confirms transformers backend
+- FAIL: Non-zero exit, missing output, or wrong backend logged
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 4. CLI: omnivoice-infer with faster-whisper (CLI Flag)
+
+**Command**: omnivoice-infer with --asr-backend flag
+**Expected Result**: Documented ✓
+- Exit code: 0
+- Output file: out.wav exists
+- Log contains: "ASR backend set to: faster-whisper"
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Exit 0, out.wav created, log confirms faster-whisper backend
+- FAIL: Non-zero exit, missing output, or wrong backend logged
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 5. CLI: omnivoice-demo with transformers (Default)
+
+**Command**: omnivoice-demo with default backend
+**Expected Result**: Documented ✓
+- Exit code: 0 (or runs until interrupted)
+- Log contains: "ASR backend selection: transformers"
+- Web UI accessible at http://127.0.0.1:7860
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Demo starts, transformers backend logged, UI accessible
+- FAIL: Startup failure, wrong backend, or UI inaccessible
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 6. CLI: omnivoice-demo with faster-whisper (CLI Flag)
+
+**Command**: omnivoice-demo with --asr-backend flag
+**Expected Result**: Documented ✓
+- Exit code: 0 (or runs until interrupted)
+- Log contains: "ASR backend set to: faster-whisper"
+- Web UI accessible at http://127.0.0.1:7860
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Demo starts, faster-whisper backend logged, UI accessible
+- FAIL: Startup failure, wrong backend, or UI inaccessible
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 7. CLI: omnivoice-infer-batch with transformers (Default)
+
+**Command**: omnivoice-infer-batch with default backend
+**Expected Result**: Documented ✓
+- Exit code: 0
+- Output file: results/test1.wav exists
+- Log contains: "ASR backend selection: transformers"
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Exit 0, output files created, transformers backend logged
+- FAIL: Non-zero exit, missing outputs, or wrong backend
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 8. CLI: omnivoice-infer-batch with faster-whisper (CLI Flag)
+
+**Command**: omnivoice-infer-batch with --asr-backend flag
+**Expected Result**: Documented ✓
+- Exit code: 0
+- Output file: results/test1.wav exists
+- Log contains: "ASR backend set to: faster-whisper"
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Exit 0, output files created, faster-whisper backend logged
+- FAIL: Non-zero exit, missing outputs, or wrong backend
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 9. Server: omnivoice-server with transformers (Default)
+
+**Command**: omnivoice-server with default backend
+**Expected Result**: Documented ✓
+- Server starts successfully
+- Log contains: "ASR backend selection: transformers"
+- API request returns 200 OK
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Server starts, transformers backend logged, API works
+- FAIL: Startup failure, wrong backend, or API error
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 10. Server: omnivoice-server with faster-whisper (Env Var)
+
+**Command**: omnivoice-server with OMNIVOICE_ASR_BACKEND env var
+**Expected Result**: Documented ✓
+- Server starts successfully
+- Log contains: "ASR backend selection: faster-whisper"
+- API request returns 200 OK
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Server starts, faster-whisper backend logged, API works
+- FAIL: Startup failure, wrong backend, or API error
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 11. Server: omnivoice-server with faster-whisper (Config Field)
+
+**Command**: omnivoice-server with config field (programmatic)
+**Expected Result**: Documented ✓
+- Server starts successfully
+- Log contains: "ASR backend selection: faster-whisper"
+- Config field `asr_backend` is respected
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Server starts, faster-whisper backend logged
+- FAIL: Startup failure or wrong backend
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 12. Rollback: Environment Variable Method (All Entry Points)
+
+**Command**: Switch from faster-whisper to transformers via env var
+**Expected Result**: Documented ✓
+- Both commands succeed
+- out1.wav log shows: "faster-whisper"
+- out2.wav log shows: "transformers"
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Both succeed, logs confirm backend switch
+- FAIL: Either command fails or backend doesn't switch
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 13. Rollback: CLI Flag Override (OmniVoice CLI Tools Only)
+
+**Command**: Override env var with CLI flag (omnivoice-infer/demo/batch only)
+**Expected Result**: Documented ✓
+- Command succeeds
+- Log shows: "ASR backend set to: transformers"
+- CLI flag overrides env var
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: Command succeeds, transformers backend used despite env var
+- FAIL: Command fails or faster-whisper used
+
+**Note**: This method does NOT apply to omnivoice-server (no CLI flag)
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 14. Contract Tests (Both Backends)
+
+**Command**: pytest tests/test_asr_contract.py
+**Expected Result**: Documented ✓
+- All tests pass
+- Both transformers and faster-whisper backends tested
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: All tests pass
+- FAIL: Any test fails
+
+**Status**: ✅ COMPLETE
+
+---
+
+### 15. Rollback Tests
+
+**Command**: pytest tests/test_asr_rollback.py
+**Expected Result**: Documented ✓
+- All 10 tests pass
+- Env var selection verified
+
+**Pass/Fail Criteria**: Documented ✓
+- PASS: All tests pass
+- FAIL: Any test fails
+
+**Status**: ✅ COMPLETE
+
+---
+
+## Summary
+
+**Total Commands Audited**: 15
+**Commands with Expected Results**: 15/15 (100%)
+**Commands with Pass/Fail Criteria**: 15/15 (100%)
+
+**Audit Result**: ✅ PASS
+
+All validation commands include:
+1. Explicit expected results (exit codes, output files, log messages)
+2. Binary pass/fail criteria (no subjective judgment required)
+3. Observable verification points (files, logs, API responses)
+
+---
+
+## Selection Surface Clarification
+
+**OmniVoice CLI Tools** (omnivoice-infer, omnivoice-demo, omnivoice-infer-batch):
+- Support `--asr-backend` CLI flag ✅
+- Commands 3-8 and 13 use this flag
+
+**omnivoice-server**:
+- Does NOT support `--asr-backend` CLI flag ❌
+- Commands 9-11 use environment variable or config field only
+- Command 13 (CLI flag override) does NOT apply to server
+
+---
+
+**Evidence Location**: `.sisyphus/evidence/task-15-command-expectations.txt`
+
+**Task 15 QA Scenario 2**: COMPLETE
+- [✓] Each command entry has expected result documented
+- [✓] Pass/fail criteria are binary and objective
+- [✓] A runner can judge success without guesswork
+
+**Status**: COMPLETE

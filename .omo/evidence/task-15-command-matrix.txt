@@ -1,0 +1,535 @@
+# Task 15: Environment-Specific Validation Command Matrix
+
+**Date**: 2026-04-19
+**Task**: Add environment-specific validation commands/scripts
+**Status**: COMPLETE
+
+## Overview
+
+This document provides repeatable validation commands for each supported environment/backend path, covering clone mode with `ref_text=None`, backend selection, and rollback scenarios.
+
+---
+
+## Selection Surface Summary by Entry Point
+
+**OmniVoice CLI Tools** (`omnivoice-infer`, `omnivoice-demo`, `omnivoice-infer-batch`):
+- CLI flag: `--asr-backend transformers|faster-whisper` ✅
+- Environment variable: `OMNIVOICE_ASR_BACKEND` ✅
+- Default: `transformers` ✅
+- **Precedence**: CLI flag > Environment variable > Default
+
+**omnivoice-server**:
+- Environment variable: `OMNIVOICE_ASR_BACKEND` ✅
+- Config field: `asr_backend` (programmatic only) ✅
+- Default: `transformers` ✅
+- **Precedence**: Environment variable > Config field > Default
+- **Note**: Server does NOT expose `--asr-backend` CLI flag
+
+**Library** (`OmniVoice.from_pretrained()`):
+- Environment variable: `OMNIVOICE_ASR_BACKEND` ✅
+- Default: `transformers` ✅
+
+---
+
+## Validation Command Matrix
+
+### 1. Library: transformers Backend (Default)
+
+**Environment**: Linux/macOS/Windows, CPU/CUDA
+**Backend**: transformers (default)
+**Mode**: Clone with auto-transcription (`ref_text=None`)
+
+```bash
+# Command
+python3 -c "
+from omnivoice import OmniVoice
+import soundfile as sf
+model = OmniVoice.from_pretrained('k2-fsa/OmniVoice', device_map='cpu')
+audio = model.generate(
+    text='Hello world',
+    ref_audio='test_audio.wav',
+    ref_text=None  # Triggers auto-transcription
+)
+sf.write('out.wav', audio[0], 24000)
+print('SUCCESS: transformers backend clone with auto-transcription')
+"
+
+# Expected Result
+- Exit code: 0
+- Output file: out.wav exists and is valid audio
+- Log contains: "ASR backend selection: transformers"
+- Log contains: "Loading transformers ASR backend"
+
+# Pass/Fail Criteria
+PASS: Exit 0, out.wav created, no exceptions
+FAIL: Non-zero exit, missing output, or exception raised
+```
+
+---
+
+### 2. Library: faster-whisper Backend (Opt-In)
+
+**Environment**: Linux/macOS/Windows, CPU/CUDA (not MPS)
+**Backend**: faster-whisper (opt-in via env var)
+**Mode**: Clone with auto-transcription (`ref_text=None`)
+
+```bash
+# Command
+export OMNIVOICE_ASR_BACKEND=faster-whisper
+python3 -c "
+from omnivoice import OmniVoice
+import soundfile as sf
+model = OmniVoice.from_pretrained('k2-fsa/OmniVoice', device_map='cpu')
+audio = model.generate(
+    text='Hello world',
+    ref_audio='test_audio.wav',
+    ref_text=None  # Triggers auto-transcription
+)
+sf.write('out.wav', audio[0], 24000)
+print('SUCCESS: faster-whisper backend clone with auto-transcription')
+"
+
+# Expected Result
+- Exit code: 0
+- Output file: out.wav exists and is valid audio
+- Log contains: "ASR backend selection: faster-whisper"
+- Log contains: "Loading faster-whisper ASR backend"
+
+# Pass/Fail Criteria
+PASS: Exit 0, out.wav created, no exceptions
+FAIL: Non-zero exit, missing output, or exception raised
+```
+
+---
+
+### 3. CLI: omnivoice-infer with transformers (Default)
+
+**Environment**: All supported platforms
+**Backend**: transformers (default)
+**Mode**: Clone with auto-transcription
+
+```bash
+# Command
+omnivoice-infer \
+    --model k2-fsa/OmniVoice \
+    --text "Hello world" \
+    --ref_audio test_audio.wav \
+    --output out.wav \
+    --device cpu
+
+# Expected Result
+- Exit code: 0
+- Output file: out.wav exists
+- Log contains: "ASR backend selection: transformers"
+- Log contains: "Saved to out.wav"
+
+# Pass/Fail Criteria
+PASS: Exit 0, out.wav created, log confirms transformers backend
+FAIL: Non-zero exit, missing output, or wrong backend logged
+```
+
+---
+
+### 4. CLI: omnivoice-infer with faster-whisper (CLI Flag)
+
+**Environment**: All supported platforms (not MPS)
+**Backend**: faster-whisper (explicit via CLI flag)
+**Mode**: Clone with auto-transcription
+
+```bash
+# Command
+omnivoice-infer \
+    --model k2-fsa/OmniVoice \
+    --text "Hello world" \
+    --ref_audio test_audio.wav \
+    --output out.wav \
+    --device cpu \
+    --asr-backend faster-whisper
+
+# Expected Result
+- Exit code: 0
+- Output file: out.wav exists
+- Log contains: "ASR backend set to: faster-whisper"
+- Log contains: "ASR backend selection: faster-whisper"
+
+# Pass/Fail Criteria
+PASS: Exit 0, out.wav created, log confirms faster-whisper backend
+FAIL: Non-zero exit, missing output, or wrong backend logged
+```
+
+---
+
+### 5. CLI: omnivoice-demo with transformers (Default)
+
+**Environment**: All supported platforms
+**Backend**: transformers (default)
+**Mode**: Interactive demo with auto-transcription available
+
+```bash
+# Command
+omnivoice-demo \
+    --model k2-fsa/OmniVoice \
+    --ip 127.0.0.1 \
+    --port 7860 \
+    --device cpu
+
+# Expected Result
+- Exit code: 0 (or runs until interrupted)
+- Log contains: "ASR backend selection: transformers"
+- Web UI accessible at http://127.0.0.1:7860
+- Voice cloning tab allows empty ref_text (auto-transcription)
+
+# Pass/Fail Criteria
+PASS: Demo starts, transformers backend logged, UI accessible
+FAIL: Startup failure, wrong backend, or UI inaccessible
+```
+
+---
+
+### 6. CLI: omnivoice-demo with faster-whisper (CLI Flag)
+
+**Environment**: All supported platforms (not MPS)
+**Backend**: faster-whisper (explicit via CLI flag)
+**Mode**: Interactive demo with auto-transcription available
+
+```bash
+# Command
+omnivoice-demo \
+    --model k2-fsa/OmniVoice \
+    --ip 127.0.0.1 \
+    --port 7860 \
+    --device cpu \
+    --asr-backend faster-whisper
+
+# Expected Result
+- Exit code: 0 (or runs until interrupted)
+- Log contains: "ASR backend set to: faster-whisper"
+- Log contains: "ASR backend selection: faster-whisper"
+- Web UI accessible at http://127.0.0.1:7860
+
+# Pass/Fail Criteria
+PASS: Demo starts, faster-whisper backend logged, UI accessible
+FAIL: Startup failure, wrong backend, or UI inaccessible
+```
+
+---
+
+### 7. CLI: omnivoice-infer-batch with transformers (Default)
+
+**Environment**: All supported platforms
+**Backend**: transformers (default)
+**Mode**: Batch inference with auto-transcription
+
+```bash
+# Command
+# Create test.jsonl with:
+# {"id": "test1", "text": "Hello world", "ref_audio": "test_audio.wav"}
+
+omnivoice-infer-batch \
+    --model k2-fsa/OmniVoice \
+    --test_list test.jsonl \
+    --res_dir results/ \
+    --device cpu
+
+# Expected Result
+- Exit code: 0
+- Output file: results/test1.wav exists
+- Log contains: "ASR backend selection: transformers"
+
+# Pass/Fail Criteria
+PASS: Exit 0, output files created, transformers backend logged
+FAIL: Non-zero exit, missing outputs, or wrong backend
+```
+
+---
+
+### 8. CLI: omnivoice-infer-batch with faster-whisper (CLI Flag)
+
+**Environment**: All supported platforms (not MPS)
+**Backend**: faster-whisper (explicit via CLI flag)
+**Mode**: Batch inference with auto-transcription
+
+```bash
+# Command
+# Create test.jsonl with:
+# {"id": "test1", "text": "Hello world", "ref_audio": "test_audio.wav"}
+
+omnivoice-infer-batch \
+    --model k2-fsa/OmniVoice \
+    --test_list test.jsonl \
+    --res_dir results/ \
+    --device cpu \
+    --asr-backend faster-whisper
+
+# Expected Result
+- Exit code: 0
+- Output file: results/test1.wav exists
+- Log contains: "ASR backend set to: faster-whisper"
+- Log contains: "ASR backend selection: faster-whisper"
+
+# Pass/Fail Criteria
+PASS: Exit 0, output files created, faster-whisper backend logged
+FAIL: Non-zero exit, missing outputs, or wrong backend
+```
+
+---
+
+### 9. Server: omnivoice-server with transformers (Default)
+
+**Environment**: All supported platforms
+**Backend**: transformers (default)
+**Mode**: HTTP API with auto-transcription
+
+```bash
+# Command
+omnivoice-server
+
+# Validation Request
+curl -X POST http://127.0.0.1:8880/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "omnivoice",
+    "input": "Hello world",
+    "voice": "profile-name-with-ref-audio-no-ref-text"
+  }' \
+  --output out.wav
+
+# Expected Result
+- Server starts successfully
+- Log contains: "ASR backend selection: transformers"
+- API request returns 200 OK
+- Output file: out.wav exists and is valid audio
+
+# Pass/Fail Criteria
+PASS: Server starts, transformers backend logged, API works
+FAIL: Startup failure, wrong backend, or API error
+```
+
+---
+
+### 10. Server: omnivoice-server with faster-whisper (Env Var)
+
+**Environment**: All supported platforms (not MPS)
+**Backend**: faster-whisper (env var)
+**Mode**: HTTP API with auto-transcription
+
+```bash
+# Command
+export OMNIVOICE_ASR_BACKEND=faster-whisper
+omnivoice-server
+
+# Validation Request
+curl -X POST http://127.0.0.1:8880/v1/audio/speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "omnivoice",
+    "input": "Hello world",
+    "voice": "profile-name-with-ref-audio-no-ref-text"
+  }' \
+  --output out.wav
+
+# Expected Result
+- Server starts successfully
+- Log contains: "ASR backend selection: faster-whisper"
+- API request returns 200 OK
+- Output file: out.wav exists and is valid audio
+
+# Pass/Fail Criteria
+PASS: Server starts, faster-whisper backend logged, API works
+FAIL: Startup failure, wrong backend, or API error
+```
+
+---
+
+### 11. Server: omnivoice-server with faster-whisper (Config Field)
+
+**Environment**: All supported platforms (not MPS)
+**Backend**: faster-whisper (config field, programmatic use)
+**Mode**: HTTP API with auto-transcription
+
+```bash
+# Command
+# Note: Config field is programmatic only (Settings class)
+# For command-line use, set via environment variable:
+export OMNIVOICE_ASR_BACKEND=faster-whisper
+omnivoice-server
+
+# Expected Result
+- Server starts successfully
+- Log contains: "ASR backend selection: faster-whisper"
+- Config field `asr_backend` is respected
+
+# Pass/Fail Criteria
+PASS: Server starts, faster-whisper backend logged
+FAIL: Startup failure or wrong backend
+```
+
+---
+
+## Rollback Validation Commands
+
+### 12. Rollback: Environment Variable Method (All Entry Points)
+
+**Scenario**: Switch from faster-whisper back to transformers
+
+```bash
+# Step 1: Set to faster-whisper
+export OMNIVOICE_ASR_BACKEND=faster-whisper
+omnivoice-infer --model k2-fsa/OmniVoice \
+  --text "Test" --ref_audio test.wav --output out1.wav
+
+# Step 2: Rollback to transformers
+export OMNIVOICE_ASR_BACKEND=transformers
+omnivoice-infer --model k2-fsa/OmniVoice \
+  --text "Test" --ref_audio test.wav --output out2.wav
+
+# Expected Result
+- Both commands succeed
+- out1.wav log shows: "faster-whisper"
+- out2.wav log shows: "transformers"
+- No code changes required
+
+# Pass/Fail Criteria
+PASS: Both succeed, logs confirm backend switch
+FAIL: Either command fails or backend doesn't switch
+```
+
+---
+
+### 13. Rollback: CLI Flag Override (OmniVoice CLI Tools Only)
+
+**Scenario**: Override env var with CLI flag (omnivoice-infer/demo/batch only)
+
+```bash
+# Step 1: Set env to faster-whisper
+export OMNIVOICE_ASR_BACKEND=faster-whisper
+
+# Step 2: Override with CLI flag to transformers
+omnivoice-infer --model k2-fsa/OmniVoice \
+  --text "Test" --ref_audio test.wav --output out.wav \
+  --asr-backend transformers
+
+# Expected Result
+- Command succeeds
+- Log shows: "ASR backend set to: transformers"
+- Log shows: "ASR backend selection: transformers"
+- CLI flag overrides env var
+
+# Pass/Fail Criteria
+PASS: Command succeeds, transformers backend used despite env var
+FAIL: Command fails or faster-whisper used
+
+# Note: This rollback method does NOT apply to omnivoice-server
+# (server has no --asr-backend CLI flag)
+```
+
+---
+
+## Automated Test Commands
+
+### 14. Contract Tests (Both Backends)
+
+```bash
+# Run contract tests for both backends
+python3 -m pytest tests/test_asr_contract.py -v
+
+# Expected Result
+- All tests pass
+- Both transformers and faster-whisper backends tested
+- Contract compliance verified
+
+# Pass/Fail Criteria
+PASS: All tests pass
+FAIL: Any test fails
+```
+
+---
+
+### 15. Rollback Tests
+
+```bash
+# Run rollback behavior tests
+python3 -m pytest tests/test_asr_rollback.py -v
+
+# Expected Result
+- All 10 tests pass
+- Env var selection verified
+- CLI flag precedence verified (for OmniVoice CLI tools)
+- Default backend verified
+
+# Pass/Fail Criteria
+PASS: All tests pass
+FAIL: Any test fails
+```
+
+---
+
+## Coverage Summary
+
+**Supported Paths Covered**:
+- ✅ Library: transformers (default)
+- ✅ Library: faster-whisper (env var)
+- ✅ CLI infer: transformers (default)
+- ✅ CLI infer: faster-whisper (CLI flag)
+- ✅ CLI demo: transformers (default)
+- ✅ CLI demo: faster-whisper (CLI flag)
+- ✅ CLI batch: transformers (default)
+- ✅ CLI batch: faster-whisper (CLI flag)
+- ✅ Server: transformers (default)
+- ✅ Server: faster-whisper (env var)
+- ✅ Server: faster-whisper (config field, programmatic)
+
+**Rollback Scenarios Covered**:
+- ✅ Env var rollback (all entry points)
+- ✅ CLI flag override (OmniVoice CLI tools only, not server)
+- ✅ Automated test validation
+
+**Total Commands**: 15 validation commands
+**Total Scenarios**: 11 runtime + 2 automated test suites + 2 rollback scenarios
+
+---
+
+## Important Notes
+
+### Server vs OmniVoice CLI Tools
+
+**OmniVoice CLI Tools** (`omnivoice-infer`, `omnivoice-demo`, `omnivoice-infer-batch`):
+- Support `--asr-backend` CLI flag ✅
+- Precedence: CLI flag > Environment variable > Default
+
+**omnivoice-server**:
+- Does NOT support `--asr-backend` CLI flag ❌
+- Precedence: Environment variable > Config field > Default
+- Use `export OMNIVOICE_ASR_BACKEND=...` for server backend selection
+
+### Rollback Methods by Entry Point
+
+**All Entry Points** (library, CLI tools, server):
+- Environment variable method works ✅
+
+**OmniVoice CLI Tools Only** (infer, demo, batch):
+- CLI flag override method works ✅
+
+**Server**:
+- CLI flag override method NOT available ❌
+- Use environment variable for rollback
+
+---
+
+## Verification
+
+All commands have been verified against:
+- Task 3 compatibility matrix (supported environments)
+- Task 4 selection surface (env var, CLI flag, config field)
+- Task 12 CLI/demo/server plumbing (actual implementation)
+- Task 13 rollback runbook (rollback procedures)
+- Task 14 documentation (server CLI has no --asr-backend flag)
+
+**Evidence Location**: `.sisyphus/evidence/task-15-command-matrix.txt`
+
+**Task 15 Acceptance Criteria**:
+- [✓] Each supported environment/backend path has a concrete validation command
+- [✓] Commands have explicit pass/fail expectations
+- [✓] Commands cover rollback-relevant scenarios
+
+**Status**: COMPLETE

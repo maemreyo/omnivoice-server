@@ -1,0 +1,73 @@
+TASK 17: EQUIVALENCE ASSESSMENT
+================================
+Date: 2026-04-20
+Equivalence Rule: Task 5 contract (WER < 10% threshold)
+
+TRANSCRIPT COMPARISON
+---------------------
+Transformers:     "Hello, this is a test of the Omni Voice Texas Beach System running on CPU."
+Faster-Whisper:   "Hello, this is a test of the Omni-voice text-to-speech system running on CPU."
+
+NORMALIZED COMPARISON
+---------------------
+After applying normalization (lowercase, strip punctuation, split words):
+
+Transformers (15 words):
+['hello', 'this', 'is', 'a', 'test', 'of', 'the', 'omni', 'voice', 'texas', 'beach', 'system', 'running', 'on', 'cpu']
+
+Faster-Whisper (13 words):
+['hello', 'this', 'is', 'a', 'test', 'of', 'the', 'omnivoice', 'texttospeech', 'system', 'running', 'on', 'cpu']
+
+WORD-LEVEL DIFFERENCES
+----------------------
+Position 7:  "omni" vs "omnivoice"
+Position 8:  "voice" vs "texttospeech"
+Position 9:  "texas" vs "system"
+Position 10: "beach" vs "running"
+Position 11: "system" vs "on"
+Position 12: "running" vs "cpu"
+Length:      15 words vs 13 words
+
+METRICS
+-------
+Edit Distance: 4
+Word Error Rate (WER): 26.67%
+Threshold: 10.0%
+
+EQUIVALENCE VERDICT
+-------------------
+Result: NOT EQUIVALENT ❌
+
+The transcripts FAIL the equivalence test because:
+- WER (26.67%) exceeds the 10% threshold
+- 4 word-level edits required to align the transcripts
+- Significant semantic differences in content interpretation
+
+ROOT CAUSE ANALYSIS
+-------------------
+Both backends misrecognized the audio content but in different ways:
+- Transformers heard: "Omni Voice Texas Beach System"
+- Faster-Whisper heard: "Omni-voice text-to-speech system"
+
+This suggests the audio quality or model size (whisper-tiny) may be insufficient
+for accurate transcription. The backends are producing different hallucinations
+rather than accurate transcripts.
+
+IMPLICATIONS FOR ROLLOUT
+------------------------
+⚠️ CRITICAL FINDING: The backends produce significantly different outputs on the
+same audio input. This means:
+
+1. Switching default backend will change user-facing transcripts
+2. Users may experience different transcription quality/accuracy
+3. Cannot guarantee backward compatibility of transcript outputs
+4. May need user-facing communication about transcription changes
+
+RECOMMENDATION
+--------------
+Before switching default backend:
+1. Test with larger model (e.g., whisper-large-v3-turbo) for better accuracy
+2. Establish ground truth transcripts for test fixtures
+3. Measure accuracy (not just equivalence) against ground truth
+4. Consider gradual rollout with A/B testing
+5. Document expected differences in user-facing documentation

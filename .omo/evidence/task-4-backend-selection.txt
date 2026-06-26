@@ -1,0 +1,83 @@
+Task 4: Backend Selection Surface Definition
+Execution Date: 2026-04-19T15:35:00Z
+
+=== SCENARIO: Backend selection is deterministic ===
+
+DESIGN DECISION:
+Multi-layer selection with precedence:
+1. CLI flag: --asr-backend transformers|faster-whisper (highest priority)
+2. Environment variable: OMNIVOICE_ASR_BACKEND=transformers|faster-whisper
+3. Config file: asr_backend: transformers|faster-whisper (server only)
+4. Default: "transformers" (lowest priority)
+
+Precedence Rule: CLI flag > Environment variable > Config file > Default
+Valid values: "transformers" | "faster-whisper"
+
+INTEGRATION POINTS:
+1. Server config (omnivoice_server/config.py):
+   - Add asr_backend field with Literal["transformers", "faster-whisper"]
+   - Reads from OMNIVOICE_ASR_BACKEND env var (Pydantic BaseSettings)
+   - CLI flag overrides via argparse → Settings(**overrides)
+   - Validated at Settings instantiation
+
+2. CLI/Demo (omnivoice_server/cli.py, OmniVoice/omnivoice/cli/*.py):
+   - Add --asr-backend flag with choices=["transformers", "faster-whisper"]
+   - CLI flag takes precedence over env var
+   - Falls back to env var if flag not provided
+
+3. Library (OmniVoice model):
+   - Reads OMNIVOICE_ASR_BACKEND at model load time
+   - Backend factory selects appropriate adapter
+   - Lazy initialization on first transcribe() call
+
+4. Tests:
+   - Use pytest monkeypatch.setenv("OMNIVOICE_ASR_BACKEND", "transformers")
+   - Parametrized tests can run against both backends
+   - Deterministic backend forcing confirmed via env layer
+
+VALIDATION:
+- Invalid values raise ValueError with clear message at each layer
+- Empty/unset at all layers defaults to "transformers"
+- Backend selection logged at startup/model load (shows which layer was used)
+- Precedence enforced: CLI > env > config > default
+
+RESULT: ✓ PASS
+Backend selection is explicit, deterministic, validated across all surfaces, with clear precedence.
+
+=== SCENARIO: Rollback uses same control surface ===
+
+ROLLBACK PROCEDURE:
+1. Set OMNIVOICE_ASR_BACKEND=transformers
+2. Restart server/process
+3. Verify logs show "ASR backend: transformers"
+
+NO CODE CHANGES REQUIRED: ✓ Confirmed
+SAME MECHANISM AS FORWARD SELECTION: ✓ Confirmed
+OPERATOR-FRIENDLY: ✓ Single env var change
+
+RESULT: ✓ PASS
+Rollback path is operationally identical to normal selection.
+
+=== ACCEPTANCE CRITERIA ===
+
+✓ Single documented backend selection policy exists across runtime surfaces
+  - Multi-layer precedence: CLI > env > config > default
+  - Works for library, server, CLI, tests
+
+✓ Tests can force each backend deterministically
+  - pytest monkeypatch.setenv() provides deterministic control via env layer
+
+✓ Rollback switch is exposed through the same surface
+  - Same precedence layers used for rollback to "transformers"
+  - Operator can choose CLI flag, env var, or config file
+
+=== EVIDENCE SUMMARY ===
+
+Control Surface: Multi-layer with precedence (CLI > env > config > default)
+Backend Names: "transformers" (default), "faster-whisper" (opt-in)
+Rollback: Use any layer (CLI flag, env var, or config file) to set "transformers"
+Validation: Invalid values raise clear errors at each layer
+Consistency: Same precedence mechanism across all runtime surfaces
+Alignment: Matches Task 3 compatibility matrix precedence policy
+
+Task 4 COMPLETE: Backend selection surface defined and documented.

@@ -1,0 +1,131 @@
+Task 12: Update CLI/Demo/Server Plumbing for Backend Selection - COMPLETE
+==========================================================================
+
+Date: 2026-04-19T16:53:00Z
+
+## Files Changed
+
+1. omnivoice_server/config.py
+   - Added asr_backend field (optional, default=None)
+   - Type: Literal["transformers", "faster-whisper"] | None
+
+2. omnivoice_server/app.py
+   - Added startup logic to set OMNIVOICE_ASR_BACKEND from config
+   - Logs backend selection when config field is set
+
+3. OmniVoice/omnivoice/cli/demo.py
+   - Added --asr-backend CLI flag
+   - Added startup logic to set OMNIVOICE_ASR_BACKEND from flag
+
+4. OmniVoice/omnivoice/cli/infer.py
+   - Added --asr-backend CLI flag
+   - Added startup logic to set OMNIVOICE_ASR_BACKEND from flag
+
+5. OmniVoice/omnivoice/cli/infer_batch.py
+   - Added --asr-backend CLI flag
+   - Added startup logic to set OMNIVOICE_ASR_BACKEND from flag
+
+## User/Operator Surfaces Added
+
+### Server
+- Config field: asr_backend (optional)
+- Usage: OMNIVOICE_ASR_BACKEND=transformers omnivoice-server
+- Precedence: config field > env var > default
+
+### Demo
+- CLI flag: --asr-backend {transformers,faster-whisper}
+- Usage: omnivoice-demo --model k2-fsa/OmniVoice --asr-backend faster-whisper
+- Precedence: CLI flag > env var > default
+
+### CLI (infer)
+- CLI flag: --asr-backend {transformers,faster-whisper}
+- Usage: omnivoice-infer --text "Hello" --output out.wav --asr-backend transformers
+- Precedence: CLI flag > env var > default
+
+### CLI (infer-batch)
+- CLI flag: --asr-backend {transformers,faster-whisper}
+- Usage: omnivoice-infer-batch --test_list test.jsonl --res_dir results/ --asr-backend faster-whisper
+- Precedence: CLI flag > env var > default
+
+## Precedence After Changes
+
+All surfaces follow the same precedence model:
+1. Explicit selection (CLI flag or config field)
+2. OMNIVOICE_ASR_BACKEND environment variable
+3. Default: "transformers"
+
+Implementation: CLI flag/config field sets OMNIVOICE_ASR_BACKEND env var at startup,
+which is then read by the ASR factory module.
+
+## Files Intentionally Left Untouched
+
+None - all relevant surfaces were updated.
+
+The ASR factory module (omnivoice.asr.factory) was not modified because it already
+reads OMNIVOICE_ASR_BACKEND env var. The CLI/config changes set this env var at
+startup, preserving the factory's existing selection logic.
+
+## Verification Results
+
+Command: python3 -m py_compile omnivoice_server/config.py omnivoice_server/app.py \
+         OmniVoice/omnivoice/cli/demo.py OmniVoice/omnivoice/cli/infer.py \
+         OmniVoice/omnivoice/cli/infer_batch.py
+Result: ✓ All syntax checks passed
+
+Command: pytest -q tests/test_asr_contract.py
+Result: 29 passed in 0.07s
+
+## Acceptance Criteria
+
+✓ Supported runtime entry points can select backend intentionally
+  - Server: via asr_backend config field
+  - Demo: via --asr-backend CLI flag
+  - Infer: via --asr-backend CLI flag
+  - Infer-batch: via --asr-backend CLI flag
+
+✓ Backend naming is consistent across surfaces
+  - All use exact identifiers: "transformers", "faster-whisper"
+  - All use same env var: OMNIVOICE_ASR_BACKEND
+  - All use same default: "transformers"
+
+✓ Existing users are not forced to adopt new flags for current default path
+  - Server: asr_backend field is optional (default=None)
+  - CLI tools: --asr-backend flag is optional
+  - Default behavior unchanged (transformers)
+
+## Backend Vocabulary Consistency
+
+✓ All surfaces use same backend identifiers: "transformers", "faster-whisper"
+✓ All surfaces use same CLI flag name: --asr-backend
+✓ All surfaces use same config field name: asr_backend
+✓ All surfaces use same env var: OMNIVOICE_ASR_BACKEND
+✓ All surfaces use same default: "transformers"
+✓ No conflicting naming or selection mechanisms
+
+## Evidence Files
+
+1. .sisyphus/evidence/task-12-server-selection.txt
+   - Server config field and startup logic
+   - Testing commands and precedence
+
+2. .sisyphus/evidence/task-12-cli-demo-selection.txt
+   - CLI flag implementation for all tools
+   - Backend vocabulary consistency verification
+
+3. .sisyphus/notepads/torchcodec-windows-long-term-fix/issues.md
+   - Timestamped completion documentation
+
+## Remaining Gaps
+
+None for Task 12 scope. All runtime surfaces now support explicit backend selection
+with consistent vocabulary and precedence.
+
+Future work: Later tasks will validate actual runtime behavior with real model
+loading and ASR transcription.
+
+## Verification
+
+Syntax: ✓ python3 -m py_compile (all modified files)
+Tests: ✓ pytest -q tests/test_asr_contract.py (29 passed)
+
+TASK 12 STATUS: COMPLETE ✓

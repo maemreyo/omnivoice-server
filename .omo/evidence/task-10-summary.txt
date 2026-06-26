@@ -1,0 +1,78 @@
+Task 10: Backend-Switchable Transcript Contract Tests - COMPLETE
+==================================================================
+
+Date: 2026-04-19T16:36:00Z
+
+## Files Changed
+
+1. tests/test_asr_contract.py
+   - Fixed stale test: test_create_backend_raises_import_error_for_unimplemented
+   - Renamed to: test_create_backend_succeeds_for_implemented_backends
+   - Updated expectation: backends now exist and should instantiate successfully
+
+## Test Results
+
+Command: pytest -q tests/test_asr_contract.py
+Result: 29 passed in 0.05s
+
+Test Breakdown:
+- Backend Selection: 8 tests ✓
+- Factory Creation: 3 tests ✓
+- Transcript Contract: 4 tests ✓
+- Error Handling: 2 tests ✓
+- Input Formats: 2 tests ✓
+- Clone Path Integration: 3 tests ✓
+- Lazy Loading: 1 test ✓
+- Configuration: 3 tests ✓
+- Backend Switching: 3 tests ✓
+
+## Acceptance Criteria
+
+✓ Tests can explicitly run against each backend
+  - Backend selection via OMNIVOICE_ASR_BACKEND env var
+  - Tests force transformers or faster-whisper deterministically
+
+✓ Transcript contract is asserted for both backends
+  - Plain string return type
+  - Whitespace stripped
+  - No metadata leakage
+  - Empty string valid for silent audio
+
+✓ Clone-path compatibility assumptions are covered with fixture-driven cases
+  - ref_text=None triggers ASR transcription
+  - Empty transcript handled gracefully
+  - Backend equivalence validated
+
+## Issue Fixed
+
+Original blocker: Test expected ImportError for "not yet implemented" backends,
+but Tasks 6 and 7 have already implemented both transformers and faster-whisper
+backends.
+
+Resolution: Updated test to validate that backends instantiate successfully
+without "not yet implemented" errors.
+
+## Evidence Files
+
+1. .sisyphus/evidence/task-10-contract-tests.txt
+   - Full pytest output showing all 29 tests passing
+
+2. .sisyphus/evidence/task-10-clone-path-tests.txt
+   - Clone path integration test details and context
+
+3. .sisyphus/notepads/torchcodec-windows-long-term-fix/issues.md
+   - Timestamped issue documentation and resolution
+
+## Remaining Gaps
+
+None for Task 10 scope. The contract tests are complete and passing.
+
+Future work (Task 17): Add fixture-based equivalence tests with real backend
+implementations to validate actual transcript quality.
+
+## Verification
+
+Syntax: ✓ python3 -m py_compile tests/test_asr_contract.py
+Tests: ✓ pytest -q tests/test_asr_contract.py (29 passed)
+
+TASK 10 STATUS: COMPLETE ✓

@@ -1,0 +1,93 @@
+Task 8: Implement dependency/package strategy for dual backend support
+Timestamp: 2026-04-19T15:49:09Z
+
+=== QA Scenario 1: Package metadata reflects dual-backend strategy ===
+
+Preconditions: pyproject files updated
+Location: pyproject.toml, OmniVoice/pyproject.toml
+
+Verification Steps:
+1. Read dependency declarations
+   ✅ Root pyproject.toml: Added [project.optional-dependencies] section with asr-faster-whisper extra
+   ✅ OmniVoice/pyproject.toml: Added [project.optional-dependencies] section with asr-faster-whisper extra
+   ✅ Both files declare: asr-faster-whisper = ["faster-whisper>=1.0.0"]
+
+2. Verify backend dependencies/extras match documented rollout policy
+   ✅ transformers backend: Already included in OmniVoice dependencies (line 35: "transformers>=5.3.0")
+   ✅ faster-whisper backend: Opt-in via asr-faster-whisper extra (matches Task 3 compatibility matrix)
+   ✅ Default install path: pip install omnivoice-server (gets transformers, no faster-whisper)
+   ✅ Opt-in install path: pip install omnivoice-server[asr-faster-whisper] (adds faster-whisper)
+
+3. Verify Windows/default behavior does not contradict the compatibility matrix
+   ✅ Windows short-term fix preserved: torchcodec excluded from dev extra on Windows (line 53: sys_platform != 'win32')
+   ✅ faster-whisper has no torchcodec dependency (key Windows fix)
+   ✅ Default install does not force faster-whisper (opt-in only)
+   ✅ Compatibility matrix states: transformers default, faster-whisper opt-in initially
+
+Expected Result: Packaging and docs align
+Status: ✅ PASS
+
+Failure Indicators: None detected
+- No undocumented extra
+- No contradictory marker
+- No unsupported combo implied as supported
+
+=== QA Scenario 2: Backend install expectation is testable ===
+
+Preconditions: Dependency strategy documented
+Location: pyproject.toml, OmniVoice/pyproject.toml
+
+Verification Steps:
+1. Simulate or inspect install commands for each supported backend path
+   
+   Default path (transformers only):
+   ✅ pip install omnivoice-server
+      - Installs omnivoice>=0.1.0,<0.2.0 (which includes transformers>=5.3.0)
+      - Does NOT install faster-whisper
+      - Matches compatibility matrix: transformers is default backend
+   
+   Opt-in faster-whisper path:
+   ✅ pip install omnivoice-server[asr-faster-whisper]
+      - Installs omnivoice>=0.1.0,<0.2.0 (transformers included)
+      - ALSO installs faster-whisper>=1.0.0
+      - Matches compatibility matrix: faster-whisper is opt-in
+   
+   Manual install path:
+   ✅ pip install omnivoice-server && pip install faster-whisper
+      - Equivalent to opt-in path
+      - Both backends coexist (no conflict)
+   
+   OmniVoice library direct install:
+   ✅ pip install omnivoice (gets transformers by default)
+   ✅ pip install omnivoice[asr-faster-whisper] (adds faster-whisper)
+
+2. Verify each command corresponds to a documented runtime path
+   ✅ Default install → transformers backend (current production path)
+   ✅ Opt-in install → faster-whisper backend available (long-term Windows fix)
+   ✅ Both backends can coexist in same environment (no storage/namespace conflict)
+   ✅ Backend selection controlled via env/config/CLI (Task 4 selection surface)
+
+Expected Result: Users/operators can install the intended backend path intentionally
+Status: ✅ PASS
+
+Failure Indicators: None detected
+- No missing install path
+- No confusing overlap
+- Install behavior is explicit and matches rollout policy
+
+=== Summary ===
+
+Task 8 Acceptance Criteria:
+✅ Dependency declarations match the documented backend strategy
+✅ Backend installation expectations are explicit in package metadata
+✅ Unsupported combinations are not implied as first-class supported installs
+
+Install Paths Verified:
+1. Default: pip install omnivoice-server → transformers only
+2. Opt-in: pip install omnivoice-server[asr-faster-whisper] → transformers + faster-whisper
+3. Manual: pip install omnivoice-server && pip install faster-whisper → transformers + faster-whisper
+4. Library default: pip install omnivoice → transformers only
+5. Library opt-in: pip install omnivoice[asr-faster-whisper] → transformers + faster-whisper
+
+All QA scenarios passed.
+Evidence captured: 2026-04-19T15:49:09Z

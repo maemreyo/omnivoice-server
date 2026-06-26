@@ -1,0 +1,352 @@
+# Task 3: Extension Labeling Gaps — Upstream-Native vs Server-Only
+
+Generated: 2026-04-17
+Source: temp.log (gap analysis verdicts) + README.md + docs/ inventory
+
+---
+
+## CLASSIFICATION FRAMEWORK
+
+Based on temp.log verdicts and upstream OmniVoice documentation:
+
+**UPSTREAM-NATIVE** = Feature exists in k2-fsa/OmniVoice model, server passes through
+**SERVER-ONLY** = Feature implemented by omnivoice-server wrapper (HTTP, profiles, etc.)
+**AMBIGUOUS** = Documentation unclear about origin, could confuse users
+
+---
+
+## UPSTREAM-NATIVE CAPABILITIES (Confirmed in temp.log)
+
+### 1. Voice Design Attributes (via `instruct=` parameter)
+
+**Confirmed upstream-native:**
+- Gender: male, female
+- Age: child, teenager, young adult, middle-aged, elderly
+- Pitch: very low pitch, low pitch, moderate pitch, high pitch, very high pitch
+- Style: whisper (ONLY this style)
+- English Accent: american, british, australian, canadian, indian, chinese, korean, japanese, portuguese, russian accent
+- Chinese Dialect: 河南话, 陕西话, 四川话, 贵州话, 云南话, 桂林话, 济南话, 石家庄话, 甘肃话, 宁夏话, 青岛话, 东北话
+
+**Documentation status:**
+- ✅ README.md line 189-195 correctly lists these attributes
+- ✅ No false claims about unsupported emotions or speaking styles
+
+### 2. Non-Verbal Symbols (inline in `text=`)
+
+**Confirmed upstream-native:**
+- [laughter]
+- [confirmation-en], [question-en], [question-ah], [question-oh], [question-ei], [question-yi]
+- [surprise-ah], [surprise-oh], [surprise-wa], [surprise-yo]
+- [dissatisfaction-hnn]
+- [sniff]
+- [sigh]
+
+**Documentation status:**
+- ⚠️ README.md line 438-456 mentions [laughter], [breath], [sigh]
+- ⚠️ Claims "Other non-verbal expressions supported by OmniVoice" (line 455) — vague, should list specific tags
+- ✅ Correctly states "pass-through features from the upstream model" (line 440)
+- ❌ Missing: Full list of confirmed non-verbal tags from temp.log
+
+**LABELING GAP:**
+- README should list ALL confirmed non-verbal tags explicitly
+- Should clarify that [breath] is NOT in temp.log confirmed list (only [laughter], [sigh], [sniff], etc.)
+
+### 3. Pronunciation Control (inline in `text=`)
+
+**Confirmed upstream-native:**
+- Chinese Pinyin: inline format like "ZHE2", "SHE2"
+- English CMU dict: inline format like "[IH1 T]" (uppercase, in brackets)
+
+**Documentation status:**
+- ✅ README.md line 457-470 correctly shows pinyin example
+- ✅ Correctly states "server passes these hints directly to OmniVoice without modification" (line 470)
+- ❌ Missing: English CMU dict pronunciation format documentation
+
+**LABELING GAP:**
+- Should document English pronunciation format: "[IH1 T]" (uppercase, brackets)
+- Should clarify NO separate `phoneme_input` parameter exists (temp.log line 123 confirms this is wrong design)
+
+### 4. Generation Parameters
+
+**Confirmed upstream-native (temp.log line 25-38):**
+- speed (float, >1 faster, <1 slower)
+- duration (overrides speed when set)
+- num_step (default 32, range 16-64)
+- guidance_scale (default 2.0)
+- t_shift (default 0.1)
+- position_temperature (default 5.0, 0=deterministic)
+- class_temperature (default 0.0, 0=greedy)
+- layer_penalty_factor (default 5.0)
+- preprocess_prompt (default True)
+- postprocess_output (default True)
+- audio_chunk_duration (default 15.0)
+- audio_chunk_threshold (default 30.0)
+
+**Documentation status:**
+- ✅ README.md line 472-520 documents most parameters correctly
+- ✅ Explains position_temperature=0 for deterministic voice (line 494-507)
+- ✅ Explains duration for video sync (line 509-518)
+
+---
+
+## SERVER-ONLY EXTENSIONS (Not in upstream OmniVoice)
+
+### 1. HTTP/REST API Layer
+
+**Server-only features:**
+- All HTTP endpoints: `/v1/audio/speech`, `/v1/voices`, `/v1/models`, `/health`, `/metrics`
+- OpenAI-compatible API design
+- Bearer token authentication
+- Request/response format handling (JSON → model params)
+- Audio format conversion (tensor → WAV/PCM bytes)
+
+**Documentation status:**
+- ✅ README.md clearly presents as "OpenAI-compatible HTTP server" (line 8)
+- ✅ API Reference section (line 327-434) documents HTTP layer
+- ✅ No confusion about HTTP being upstream-native
+
+### 2. WebSocket/Streaming Transport
+
+**Server-only features:**
+- `stream=True` parameter in HTTP API
+- Sentence-level chunking (split_sentences logic)
+- Chunked transfer encoding
+- Real-time PCM streaming over HTTP
+
+**Documentation status:**
+- ⚠️ README.md line 252-271 documents streaming
+- ⚠️ Line 30 claims "Streaming synthesis - Low-latency sentence-level streaming" as a feature
+- ❌ LABELING GAP: Does NOT explicitly state this is server-only transport mechanism
+- ❌ Could be confused as upstream OmniVoice capability
+
+**CRITICAL LABELING GAP:**
+- Streaming is a SERVER TRANSPORT feature, not an upstream model capability
+- Upstream model generates full audio tensors; server chunks them for HTTP streaming
+- Should add note: "Server-only feature: HTTP streaming transport with sentence-level chunking"
+
+### 3. Voice Profile Management
+
+**Server-only features:**
+- Profile storage (filesystem-based)
+- Profile CRUD endpoints: POST/GET/PATCH/DELETE `/v1/voices/profiles/{id}`
+- Profile metadata (meta.json with created_at, ref_text)
+- Profile listing in `/v1/voices`
+
+**Documentation status:**
+- ✅ README.md line 218-250 documents profile management
+- ⚠️ Line 29 claims "Voice profile management - Save and reuse cloned voices" as a feature
+- ❌ LABELING GAP: Does NOT explicitly state this is server-only storage/management
+- ❌ Could be confused as upstream OmniVoice capability
+
+**CRITICAL LABELING GAP:**
+- Profile management is SERVER STORAGE, not upstream model feature
+- Upstream model accepts ref_audio path for cloning; server adds persistent storage layer
+- Should add note: "Server-only feature: Persistent voice profile storage and management"
+
+### 4. OpenAI-Compatible Presets
+
+**Server-only features:**
+- Preset names: alloy, ash, ballad, cedar, coral, echo, fable, marin, nova, onyx, sage, shimmer, verse
+- Preset → design prompt mapping (e.g., "alloy" → "female, young adult, moderate pitch, american accent")
+- `voice` and `speaker` parameter handling
+
+**Documentation status:**
+- ✅ README.md line 197-216 documents presets with mapping table
+- ⚠️ Line 184-187 explains precedence: instructions > speaker > voice > default
+- ❌ LABELING GAP: Does NOT explicitly state presets are server-only convenience layer
+- ❌ Could be confused as upstream OmniVoice feature
+
+**LABELING GAP:**
+- Presets are SERVER CONVENIENCE mappings to upstream design prompts
+- Should add note: "Server-only feature: OpenAI-compatible preset names mapped to voice design attributes"
+
+### 5. Metrics and Health Endpoints
+
+**Server-only features:**
+- `/health` endpoint with uptime, device, model status
+- `/metrics` endpoint with request counters, latency stats, memory usage
+- Prometheus-style metrics
+
+**Documentation status:**
+- ✅ README.md line 428-434 documents these endpoints
+- ✅ Clearly presented as server operational endpoints
+- ✅ No confusion about being upstream-native
+
+### 6. Authentication Layer
+
+**Server-only features:**
+- Bearer token authentication
+- API key validation
+- Optional auth (OMNIVOICE_API_KEY env var)
+
+**Documentation status:**
+- ✅ README.md line 34, 83-85, 322 documents authentication
+- ✅ Clearly presented as server feature
+- ✅ No confusion about being upstream-native
+
+### 7. Concurrency Management
+
+**Server-only features:**
+- Thread pool executor for concurrent requests
+- `--max-concurrent` configuration
+- Request queuing and timeout handling
+
+**Documentation status:**
+- ✅ README.md line 31, 291, 321 documents concurrency
+- ✅ Clearly presented as server feature
+- ✅ No confusion about being upstream-native
+
+---
+
+## AMBIGUOUS/MISLEADING DOCUMENTATION
+
+### 1. "Three voice modes: Auto, Design, Clone" (README line 25-28)
+
+**Issue:**
+- Presents as if these are distinct OmniVoice model modes
+- Actually: "Auto" is just server default design prompt; "Design" and "Clone" are upstream model.generate() parameters
+
+**Labeling gap:**
+- Should clarify: "Auto = server default design prompt (male, middle-aged, moderate pitch, british accent)"
+- Should clarify: "Design = upstream voice design via instruct parameter"
+- Should clarify: "Clone = upstream voice cloning via ref_audio parameter"
+
+### 2. "Multiple audio formats - WAV and raw PCM output" (README line 32)
+
+**Issue:**
+- Presents as a feature without clarifying server vs upstream
+- Actually: Upstream outputs torch.Tensor; server converts to WAV/PCM bytes
+
+**Labeling gap:**
+- Should clarify: "Server-only feature: Audio format conversion (upstream outputs tensors, server converts to WAV/PCM)"
+
+### 3. "Speed control - 0.25x to 4.0x playback speed" (README line 33)
+
+**Issue:**
+- Presents as a feature without clarifying upstream vs server
+- Actually: Upstream `speed` parameter, server passes through
+
+**Labeling gap:**
+- Should clarify: "Upstream-native: Speed control via OmniVoice speed parameter"
+
+---
+
+## UNSUPPORTED FEATURES (Documented as NOT in upstream)
+
+### 1. Emotion Attributes (temp.log line 95-98)
+
+**Unsupported:**
+- cheerful, sad, angry, surprised (as voice design attributes)
+- Emotion category: happy, sad, angry, fearful, disgusted, surprised
+
+**Documentation status:**
+- ✅ README.md does NOT claim these are supported
+- ✅ No false documentation
+
+### 2. Speaking Style Attributes (temp.log line 100-103)
+
+**Unsupported:**
+- narration, customer_service, news_presentation, sportscasting
+
+**Documentation status:**
+- ✅ README.md does NOT claim these are supported
+- ✅ No false documentation
+
+### 3. Separate `phoneme_input` Parameter (temp.log line 117-123)
+
+**Unsupported:**
+- No separate phoneme_input parameter
+- Pronunciation control is inline in text field only
+
+**Documentation status:**
+- ✅ README.md does NOT claim separate phoneme_input parameter
+- ✅ Correctly shows inline pronunciation (line 457-470)
+
+---
+
+## SUMMARY: CRITICAL LABELING GAPS
+
+### High Priority (User Confusion Risk)
+
+1. **Streaming transport** (README line 30, 252-271)
+   - Gap: Not labeled as server-only HTTP transport feature
+   - Fix: Add "Server-only feature: HTTP streaming transport with sentence-level chunking"
+
+2. **Voice profile management** (README line 29, 218-250)
+   - Gap: Not labeled as server-only storage layer
+   - Fix: Add "Server-only feature: Persistent voice profile storage and management"
+
+3. **OpenAI presets** (README line 197-216)
+   - Gap: Not labeled as server-only convenience mappings
+   - Fix: Add "Server-only feature: OpenAI-compatible preset names mapped to voice design attributes"
+
+4. **"Three voice modes"** (README line 25-28)
+   - Gap: Ambiguous presentation, "Auto" is just server default
+   - Fix: Clarify Auto = server default, Design/Clone = upstream parameters
+
+5. **Non-verbal symbols list** (README line 438-456)
+   - Gap: Incomplete list, vague "Other non-verbal expressions"
+   - Fix: List ALL confirmed tags from temp.log, remove vague claim
+
+### Medium Priority (Completeness)
+
+6. **English pronunciation format** (README line 457-470)
+   - Gap: Only shows Chinese pinyin, missing English CMU dict format
+   - Fix: Add example: "[IH1 T]" (uppercase, brackets)
+
+7. **Audio format conversion** (README line 32)
+   - Gap: Not labeled as server conversion layer
+   - Fix: Add "Server-only feature: Audio format conversion (tensor → WAV/PCM)"
+
+8. **Speed control** (README line 33)
+   - Gap: Not labeled as upstream-native
+   - Fix: Add "Upstream-native: Speed control via OmniVoice speed parameter"
+
+### Low Priority (Nice to Have)
+
+9. **Batch inference** (temp.log line 131)
+   - Gap: Not documented in README
+   - Note: Upstream has CLI `omnivoice-infer-batch`, server could expose REST wrapper
+
+10. **Web UI (Gradio)** (temp.log line 132)
+    - Gap: Not documented in README
+    - Note: Upstream has CLI `omnivoice-demo`, not relevant for HTTP server
+
+---
+
+## RECOMMENDED DOCUMENTATION STRUCTURE
+
+To eliminate labeling gaps, README should use clear section headers:
+
+```markdown
+## Features
+
+### Upstream OmniVoice Capabilities (Pass-Through)
+- Voice design with attributes (gender, age, pitch, whisper, accent, dialect)
+- Voice cloning from reference audio
+- Non-verbal symbols inline in text ([laughter], [sigh], etc.)
+- Pronunciation control inline in text (pinyin, CMU dict)
+- Generation parameters (speed, num_step, temperature, etc.)
+
+### Server-Only Extensions
+- OpenAI-compatible HTTP/REST API
+- HTTP streaming transport with sentence-level chunking
+- Persistent voice profile storage and management
+- OpenAI-compatible preset names (alloy, nova, etc.)
+- Bearer token authentication
+- Health and metrics endpoints
+- Concurrent request handling
+- Audio format conversion (tensor → WAV/PCM)
+```
+
+This structure makes it immediately clear what comes from upstream vs what the server adds.
+
+---
+
+## NEXT STEPS (Wave 2)
+
+1. Update README.md with labeling fixes (high priority gaps first)
+2. Update examples/ with clarifying comments
+3. Update docs/design/dataflow.md with upstream vs server-only annotations
+4. Add ARCHITECTURE.md explaining server wrapper vs upstream model boundary
+5. Consider adding UPSTREAM.md documenting confirmed OmniVoice capabilities

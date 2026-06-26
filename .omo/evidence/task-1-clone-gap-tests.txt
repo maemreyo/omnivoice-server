@@ -1,0 +1,85 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.12, pytest-9.0.3, pluggy-1.6.0 -- /opt/homebrew/opt/python@3.13/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /Users/trung.ngo/Documents/zaob-dev/omnivoice-server
+configfile: pyproject.toml
+plugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 12 items
+
+tests/test_clone.py::test_clone_returns_wav PASSED                       [  8%]
+tests/test_clone.py::test_clone_empty_audio_rejected PASSED              [ 16%]
+tests/test_clone.py::test_clone_layer_penalty_factor_valid PASSED        [ 25%]
+tests/test_clone.py::test_clone_layer_penalty_factor_invalid FAILED      [ 33%]
+tests/test_clone.py::test_clone_preprocess_prompt_true PASSED            [ 41%]
+tests/test_clone.py::test_clone_preprocess_prompt_false PASSED           [ 50%]
+tests/test_clone.py::test_clone_postprocess_output_true PASSED           [ 58%]
+tests/test_clone.py::test_clone_postprocess_output_false PASSED          [ 66%]
+tests/test_clone.py::test_clone_audio_chunk_duration_valid PASSED        [ 75%]
+tests/test_clone.py::test_clone_audio_chunk_duration_invalid FAILED      [ 83%]
+tests/test_clone.py::test_clone_audio_chunk_threshold_valid PASSED       [ 91%]
+tests/test_clone.py::test_clone_audio_chunk_threshold_invalid FAILED     [100%]
+
+=================================== FAILURES ===================================
+___________________ test_clone_layer_penalty_factor_invalid ____________________
+
+client = <starlette.testclient.TestClient object at 0x10a9723f0>
+sample_audio_bytes = b'RIFF\xec\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\xc0]\x00\x00\x80\xbb\x00\x00\x02\x00\x10\x00data\xc8\x0...00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+
+    def test_clone_layer_penalty_factor_invalid(client, sample_audio_bytes):
+        """Clone endpoint rejects negative layer_penalty_factor."""
+        resp = client.post(
+            "/v1/audio/speech/clone",
+            data={"text": "Hello", "layer_penalty_factor": "-1.0"},
+            files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+        )
+>       assert resp.status_code == 422
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_clone.py:51: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+___________________ test_clone_audio_chunk_duration_invalid ____________________
+
+client = <starlette.testclient.TestClient object at 0x10b06caf0>
+sample_audio_bytes = b'RIFF\xec\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\xc0]\x00\x00\x80\xbb\x00\x00\x02\x00\x10\x00data\xc8\x0...00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+
+    def test_clone_audio_chunk_duration_invalid(client, sample_audio_bytes):
+        """Clone endpoint rejects zero audio_chunk_duration."""
+        resp = client.post(
+            "/v1/audio/speech/clone",
+            data={"text": "Hello", "audio_chunk_duration": "0.0"},
+            files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+        )
+>       assert resp.status_code == 422
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_clone.py:111: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+___________________ test_clone_audio_chunk_threshold_invalid ___________________
+
+client = <starlette.testclient.TestClient object at 0x10b2148d0>
+sample_audio_bytes = b'RIFF\xec\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\xc0]\x00\x00\x80\xbb\x00\x00\x02\x00\x10\x00data\xc8\x0...00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+
+    def test_clone_audio_chunk_threshold_invalid(client, sample_audio_bytes):
+        """Clone endpoint rejects negative audio_chunk_threshold."""
+        resp = client.post(
+            "/v1/audio/speech/clone",
+            data={"text": "Hello", "audio_chunk_threshold": "-1.0"},
+            files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+        )
+>       assert resp.status_code == 422
+E       assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests/test_clone.py:131: AssertionError
+---------------------------- Captured stdout setup -----------------------------
+OMNIVOICE_READY host=127.0.0.1 port=8880
+=========================== short test summary info ============================
+FAILED tests/test_clone.py::test_clone_layer_penalty_factor_invalid - assert ...
+FAILED tests/test_clone.py::test_clone_audio_chunk_duration_invalid - assert ...
+FAILED tests/test_clone.py::test_clone_audio_chunk_threshold_invalid - assert...
+========================= 3 failed, 9 passed in 0.16s ==========================
