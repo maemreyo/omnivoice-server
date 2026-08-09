@@ -1,4 +1,5 @@
 {
+  "_comment": "Exported from upstream (maemreyo/omnivoice-server). This file is INERT: GitHub rulesets are repository settings, not files. Nothing here is enforced on this fork unless you import it under Settings > Rules > Rulesets. As written it requires 1 approving review, which a solo maintainer cannot self-approve.",
   "id": 14702042,
   "name": "main-branch-protection",
   "target": "branch",

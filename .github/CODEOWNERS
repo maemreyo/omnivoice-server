@@ -2,24 +2,24 @@
 # These owners will be automatically requested for review when someone opens a pull request.
 
 # Default owner for everything in the repo
-* @maemreyo
+* @NguyenNinh05
 
 # Workflows and CI/CD
-/.github/ @maemreyo
+/.github/ @NguyenNinh05
 
 # Core server code
-/omnivoice_server/ @maemreyo
+/omnivoice_server/ @NguyenNinh05
 
 # Configuration files
-/pyproject.toml @maemreyo
-/Dockerfile @maemreyo
-/docker-compose.yml @maemreyo
+/pyproject.toml @NguyenNinh05
+/Dockerfile @NguyenNinh05
+/docker-compose.yml @NguyenNinh05
 
 # Documentation
-/docs/ @maemreyo
-/README.md @maemreyo
-/CHANGELOG.md @maemreyo
+/docs/ @NguyenNinh05
+/README.md @NguyenNinh05
+/CHANGELOG.md @NguyenNinh05
 
 # Security and governance
-/SECURITY.md @maemreyo
-/LICENSE @maemreyo
+/SECURITY.md @NguyenNinh05
+/LICENSE @NguyenNinh05
