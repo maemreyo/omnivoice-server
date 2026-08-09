@@ -41,6 +41,20 @@ class Settings(BaseSettings):
     device: Literal["auto", "cuda", "mps", "cpu"] = "cpu"
     num_step: int = Field(default=32, ge=1, le=64)  # Upstream default
 
+    # ASR (Whisper) — used to auto-transcribe ref_audio when ref_text is absent.
+    # Both are omnivoice >= 0.2.1. Leaving them None keeps upstream defaults.
+    asr_model_name: str | None = Field(
+        default=None,
+        description="Override the Whisper model used to transcribe reference audio.",
+    )
+    asr_device: str | None = Field(
+        default=None,
+        description=(
+            "Device for the Whisper ASR model (e.g. 'cuda:1', 'cpu'). "
+            "Upstream previously hard-coded GPU 0; set this to keep ASR off the TTS GPU."
+        ),
+    )
+
     # Advanced generation params (passed through to OmniVoice.generate())
     # Expose the ones users are likely to tune; leave the rest at upstream defaults.
     guidance_scale: float = Field(
@@ -74,6 +88,35 @@ class Settings(BaseSettings):
         le=2.0,
         description=(
             "Temperature for token sampling at each step. 0=greedy, higher=more randomness."
+        ),
+    )
+
+    # ── Truncation / clipping controls (omnivoice >= 0.2.0) ──────────────────
+    # Upstream clips the tail of generated audio in some languages (k2-fsa/OmniVoice#245,
+    # still open as of 0.2.1). pad_duration adds silence on each side so that any tail
+    # clipping lands in the padding instead of on a real phoneme. Raise it to ~0.3 if
+    # you hear swallowed word endings.
+    pad_duration: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=2.0,
+        description="Silence padding per side, in seconds. 0 disables. Upstream default 0.1.",
+    )
+    fade_duration: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=2.0,
+        description="Fade in/out curve duration, in seconds. 0 disables. Upstream default 0.1.",
+    )
+
+    # Text normalisation (omnivoice >= 0.2.1). Opt-in upstream, and it needs the
+    # `omnivoice[tn]` extra installed — enabling it without that extra will fail
+    # at generate() time, so it stays off by default.
+    normalize_text: bool = Field(
+        default=False,
+        description=(
+            "Expand numbers, dates and currency before synthesis. "
+            "Requires the upstream `omnivoice[tn]` extra."
         ),
     )
 

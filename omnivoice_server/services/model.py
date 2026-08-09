@@ -55,6 +55,12 @@ class ModelService:
                 }
                 if self.cfg.model_cache_dir is not None:
                     from_pretrained_kwargs["cache_dir"] = str(self.cfg.model_cache_dir)
+                # omnivoice >= 0.2.1. Before that release the ASR model always
+                # landed on GPU 0 regardless of device_map.
+                if self.cfg.asr_model_name is not None:
+                    from_pretrained_kwargs["asr_model_name"] = self.cfg.asr_model_name
+                if self.cfg.asr_device is not None:
+                    from_pretrained_kwargs["asr_device"] = self.cfg.asr_device
                 model = OmniVoice.from_pretrained(
                     self.cfg.model_id,
                     **from_pretrained_kwargs,

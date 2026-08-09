@@ -21,6 +21,8 @@ Priority: **CLI flags > environment variables > .env file > defaults**
 | `OMNIVOICE_MODEL_CACHE_DIR` | *(env only)* | path | *(HF default)* | Override HuggingFace model cache directory. |
 | `OMNIVOICE_DEVICE` | `--device` | string | `cpu` | Compute device: `cpu`, `cuda`, `mps`, `auto`. |
 | `OMNIVOICE_NUM_STEP` | `--num-step` | int (1–64) | `32` | Diffusion steps. Higher = better quality, slower. |
+| `OMNIVOICE_ASR_MODEL_NAME` | `--asr-model` | string | *(upstream default)* | Whisper model used to transcribe `ref_audio` when no `ref_text` is given. |
+| `OMNIVOICE_ASR_DEVICE` | `--asr-device` | string | *(upstream default)* | Device for the Whisper ASR model, e.g. `cuda:1` or `cpu`. Before omnivoice 0.2.1 this always landed on GPU 0. |
 
 ## Generation Defaults
 
@@ -33,6 +35,25 @@ These are server-level defaults. Per-request overrides are supported via API fie
 | `OMNIVOICE_T_SHIFT` | `--t-shift` | float (0–2) | `0.1` | Noise schedule shift. |
 | `OMNIVOICE_POSITION_TEMPERATURE` | `--position-temperature` | float (0–10) | `5.0` | Voice diversity. `0` = deterministic/reproducible. |
 | `OMNIVOICE_CLASS_TEMPERATURE` | `--class-temperature` | float (0–2) | `0.0` | Token sampling temperature. `0` = greedy. |
+| `OMNIVOICE_PAD_DURATION` | `--pad-duration` | float (0–2) | `0.1` | Silence padding per side, in seconds. `0` disables. See [Clipped word endings](#clipped-word-endings). |
+| `OMNIVOICE_FADE_DURATION` | `--fade-duration` | float (0–2) | `0.1` | Fade in/out curve duration, in seconds. `0` disables. |
+| `OMNIVOICE_NORMALIZE_TEXT` | `--normalize-text` / `--no-normalize-text` | bool | `false` | Expand numbers, dates and currency before synthesis. Requires the upstream `omnivoice[tn]` extra. |
+
+### Clipped word endings
+
+Upstream sometimes clips the tail of generated audio, most visibly on the final
+word of a sentence ([k2-fsa/OmniVoice#245](https://github.com/k2-fsa/OmniVoice/issues/245),
+open as of omnivoice 0.2.1). `pad_duration` adds silence on each side so the
+clipping lands in padding rather than on a real phoneme:
+
+```bash
+omnivoice-server --pad-duration 0.3
+```
+
+Per request: `{"input": "...", "pad_duration": 0.3}`.
+
+If endings still get swallowed, raise `guidance_scale` toward `2.5`–`3.5` to make
+the model track the input text more closely.
 
 ## Inference
 

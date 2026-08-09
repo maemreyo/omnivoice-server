@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Fork of [maemreyo/omnivoice-server](https://github.com/maemreyo/omnivoice-server),
+maintained at [NguyenNinh05/omnivoice-server](https://github.com/NguyenNinh05/omnivoice-server).
+
+### Changed
+
+- Repository metadata, install instructions and `Dockerfile.cuda` now point at this
+  fork. `Dockerfile.cuda` previously `pip install`ed from the upstream repo, so CUDA
+  images were built from upstream code regardless of local changes.
+- This fork is not published to PyPI; `pip install omnivoice-server` still resolves to
+  upstream. Install from Git — see the README.
+
+- **BREAKING (dependency)**: require `omnivoice>=0.2.1,<0.3.0` (was `>=0.1.0,<0.2.0`). The
+  previous pin locked the project out of the entire 0.2.x line. `generate()` keeps its
+  `**kwargs` passthrough in 0.2.x, so `OmniVoiceAdapter.build_kwargs()` needed no
+  restructuring — only new keys.
+
+### Added
+
+- `pad_duration` and `fade_duration` passthrough (upstream 0.2.0). Server defaults
+  `OMNIVOICE_PAD_DURATION` / `OMNIVOICE_FADE_DURATION` (both `0.1`), CLI flags
+  `--pad-duration` / `--fade-duration`, and per-request overrides on
+  `/v1/audio/speech` and `/v1/audio/speech/clone`.
+  Raising `pad_duration` is the practical mitigation for clipped word endings
+  ([k2-fsa/OmniVoice#245](https://github.com/k2-fsa/OmniVoice/issues/245), still open).
+- `normalize_text` passthrough (upstream 0.2.1) for number/date/currency expansion.
+  Off by default because it requires the upstream `omnivoice[tn]` extra.
+- `asr_model_name` and `asr_device` settings (upstream 0.2.1), forwarded to
+  `from_pretrained()`. `asr_device` keeps Whisper off the TTS GPU — upstream previously
+  pinned the ASR model to GPU 0 regardless of `device_map`.
+- `tests/test_inference.py` covering `OmniVoiceAdapter.build_kwargs()` directly: server
+  default vs per-request precedence, `0.0` not being swallowed as "unset", and the
+  `language` (not `language_id`) upstream parameter name.
+
+### Notes
+
+- Upstream 0.2.0 fixed a punctuation-handling bug and closed
+  [#116](https://github.com/k2-fsa/OmniVoice/issues/116) (dropped final vowel/consonant
+  before commas and periods). End-of-sentence truncation (#245) is a separate, still-open
+  defect.
+
 ## [0.2.4] - 2026-05-12
 
 ### Added
@@ -163,7 +205,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Type hints throughout codebase
 - Async/await for I/O operations
 
-[unreleased]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.2...HEAD
+Historical release links below point at the upstream repository, where those
+releases were made. Unreleased changes live in this fork.
+
+[unreleased]: https://github.com/NguyenNinh05/omnivoice-server/commits/main
 [0.2.2]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/maemreyo/omnivoice-server/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/maemreyo/omnivoice-server/compare/v0.1.2...v0.2.0

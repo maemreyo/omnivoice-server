@@ -19,20 +19,28 @@ For other CUDA versions or more options, see the [official PyTorch installation 
 
 ### Installation
 
+> **This fork is not on PyPI.** `pip install omnivoice-server` installs
+> [upstream's](https://github.com/maemreyo/omnivoice-server) package, which does not
+> contain this fork's changes. Install from Git instead.
+
 ```bash
-# Option 1: Install from PyPI (recommended)
-pip install omnivoice-server
+# Option 1: Install this fork from GitHub (recommended)
+pip install git+https://github.com/NguyenNinh05/omnivoice-server.git
 
-# Option 2: Install with uv (faster)
-uv tool install omnivoice-server
+# Option 2: Install with uv
+uv tool install git+https://github.com/NguyenNinh05/omnivoice-server.git
 
-# Option 3: Install from GitHub (latest development version)
-pip install git+https://github.com/maemreyo/omnivoice-server.git
-
-# Option 4: Clone and install locally for development
-git clone https://github.com/maemreyo/omnivoice-server.git
+# Option 3: Clone and install locally for development
+git clone https://github.com/NguyenNinh05/omnivoice-server.git
 cd omnivoice-server
-pip install -e .
+pip install -e ".[dev]"
+```
+
+If you previously installed the PyPI package, remove it first so the two
+installations don't shadow each other:
+
+```bash
+pip uninstall omnivoice-server
 ```
 
 ### Start the Server

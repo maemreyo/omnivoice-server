@@ -21,10 +21,12 @@ classifiers = [
 ]
 
 dependencies = [
-    # FIX: pin omnivoice to a compatible minor series.
-    # OmniVoice is brand-new (April 2026) and its API may change in 0.2.x.
+    # Pin omnivoice to a compatible minor series.
+    # 0.2.x adds pad_duration/fade_duration (0.2.0) and normalize_text +
+    # VoiceClonePrompt.save()/load() + asr_device (0.2.1). generate() keeps
+    # **kwargs passthrough, so OmniVoiceAdapter.build_kwargs() stays valid.
     # Widen this bound only after reviewing upstream changelogs.
-    "omnivoice>=0.1.0,<0.2.0",
+    "omnivoice>=0.2.1,<0.3.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "python-multipart>=0.0.12",
@@ -52,11 +54,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/maemreyo/omnivoice-server"
-Documentation = "https://github.com/maemreyo/omnivoice-server#readme"
-Repository = "https://github.com/maemreyo/omnivoice-server"
-Issues = "https://github.com/maemreyo/omnivoice-server/issues"
-Changelog = "https://github.com/maemreyo/omnivoice-server/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/NguyenNinh05/omnivoice-server"
+Documentation = "https://github.com/NguyenNinh05/omnivoice-server#readme"
+Repository = "https://github.com/NguyenNinh05/omnivoice-server"
+Issues = "https://github.com/NguyenNinh05/omnivoice-server/issues"
+Changelog = "https://github.com/NguyenNinh05/omnivoice-server/blob/main/CHANGELOG.md"
+"Upstream project" = "https://github.com/maemreyo/omnivoice-server"
 
 [project.scripts]
 omnivoice-server = "omnivoice_server.cli:main"

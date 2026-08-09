@@ -47,6 +47,9 @@ class SynthesisRequest:
     postprocess_output: bool | None = None
     audio_chunk_duration: float | None = None
     audio_chunk_threshold: float | None = None
+    pad_duration: float | None = None  # omnivoice >= 0.2.0
+    fade_duration: float | None = None  # omnivoice >= 0.2.0
+    normalize_text: bool | None = None  # omnivoice >= 0.2.1
 
 
 @dataclass
@@ -97,6 +100,15 @@ class OmniVoiceAdapter:
             if req.class_temperature is not None
             else self._cfg.class_temperature
         )
+        pad_duration = (
+            req.pad_duration if req.pad_duration is not None else self._cfg.pad_duration
+        )
+        fade_duration = (
+            req.fade_duration if req.fade_duration is not None else self._cfg.fade_duration
+        )
+        normalize_text = (
+            req.normalize_text if req.normalize_text is not None else self._cfg.normalize_text
+        )
 
         kwargs: dict = {
             "text": req.text,
@@ -107,6 +119,11 @@ class OmniVoiceAdapter:
             "t_shift": t_shift,
             "position_temperature": position_temperature,
             "class_temperature": class_temperature,
+            # omnivoice >= 0.2.0 — see Settings.pad_duration for why these matter.
+            "pad_duration": pad_duration,
+            "fade_duration": fade_duration,
+            # omnivoice >= 0.2.1
+            "normalize_text": normalize_text,
         }
 
         # Add optional duration parameter if provided

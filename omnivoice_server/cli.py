@@ -84,6 +84,51 @@ def main() -> None:
         dest="class_temperature",
         help="Token sampling temperature, 0-2 (env: OMNIVOICE_CLASS_TEMPERATURE)",
     )
+    parser.add_argument(
+        "--pad-duration",
+        type=float,
+        default=None,
+        dest="pad_duration",
+        help=(
+            "Silence padding per side in seconds, 0-2. Raise to ~0.3 if word "
+            "endings get clipped (env: OMNIVOICE_PAD_DURATION)"
+        ),
+    )
+    parser.add_argument(
+        "--fade-duration",
+        type=float,
+        default=None,
+        dest="fade_duration",
+        help="Fade in/out duration in seconds, 0-2 (env: OMNIVOICE_FADE_DURATION)",
+    )
+    parser.add_argument(
+        "--normalize-text",
+        action="store_true",
+        default=None,
+        dest="normalize_text",
+        help=(
+            "Expand numbers/dates/currency before synthesis. Requires the upstream "
+            "`omnivoice[tn]` extra (env: OMNIVOICE_NORMALIZE_TEXT)"
+        ),
+    )
+    parser.add_argument(
+        "--no-normalize-text",
+        action="store_false",
+        dest="normalize_text",
+        help="Disable text normalization",
+    )
+    parser.add_argument(
+        "--asr-model",
+        default=None,
+        dest="asr_model_name",
+        help="Whisper model for transcribing ref_audio (env: OMNIVOICE_ASR_MODEL_NAME)",
+    )
+    parser.add_argument(
+        "--asr-device",
+        default=None,
+        dest="asr_device",
+        help="Device for the Whisper ASR model, e.g. cuda:1 (env: OMNIVOICE_ASR_DEVICE)",
+    )
 
     # Inference
     parser.add_argument(

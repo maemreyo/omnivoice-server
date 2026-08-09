@@ -66,6 +66,17 @@ class SpeechRequest(BaseModel):
     postprocess_output: bool | None = Field(default=None)
     audio_chunk_duration: float | None = Field(default=None, gt=0.0)
     audio_chunk_threshold: float | None = Field(default=None, gt=0.0)
+    pad_duration: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        description="Silence padding per side (s). Raise if word endings get clipped.",
+    )
+    fade_duration: float | None = Field(default=None, ge=0.0, le=2.0)
+    normalize_text: bool | None = Field(
+        default=None,
+        description="Expand numbers/dates/currency. Needs the upstream `omnivoice[tn]` extra.",
+    )
     request_timeout_s: int | None = Field(default=None, ge=1, le=600)
 
     @field_validator("model")
@@ -295,6 +306,9 @@ async def create_speech(
         postprocess_output=body.postprocess_output,
         audio_chunk_duration=body.audio_chunk_duration,
         audio_chunk_threshold=body.audio_chunk_threshold,
+        pad_duration=body.pad_duration,
+        fade_duration=body.fade_duration,
+        normalize_text=body.normalize_text,
     )
 
     if body.stream or cfg.stream:
@@ -378,6 +392,9 @@ def _chunk_request(sentence: str, base_req: SynthesisRequest) -> SynthesisReques
         postprocess_output=base_req.postprocess_output,
         audio_chunk_duration=base_req.audio_chunk_duration,
         audio_chunk_threshold=base_req.audio_chunk_threshold,
+        pad_duration=base_req.pad_duration,
+        fade_duration=base_req.fade_duration,
+        normalize_text=base_req.normalize_text,
     )
 
 
@@ -498,6 +515,9 @@ async def create_speech_clone(
     postprocess_output: bool | None = Form(default=None),
     audio_chunk_duration: float | None = Form(default=None, gt=0.0),
     audio_chunk_threshold: float | None = Form(default=None, gt=0.0),
+    pad_duration: float | None = Form(default=None, ge=0.0, le=2.0),
+    fade_duration: float | None = Form(default=None, ge=0.0, le=2.0),
+    normalize_text: bool | None = Form(default=None),
     request_timeout_s: int | None = Form(default=None, ge=1, le=600),
     inference_svc: InferenceService = Depends(_get_inference),
     metrics_svc: MetricsService = Depends(_get_metrics),
@@ -554,6 +574,9 @@ async def create_speech_clone(
             postprocess_output=postprocess_output,
             audio_chunk_duration=audio_chunk_duration,
             audio_chunk_threshold=audio_chunk_threshold,
+            pad_duration=pad_duration,
+            fade_duration=fade_duration,
+            normalize_text=normalize_text,
         )
 
     if stream or cfg.stream:
