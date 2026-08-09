@@ -1,8 +1,18 @@
 name: Publish to PyPI
 
+# DISABLED ON THIS FORK.
+#
+# The PyPI name `omnivoice-server` belongs to the upstream project
+# (maemreyo/omnivoice-server). This fork is installed from Git, not PyPI, so
+# publishing from here would either fail on auth or collide with upstream's
+# package. The `release: published` trigger was removed so that `make release`
+# cannot fire it by accident.
+#
+# To re-enable: publish under a package name you own (rename `project.name` in
+# pyproject.toml first), set the PYPI_API_TOKEN secret, then restore the
+# `release:` trigger below.
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read

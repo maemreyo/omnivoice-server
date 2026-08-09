@@ -1,14 +1,19 @@
 name: Build and Push Docker Images
 
+# Manual-only on this fork: the `release: published` trigger was removed so
+# `make release` cannot push images by accident. The image namespace follows
+# whoever's Docker Hub credentials are configured (DOCKERHUB_USERNAME), rather
+# than the hardcoded upstream namespace it used to use.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
         description: 'Docker tag (e.g., v0.2.0, latest)'
         required: false
         default: ''
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/omnivoice-server
 
 jobs:
   push-docker:
@@ -34,7 +39,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: maemreyo/omnivoice-server
+          images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=tag
             type=sha,prefix=
@@ -47,9 +52,9 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: |
-            maemreyo/omnivoice-server:latest
-            maemreyo/omnivoice-server:cpu-latest
-            ${{ github.event.inputs.tag != '' && format('maemreyo/omnivoice-server:{0}', github.event.inputs.tag) || '' }}
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:cpu-latest
+            ${{ github.event.inputs.tag != '' && format('{0}:{1}', env.IMAGE_NAME, github.event.inputs.tag) || '' }}
             ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
@@ -63,9 +68,9 @@ jobs:
           file: ./Dockerfile.cuda
           push: true
           tags: |
-            maemreyo/omnivoice-server:cuda-latest
-            ${{ github.event.inputs.tag != '' && format('maemreyo/omnivoice-server:cuda-{0}', github.event.inputs.tag) || '' }}
-            ${{ format('maemreyo/omnivoice-server:{0}-cuda', github.event.inputs.tag != '' && github.event.inputs.tag || 'latest') }}
+            ${{ env.IMAGE_NAME }}:cuda-latest
+            ${{ github.event.inputs.tag != '' && format('{0}:cuda-{1}', env.IMAGE_NAME, github.event.inputs.tag) || '' }}
+            ${{ format('{0}:{1}-cuda', env.IMAGE_NAME, github.event.inputs.tag != '' && github.event.inputs.tag || 'latest') }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
           cache-from: type=gha
@@ -74,7 +79,7 @@ jobs:
       - name: Show pushed images
         run: |
           echo "✅ Pushed Docker images:"
-          echo "  - maemreyo/omnivoice-server:latest"
-          echo "  - maemreyo/omnivoice-server:cpu-latest"
-          echo "  - maemreyo/omnivoice-server:cuda-latest"
-          ${{ github.event.inputs.tag != '' && format('echo "  - maemreyo/omnivoice-server:{0}"', github.event.inputs.tag) || '' }}
+          echo "  - ${{ env.IMAGE_NAME }}:latest"
+          echo "  - ${{ env.IMAGE_NAME }}:cpu-latest"
+          echo "  - ${{ env.IMAGE_NAME }}:cuda-latest"
+          ${{ github.event.inputs.tag != '' && format('echo "  - {0}:{1}"', env.IMAGE_NAME, github.event.inputs.tag) || '' }}

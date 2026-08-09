@@ -1,6 +1,6 @@
 PY ?= python3.11
 
-.PHONY: help install dev test test-cov lint format type-check clean build publish docs docker-build docker-run release
+.PHONY: help install dev test test-cov lint format type-check clean build docs docker-build docker-run release
 
 help: ## Show this help message
 	@echo "Available commands:"
@@ -35,11 +35,10 @@ clean: ## Clean build artifacts
 build: ## Build package wheel and sdist
 	$(PY) -m build
 
-publish-test: ## Publish to TestPyPI (for testing)
-	$(PY) -m twine upload --repository testpypi dist/*
-
-publish: ## Publish to PyPI (requires authentication token)
-	$(PY) -m twine upload dist/*
+# No publish targets on this fork. The PyPI name `omnivoice-server` belongs to
+# upstream (maemreyo/omnivoice-server); this fork is installed from Git.
+# To publish your own builds, rename `project.name` in pyproject.toml to a name
+# you own, then add a twine upload target here.
 
 docker-build: ## Build Docker image
 	docker build -t omnivoice-server:latest .
@@ -89,7 +88,9 @@ release: ## Create a new release (Usage: make release RELEASE_VERSION=0.3.0)
 		--notes "See CHANGELOG.md for details."
 	@echo ""
 	@echo "✅ Release v$(RELEASE_VERSION) created!"
-	@echo "   PyPI and Docker workflows will run automatically."
+	@echo "   No publish workflow runs automatically on this fork."
+	@echo "   To push Docker images: run the 'Build and Push Docker Images'"
+	@echo "   workflow manually (needs DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets)."
 
 release-patch: ## Release patch version bump (0.2.0 → 0.2.1)
 	$(eval NEW_VERSION := $(shell awk -F. '{print $$1"."$$2"."$$3+1}' <<< "$(shell grep '^version = ' pyproject.toml | sed 's/version = "//;s/"//')"))
