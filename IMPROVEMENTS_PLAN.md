@@ -1,429 +1,407 @@
-# Streaming and Chunking Improvements Plan
+# OmniVoice Streaming Improvements Plan
 
 ## Purpose
 
-This plan compares the server's current streaming implementation with
-[KevinAHM/echo-tts-api](https://github.com/KevinAHM/echo-tts-api) and defines the
-most valuable improvements for OmniVoice.
+This document audits the streaming ideas originally borrowed from
+[KevinAHM/echo-tts-api](https://github.com/KevinAHM/echo-tts-api) against the
+actual OmniVoice architecture used by this server. It replaces the earlier
+assumption that Echo-TTS block streaming can be transferred directly.
 
-The goal is lower time-to-first-audio (TTFA), fewer audible seams, predictable
-VRAM usage, and safe cancellation for long-running requests. The plan applies
-to the Python API server only; it does not propose replacing OmniVoice with
-Echo-TTS's model or sampler.
+The governing rule is output safety: an optimization must preserve OmniVoice's
+iterative generation, voice conditioning, chunk continuity, and postprocessing.
+Ideas that rely on Echo-TTS's autoregressive/blockwise architecture are excluded
+unless OmniVoice later exposes an upstream API that makes them safe.
 
-## Executive Summary
+This plan targets the Python server and the currently supported OmniVoice 0.1.x
+model family. The vendored implementation is pinned to 0.1.2 for low-VRAM and
+FlashInfer compatibility; the normal loader remains the default.
 
-The current server already has a solid HTTP streaming boundary:
+## Architecture Findings
 
-- OpenAI-compatible `/v1/audio/speech` requests.
-- Raw PCM streaming with audio metadata headers.
-- Sentence-aware chunking and eager first-sentence emission.
-- Optional producer/consumer buffering.
-- Streaming metrics for TTFA, synthesis, postprocessing, and CUDA memory.
-- Profile prompt caching and low-VRAM encoder lifecycle management.
+### OmniVoice is not an autoregressive streaming model
 
-The main limitation is that streaming currently happens around complete
-`model.generate()` calls. OmniVoice generates a sentence or internally chunked
-result before the server can emit its first PCM tensor. Echo-TTS instead exposes
-an internal blockwise generator and decodes each block with retained context.
+OmniVoice starts with a complete masked audio-token grid and refines that grid
+over `num_step` full-sequence passes. Each pass uses bidirectional attention over
+the conditional and classifier-free-guidance sequences. Tokens still masked in
+an intermediate pass do not represent a decodable prefix.
 
-The highest-value work is therefore an OmniVoice-native generation iterator,
-followed by stateful audio-boundary handling and explicit disconnect
-cancellation.
+Consequences:
 
-## Current Server Behavior
+- Never decode or emit an intermediate denoising step.
+- There is no stable "next token" boundary comparable to Echo-TTS.
+- Autoregressive KV-cache reuse is not applicable. Changing audio tokens affect
+  keys and values across the full bidirectional sequence on every pass.
+- FlashInfer deliberately disables the Hugging Face KV cache and recomputes the
+  packed full sequence each step.
+- The first safe yield point is after `_generate_iterative()` has completed a
+  whole text chunk.
 
-### HTTP streaming
+### OmniVoice already has model-native long-form chunking
 
-`/v1/audio/speech` creates a `StreamingResponse` and emits raw mono, 24 kHz,
-16-bit PCM. The response includes:
+For text estimated above `audio_chunk_threshold`, OmniVoice splits text using
+its duration estimator and `audio_chunk_duration`. Every text chunk is fully
+generated before the next chunk is available.
 
-- `X-Audio-Sample-Rate: 24000`
-- `X-Audio-Channels: 1`
-- `X-Audio-Bit-Depth: 16`
-- `X-Audio-Format: pcm-int16-le`
-- `X-Request-Id`
+Conditioning differs by mode:
 
-Streaming is currently intended for PCM. WAV requires a header whose final size
-is not known at response start, and MP3 requires buffering or a streaming
-encoder.
+- Clone mode conditions every chunk on the original clone prompt.
+- Auto/design mode generates chunk 0 without reference audio, then uses chunk
+  0's generated audio tokens and text as the fixed reference for every later
+  chunk. This is important for voice consistency.
+- All generated token chunks are decoded, joined with OmniVoice's boundary
+  fades/silence, and postprocessed as one output.
 
-### Sentence streaming
+Server-side sentence splitting is therefore not equivalent to OmniVoice's
+internal long-form path. Independent auto/design calls can select a different
+voice for each sentence, and independent clone calls can repeat reference
+preparation unless the prompt is prepared once and reused.
 
-The default streaming path uses
-[`split_sentences()`](omnivoice_server/utils/text.py), with a configurable
-maximum chunk size and an eager first chunk. Each chunk is passed through
-`InferenceService.synthesize()`, and the returned tensors are converted to PCM
-and yielded.
+### Final postprocessing is whole-output work
 
-This gives useful sentence-level streaming, but each chunk still pays the full
-OmniVoice generation lifecycle:
+OmniVoice currently performs these operations after all token chunks exist:
 
-1. Prepare the request.
-2. Resolve or load the voice prompt.
-3. Run the complete iterative generation.
-4. Decode and postprocess the generated audio.
-5. Convert the result to PCM.
-6. Yield the bytes.
+1. Decode every chunk.
+2. Join chunks with the upstream boundary algorithm.
+3. Optionally remove long and edge silence over the merged waveform.
+4. Apply reference RMS scaling for clone mode, or whole-output peak
+   normalization for auto/design mode.
+5. Apply one fade and one silence pad at the outer edges.
 
-### Long-form model chunking
+Whole-output silence removal and auto/design peak normalization cannot be made
+exactly equivalent after earlier bytes have already been sent. A streaming
+implementation must not claim non-streaming equivalence unless it either
+buffers the required audio or uses an explicitly different streaming
+postprocessing contract.
 
-The vendored OmniVoice implementation has its own long-form chunking through
-`audio_chunk_duration` and `audio_chunk_threshold`. That path returns generated
-chunks after generation, rather than exposing them through an async iterator.
-The HTTP layer therefore cannot emit those chunks as soon as they are decoded.
+### Cancellation cannot interrupt an arbitrary CUDA forward safely
 
-### Current overlap mode
+`run_in_executor()` cancellation stops awaiting a worker; it does not stop the
+Python thread or an in-flight CUDA kernel. Safe cancellation can prevent the
+next sentence or completed model chunk from starting, but it must allow the
+current `_generate_iterative()` call to finish and clean up normally. Hard
+thread cancellation is excluded.
 
-`_stream_sentences_overlapped()` uses a producer task and a bounded queue, but
-the producer awaits each synthesis call before starting the next one. It
-decouples generation from consumption, but it does not currently overlap GPU
-inference for adjacent sentences. This is intentional for safety with shared
-model state and FlashInfer, but the name and documentation should make that
-distinction explicit.
+## Current Server Behavior and Risks
 
-## Echo-TTS Comparison
+- `/v1/audio/speech` supports sentence-level PCM streaming and explicit
+  unknown-length WAV streaming. MP3 and other compressed formats remain
+  buffered.
+- `/v1/audio/speech/clone` currently supports PCM only when streaming.
+- SSE can wrap each emitted PCM block, or each block as an independent WAV.
+- `stream_overlap` is a bounded one-chunk-ahead producer queue. It does overlap
+  synthesis of the next sentence with network consumption of the prior
+  sentence, but it does **not** run two GPU generations concurrently.
+- The standard sentence path waits for a complete `model.generate()` call for
+  each sentence before yielding bytes.
+- `_chunk_request()` currently does not carry `profile_id` or a prepared
+  `voice_clone_prompt`, so stored and one-shot clone streaming can repeat prompt
+  preparation for every sentence.
+- A fixed request `duration` is copied to every sentence chunk. Treating the
+  whole-request duration as a per-sentence duration changes output length.
+- Auto/design sentence calls do not use OmniVoice's chunk-0-as-reference rule,
+  so speaker continuity is not guaranteed.
 
-Echo-TTS's relevant implementation is in:
+These correctness issues take priority over lower-level streaming work.
 
-- [API server](https://github.com/KevinAHM/echo-tts-api/blob/main/api_server.py)
-- [Blockwise inference](https://github.com/KevinAHM/echo-tts-api/blob/main/inference_blockwise.py)
-- [Inference and compilation helpers](https://github.com/KevinAHM/echo-tts-api/blob/main/inference.py)
-- [Repository README](https://github.com/KevinAHM/echo-tts-api#readme)
+## Compatibility Decisions
 
-### Generation granularity
+| Proposal | Decision | OmniVoice-specific approach |
+|---|---|---|
+| Yield intermediate model steps | **Exclude: incompatible** | Intermediate masked-token grids are not complete audio and must never be decoded. |
+| Model-native generation iterator | **Conditional** | Yield only after a complete internal text chunk. Feature-detect a supported OmniVoice implementation and retain sentence/non-streaming fallback. |
+| Generic stateful crossfade assembler | **Replace** | Mirror OmniVoice's exact boundary algorithm. Do not apply an Echo latent-tail decoder design to independently generated waveforms. |
+| Explicit disconnect cancellation | **Compatible with limits** | Stop future chunks and close iterators; let the active CUDA call finish safely. |
+| `stream_overlap` / prefetch | **Keep and clarify** | Preserve one CPU-audio chunk of buffering and one GPU call at a time. Exclude concurrent adjacent GPU calls. |
+| Duration-aware server chunking | **Replace** | Prefer OmniVoice's duration estimator and internal chunking. External chunking requires mode and fixed-duration safeguards. |
+| Per-chunk seeds via `manual_seed` | **Exclude for now** | Global RNG mutation is unsafe with concurrent workers. Add only after OmniVoice accepts a per-request `torch.Generator`. |
+| General `torch.compile` mode | **Exclude from delivery plan** | Dynamic full-sequence masks and private patched forwards make it unproven; FlashInfer CUDA graphs already cover the supported fixed-shape optimization. |
+| Streaming format cleanup | **Compatible** | Keep explicit PCM/WAV contracts and buffered compressed formats; document unknown-length WAV compatibility. |
+| Bounded CPU prompt cache | **Compatible, low priority** | Add count/byte bounds only if measurements show a need; preserve sidecar invalidation. |
+| GPU prompt cache | **Exclude on target hardware** | Prompt tensors are small and CPU-to-GPU transfer savings do not justify persistent VRAM on an 8 GB RTX 3070. |
+| Echo-style condition/KV cache | **Exclude: incompatible** | OmniVoice's bidirectional iterative refinement invalidates autoregressive KV reuse. |
 
-Echo-TTS generates fixed latent blocks, commonly using block sizes such as
-`[32, 128, 480]`, and yields audio after each block. Its API also supports
-time-sized text chunks, approximately 20–40 seconds by default.
+## Revised Recommendations
 
-The OmniVoice server generates per sentence at the API layer. That is simpler
-and gives an early first sentence, but it cannot provide audio from inside one
-long sentence or one internal OmniVoice generation call.
+### P0: Correct sentence-streaming semantics
 
-### Decoder continuity
+Before changing model internals:
 
-Echo-TTS uses a stateful streaming decoder that retains a bounded latent tail,
-decodes with context, and emits only samples that have not already been sent.
-This reduces block-boundary artifacts.
+1. Prepare a clone prompt once per streaming request and reuse the CPU-resident
+   prompt across all sentence calls. Stored profiles should use the existing
+   fingerprinted sidecar/cache path; one-shot references need a request-scoped
+   prompt.
+2. Preserve `profile_id` and `voice_clone_prompt` when deriving chunk requests.
+3. Do not copy a whole-request fixed `duration` to every sentence. The safe
+   initial behavior is to disable sentence splitting for fixed-duration
+   requests. Proportional allocation may be investigated separately, but it is
+   not output-equivalent.
+4. Treat auto/design sentence streaming as best-effort, non-equivalent output.
+   Do not promise speaker continuity until the model-native long-form path can
+   expose completed chunks while retaining chunk-0 conditioning.
+5. Add tests proving prompt preparation occurs once and fixed duration is not
+   multiplied by the number of sentences.
 
-The current server converts each returned tensor independently. Any fade,
-padding, silence removal, or postprocessing applied to individual tensors can
-therefore appear at every boundary rather than only at the final response.
+This work is compatible with standard, low-VRAM, and FlashInfer modes because it
+does not alter the iterative decoder.
 
-### Cache reuse
+### P0: Explicit, cooperative disconnect handling
 
-Echo-TTS constructs and reuses text, speaker, and latent KV caches during
-blockwise generation. The current OmniVoice path reuses voice-clone prompts,
-but does not expose an equivalent public cache across iterative generation
-blocks.
+Pass route cancellation state to the streaming coordinator and check it:
 
-This is a model-internal optimization and cannot be copied mechanically. It
-would require an upstream-compatible OmniVoice API or a carefully maintained
-vendored patch.
-
-### Compilation and warmup
-
-Echo-TTS makes `torch.compile` optional, warms fixed block shapes, persists
-compiler artifacts, and disables compilation after incompatible runtime
-failures.
-
-The OmniVoice upstream compile work is still experimental. Variable text
-lengths, dynamic masks, and short requests can reduce or reverse the benefit.
-Compilation should therefore be an explicit fixed-shape optimization, not a
-default server setting.
-
-### Disconnect handling
-
-Echo-TTS checks whether the request is disconnected while draining its blocking
-generator and closes the iterator. The current server relies primarily on
-normal async-generator cancellation and does not explicitly check the client
-between sentence or tensor emissions.
-
-## Recommended Improvements
-
-### P0: Expose an OmniVoice generation iterator
-
-Add an internal interface with the following shape:
-
-```python
-async def generate_stream(
-    request: SynthesisRequest,
-) -> AsyncIterator[GeneratedAudioChunk]:
-    ...
-```
-
-The blocking model implementation may remain synchronous internally, but it
-must yield after each decoded audio chunk. The async service should run that
-iterator in the existing executor without blocking the event loop.
-
-Preferred implementation order:
-
-1. Refactor the vendored OmniVoice long-form chunk loop into a generator.
-2. Yield each decoded chunk before generating the next chunk.
-3. Add a compatibility wrapper that collects the iterator for non-streaming
-   requests.
-4. Keep sentence-level streaming as the fallback for model versions that do
-   not expose the chunk iterator.
-
-The iterator must preserve voice-clone prompt reuse, low-VRAM encoder
-restore/offload behavior, existing generation parameters, standard/FlashInfer
-fallback, and timeout behavior.
-
-Acceptance criteria:
-
-- First PCM bytes are emitted before the complete response is generated.
-- Non-streaming output remains numerically equivalent within existing audio
-  tolerance.
-- A failure after chunk N still delivers chunks 0 through N-1 and records a
-  partial-stream outcome.
-- The iterator closes promptly on timeout or cancellation.
-
-### P0: Add stateful boundary handling
-
-Create a streaming audio assembler that accepts decoded tensors and emits PCM
-while retaining a bounded tail. It should:
-
-- Keep a configurable overlap/context window.
-- Avoid final silence trimming and edge padding per chunk.
-- Apply crossfade only where needed.
-- Apply final fade/padding once, after the last chunk.
-- Preserve exact sample ordering and audio metadata.
-
-Implement this independently of the model so it supports both the current
-sentence path and the future model-native iterator.
-
-Acceptance criteria:
-
-- Concatenated streamed audio has no repeated padding between chunks.
-- Boundary RMS discontinuities are no worse than current non-streaming output
-  for representative clone and design requests.
-- Final streamed duration matches non-streaming duration within tolerance.
-
-### P0: Implement explicit disconnect cancellation
-
-Pass request disconnect state into the streaming generator or use a
-cancellation event owned by the route. Check it before each synthesis chunk,
-after each generated audio chunk, and before entering the next model block.
+- before scheduling a sentence;
+- after a completed synthesis call;
+- before starting the next model-native text chunk, when that iterator exists;
+- while a buffered producer waits to enqueue output.
 
 On disconnect:
 
-1. Stop scheduling more work.
-2. Close the model iterator.
-3. Cancel pending executor work where possible.
-4. Release temporary audio tensors.
-5. Preserve a cancellation metric distinct from model errors.
+1. Stop scheduling future chunks.
+2. Cancel producer/consumer tasks that have not entered inference.
+3. Mark an in-flight executor future as detached and let it finish; do not
+   unload modules or clear CUDA memory underneath it.
+4. Release completed CPU audio tensors and temporary reference files.
+5. Record cancellation separately from model errors and timeouts.
 
-FlashInfer remains serialized; cancellation must not leave its model-global
-state in a partially reused condition.
+Do not attempt to kill the inference thread, raise asynchronously inside it, or
+reset FlashInfer context while a forward pass is active.
 
-Acceptance criteria:
+### P0: Clarify and retain bounded prefetch
 
-- A client disconnect does not start the next text/model chunk.
-- GPU memory returns to the normal post-request range.
-- No unhandled task warning appears in server logs.
+Rename `stream_overlap` to `stream_prefetch` with a backwards-compatible alias,
+or update its description to "one-chunk-ahead output prefetch." The supported
+design is:
 
-### P1: Replace or clarify `stream_overlap`
+- one active `model.generate()` call per stream;
+- queue capacity of one completed CPU audio result;
+- synthesis of sentence N+1 may overlap network delivery of sentence N;
+- no simultaneous generation of adjacent chunks on the shared model.
 
-There are two valid designs:
+This mode remains compatible with FlashInfer and low-VRAM operation when the
+global inference semaphore is respected. Track the queued audio byte count to
+bound host memory.
 
-#### Safe buffering mode
+Concurrent adjacent GPU synthesis is excluded. It can interleave global RNG,
+model instrumentation, FlashInfer context, and cleanup while increasing peak
+VRAM on the RTX 3070.
 
-Rename the current behavior to `stream_buffered` or document it as a producer
-buffer. It remains serialized and is safe for standard inference, low-VRAM
-mode, and FlashInfer.
+### P1: Normalize response-format behavior
 
-#### Actual prefetch mode
+Adopt and test this contract:
 
-Start synthesis of chunk N+1 while PCM from chunk N is being consumed. This
-should only be enabled when model concurrency is safe, FlashInfer is disabled,
-the VRAM budget has room for a second request, and cancellation can stop both
-tasks.
+- Raw HTTP PCM streams immediately with PCM metadata headers.
+- Explicit raw HTTP WAV streaming uses the current unknown-length RIFF header;
+  document that clients requiring finalized RIFF sizes must request buffered
+  WAV instead.
+- SSE `pcm` contains PCM payloads; SSE `wav` contains a complete WAV wrapper per
+  event, not fragments of one WAV file.
+- MP3, Opus, AAC, and FLAC remain buffered because the server does not maintain
+  a stateful streaming encoder.
+- The clone endpoint should either use the same WAV wrapper as the main speech
+  endpoint or explicitly retain PCM-only streaming. Tests must enforce the
+  selected contract.
+- Forced server streaming must not silently change a requested buffered format.
 
-On an 8 GB RTX 3070, actual GPU prefetch should be opt-in and benchmarked. It
-may increase throughput but can increase peak VRAM and reduce single-request
-latency due to contention.
+The earlier claim that `/v1/audio/speech` returned PCM for an explicit WAV
+stream is obsolete; the route now has a dedicated WAV stream wrapper.
 
-### P1: Add duration-aware text chunking
+### P1: Prototype an OmniVoice-native chunk iterator behind a capability gate
 
-Keep sentence boundaries, but add an optional target-duration chunker similar
-to Echo-TTS:
+The only safe iterator seam is the long-form text-chunk loop:
 
-- `stream_chunk_target_s`
-- `stream_chunk_min_s`
-- `stream_chunk_max_s`
-- characters-per-second estimate
-- words-per-second estimate
-
-The first chunk should remain eager and small for TTFA. Subsequent chunks can
-be merged toward a target duration to reduce repeated model setup. A sentence
-longer than the maximum should fall back to word-boundary splitting.
-
-Preserve decimal and abbreviation handling, multilingual punctuation, profile
-voice consistency, and explicit speaker/design instructions. Suggested initial
-defaults for OmniVoice are smaller than Echo-TTS's 20–40 second chunks until
-hardware measurements justify larger values. OmniVoice's existing
-`audio_chunk_duration=15` and `audio_chunk_threshold=30` provide a reasonable
-starting point.
-
-### P1: Add deterministic per-chunk seeds
-
-Add an optional `seed` field to the request and `SynthesisRequest`. Derive each
-chunk seed deterministically, for example:
-
-```text
-chunk_seed = request_seed + chunk_index
+```python
+def iter_generated_token_chunks(...) -> Iterator[CompletedTokenChunk]:
+    # Each yield occurs only after _generate_iterative() returns for this text chunk.
+    ...
 ```
 
-If no seed is supplied, retain current random behavior.
+Requirements:
 
-Acceptance criteria:
+1. Preserve the original clone prompt for every clone chunk.
+2. Preserve chunk 0 as the fixed reference for later auto/design chunks.
+3. Preserve text chunk order, target-length estimation, RNG consumption order,
+   and generation parameters.
+4. Do not yield from inside the denoising-step loop.
+5. Keep the non-streaming `generate()` implementation unchanged or collect the
+   iterator and prove token-level equivalence.
+6. Enable only when the loaded model passes an exact capability/version check.
+   Unknown standard-loader versions fall back without monkey-patching private
+   methods.
+7. Validate standard attention, split CFG, FlashInfer, and low-VRAM separately.
 
-- Repeating the same request with the same seed produces reproducible chunks
-  within the model's deterministic limits.
-- Changing chunking strategy does not silently reuse the same random stream
-  for every chunk.
+Initial scope should be long-form requests that already qualify for OmniVoice
+internal chunking. Short requests still produce one completed chunk and cannot
+have lower model-level TTFA without changing the model architecture.
 
-### P1: Add fixed-shape compile mode
+### P1: Implement boundary output only where semantics are preservable
 
-Add an opt-in compile setting for stable streaming shapes, with explicit
-enable/disable configuration, warmup request and voice/text, artifact cache
-directory and version key, optional decoder compilation, and automatic
-process-local fallback after a Dynamo/Inductor failure.
+Do not introduce a generic crossfade over sentence outputs. For model-native
+chunks, implement an incremental equivalent of OmniVoice's current join:
 
-Do not compile arbitrary sentence-length requests by default. Shape variation,
-dynamic masks, and low request counts can make compilation slower than eager
-execution.
+- retain only the tail needed for the upstream fade;
+- emit the finalized prior samples;
+- insert the same silence interval;
+- fade the next chunk head identically;
+- retain the final tail until end-of-stream.
 
-Potential configuration:
+Postprocessing gates:
 
-```env
-OMNIVOICE_COMPILE_STREAM=false
-OMNIVOICE_COMPILE_CACHE_DIR=/var/cache/omnivoice/torchinductor
-OMNIVOICE_COMPILE_WARMUP_TEXT=Hello from the streaming warmup.
-```
+- Clone RMS scaling is known from the prompt and can be applied consistently.
+- Outer fade/padding can be reproduced with a retained final tail.
+- Whole-output silence removal must be buffered or replaced by a separately
+  specified streaming algorithm; it cannot be assumed equivalent.
+- Auto/design peak normalization requires the global peak. Until a stable
+  streaming loudness contract is designed, use buffered postprocessing or
+  retain the existing fallback for those modes.
 
-### P2: Improve response-format semantics
+Acceptance requires sample-level comparison of the incremental join with
+OmniVoice's `cross_fade_chunks`, followed by mode-specific output tests. A
+generic "boundary RMS looks acceptable" test is not sufficient to prove that
+words or pauses were not damaged.
 
-Choose one explicit contract:
+### P2: Use OmniVoice duration estimates instead of Echo heuristics
 
-1. Streaming requests support PCM only; reject WAV and MP3 consistently on
-   both speech endpoints.
-2. PCM streams immediately, while WAV/MP3 use a buffered response and are
-   emitted only after synthesis completes.
+Do not add independent characters-per-second and words-per-second settings as
+the primary chunker. OmniVoice already estimates target audio-token length and
+derives text chunk size from frame rate and `audio_chunk_duration`.
 
-The second behavior matches Echo-TTS's documented behavior. The current
-`/v1/audio/speech` route accepts WAV in one streaming branch but returns the PCM
-stream response, which is ambiguous and should be corrected.
+If server-side sentence chunking remains as a fallback:
 
-Add regression tests for PCM headers/payload, WAV behavior, MP3 behavior, and
-forced server streaming configuration.
+- retain punctuation and abbreviation handling;
+- use the OmniVoice duration estimator when available;
+- never split a fixed-duration request without an explicit allocation policy;
+- reuse clone prompts;
+- do not use independent auto/design calls as the quality reference;
+- keep the eager first chunk optional because making it very short can reduce
+  prosody and makes it the voice reference in a model-native auto/design path.
 
-### P2: Add bounded prompt/GPU cache policy
+Echo-TTS's 20–40 second defaults are not adopted. OmniVoice's existing
+`audio_chunk_duration=15` and `audio_chunk_threshold=30` remain the starting
+point until measured on representative text and hardware.
 
-The existing disk sidecar cache has stronger invalidation than Echo-TTS's basic
-in-memory cache. The next improvement is a bounded process-local policy:
+### P2: Bound only the CPU prompt index if needed
 
-- CPU prompt cache remains the source of truth.
-- Optional GPU prompt cache is disabled by default on 8 GB cards.
-- LRU entries have count and byte limits.
-- Profile mutation invalidates CPU and GPU entries.
-- Device identity is part of GPU cache keys.
+The current profile prompt data is CPU-resident, persisted atomically in a
+fingerprinted sidecar, and invalidated on profile mutation. Its tensor footprint
+is small relative to model memory.
 
-This can reduce warm-reference latency without compromising low-VRAM mode.
+If long-running multi-tenant measurements justify a bound, add an LRU limit by
+entry count and measured tensor bytes. Eviction removes only the process-local
+object; the sidecar remains the source for a warm reload. Do not add a GPU prompt
+cache to the RTX 3070 configuration.
 
-### P2: Investigate condition-cache reuse
+## Explicitly Excluded Work
 
-Echo-TTS reuses text/speaker/latent KV caches across blockwise sampling. OmniVoice
-does not currently expose a matching stable cache API in the pinned 0.1.2
-implementation.
+The following items must not be implemented from the Echo-TTS plan:
 
-Investigate this only after the generation iterator exists. Base the work on
-upstream OmniVoice APIs or a narrowly scoped vendored patch. Do not introduce a
-cache that depends on mutable private tensors without invalidation and
-output-equivalence tests.
+### Partial denoising output
 
-## Metrics and Benchmarking
+Never decode token grids before all iterative unmasking steps complete. They
+contain unresolved mask tokens and are not an audio prefix.
 
-Every streaming optimization should be evaluated on the RTX 3070 target and
-the available RTX 4070 Ti SUPER test machine.
+### Echo-style KV or condition-cache reuse
 
-Record at minimum:
+OmniVoice is bidirectional and changes the audio-token sequence at every
+iteration. A past-key/value cache from a prior iteration is stale. Static input
+assembly may be profiled, but it is not an Echo-style KV cache and should not be
+described as one.
 
-- Startup allocated and reserved VRAM.
-- Static audio-tokenizer parameter memory.
-- Cold-reference peak allocated/reserved VRAM.
-- Warm-reference peak allocated/reserved VRAM.
-- TTFA.
-- Per-chunk latency and real-time factor.
-- Total response latency and generated duration.
-- Final audio duration.
-- Boundary discontinuity or crossfade measurements.
-- Output similarity against non-streaming mode.
-- Cancellation cleanup time.
+### Global or per-chunk `manual_seed`
 
-Required test matrix:
+The current implementation calls `torch.rand_like()` without a generator.
+Changing the process-global CUDA RNG around concurrent executor work can couple
+unrelated requests. Also, `request_seed + chunk_index` changes RNG behavior when
+chunk boundaries change and cannot preserve non-streaming equivalence.
+
+Seed support may return only after every random operation accepts a
+request-scoped `torch.Generator`, including the standard and FlashInfer paths.
+
+### Broad `torch.compile` support
+
+Do not add a server-wide compile switch based on Echo-TTS. OmniVoice uses
+dynamic sequence lengths, quadratic bidirectional masks, optional split CFG,
+and private FlashInfer patches. The supported fixed-shape optimization is the
+existing opt-in FlashInfer CUDA graph path. A future isolated benchmark may
+reconsider compilation, but it is not an implementation phase in this plan.
+
+### Concurrent GPU generation for adjacent chunks
+
+Do not start two adjacent sentence/model chunks concurrently on the shared
+model. This risks model-global state, RNG ordering, timing instrumentation,
+FlashInfer context, cleanup races, and peak-VRAM regressions. Network/output
+prefetch with one active GPU call remains allowed.
+
+### Persistent GPU prompt cache on 8 GB cards
+
+Prompt tensors are small and already reusable from CPU. Retaining them on GPU
+has little expected latency benefit and conflicts with the low-VRAM objective.
+
+## Metrics and Validation
+
+Evaluate each retained optimization on the RTX 3070 target and RTX 4070 Ti
+SUPER validation machine. Record:
+
+- startup allocated/reserved VRAM;
+- cold- and warm-reference peak allocated/reserved VRAM;
+- TTFA and per-completed-chunk latency;
+- total latency, generated duration, and real-time factor;
+- queued CPU audio bytes in prefetch mode;
+- boundary sample equivalence for the upstream join algorithm;
+- mode-specific output similarity for clone, auto, and design;
+- cancellation cleanup time and detached-worker completion time;
+- prompt creation count for stored and one-shot clone streams.
+
+Required mode matrix:
 
 | Mode | FlashInfer | Low VRAM | Split CFG | Purpose |
 |---|---:|---:|---:|---|
-| Standard | No | No | No | Baseline compatibility |
-| Speed | Yes | No | No | Lowest latency path |
-| Low VRAM | No | Yes | Yes | 8 GB target path |
-| Fallback | Requested | Any | Yes | Missing/incompatible FlashInfer |
+| Standard | No | No | No | Default architecture baseline |
+| Speed | Yes | No | No | Serialized FlashInfer path |
+| Low VRAM | No | Yes | Yes | RTX 3070 steady-state path |
+| Fallback | Requested | Any | Yes | FlashInfer incompatibility fallback |
 
-Use identical text, voice reference, seed, step count, and generation
-parameters when comparing audio. Do not claim fixed VRAM savings without
-measurements from representative hardware.
+For model-native chunking, test clone, auto, and design independently. Matching
+duration alone is not sufficient; tests must verify conditioning inputs and
+generated token order. Do not claim fixed VRAM or TTFA improvements without
+hardware measurements.
 
-## Suggested Delivery Phases
+## Revised Delivery Order
 
-### Phase 1: Correctness and lifecycle safety
+### Phase 1: Existing-stream correctness
 
-- Fix streaming response-format semantics.
-- Add explicit disconnect cancellation.
-- Rename or document current buffering behavior.
-- Add cancellation and boundary regression tests.
+- Reuse one clone prompt across sentence chunks.
+- Handle fixed-duration requests without multiplying duration.
+- Clarify one-chunk-ahead prefetch and preserve one active GPU call.
+- Add cooperative disconnect handling and cancellation metrics.
+- Normalize and test PCM/WAV/compressed-format behavior.
 
-### Phase 2: Better chunk scheduling
+### Phase 2: Capability-gated model chunk iteration
 
-- Add duration-aware chunking.
-- Add deterministic per-chunk seeds.
-- Add bounded CPU/GPU prompt cache policy.
-- Extend streaming metrics to per-chunk observations.
+- Prototype yields only at completed OmniVoice text chunks.
+- Preserve clone and chunk-0 auto/design conditioning exactly.
+- Add collection/equivalence tests and automatic fallback.
+- Validate standard, low-VRAM, split-CFG, and FlashInfer paths.
 
-### Phase 3: Model-native streaming
+### Phase 3: Exact incremental boundary output
 
-- Refactor OmniVoice generation into a yielding iterator.
-- Add stateful decoded-audio assembly.
-- Add a collection wrapper for non-streaming requests.
-- Validate standard, low-VRAM, and FlashInfer paths.
-
-### Phase 4: Optional fixed-shape compilation and cache reuse
-
-- Add opt-in compilation with warmup and fallback.
-- Investigate stable condition/KV cache reuse.
-- Benchmark compile cache persistence and restart behavior.
-
-## Non-Goals
-
-- Porting Echo-TTS's diffusion sampler into OmniVoice.
-- Making FlashInfer concurrent across requests.
-- Enabling torch.compile by default for variable-length requests.
-- Keeping all voice prompts on GPU on an 8 GB RTX 3070.
-- Claiming Echo-TTS's TTFA or throughput numbers for OmniVoice without direct
-  measurements.
+- Reproduce the upstream join with bounded tail retention.
+- Start with clone mode and postprocessing combinations that can be preserved.
+- Keep buffered/fallback behavior where global silence removal or peak
+  normalization prevents equivalence.
+- Benchmark TTFA and boundary quality on both NVIDIA test cards.
 
 ## Definition of Done
 
-The streaming improvement work is complete when:
+The retained work is complete when:
 
-- First audio is emitted from the model-native iterator before full generation
-  finishes.
-- Streamed and non-streamed audio have equivalent duration and acceptable
-  boundary quality.
-- Client disconnects stop future generation and clean up tasks and GPU state.
-- WAV/MP3 behavior is explicit and covered by tests.
-- Standard, FlashInfer, low-VRAM, profile-clone, one-shot-clone, and streaming
-  paths all pass the existing suite.
-- CUDA benchmarks report TTFA, per-chunk latency, and allocated/reserved peak
-  VRAM on representative hardware.
+- Sentence streaming prepares a clone prompt once and handles fixed duration
+  safely.
+- Disconnects prevent future chunks without corrupting active model state.
+- Prefetch behavior is accurately named, bounded, and never introduces a
+  second simultaneous chunk generation.
+- Response-format behavior is explicit and covered by tests.
+- Any model-native stream yields only completed text chunks and preserves
+  OmniVoice's mode-specific conditioning.
+- Unsupported model versions and postprocessing combinations fall back safely.
+- Standard, FlashInfer, low-VRAM, split-CFG, profile clone, one-shot clone,
+  auto/design, buffered, and streaming paths pass regression tests.
+- No excluded Echo-TTS optimization is presented as actionable work.
