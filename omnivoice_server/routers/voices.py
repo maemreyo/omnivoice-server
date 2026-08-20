@@ -24,8 +24,8 @@ from ..services.profiles import (
     ProfileNotFoundError,
     ProfileService,
 )
-from ..voice_presets import DEFAULT_DESIGN_INSTRUCTIONS, DESIGN_ATTRIBUTES, OPENAI_VOICE_PRESETS
 from ..services.model import ModelService
+from ..voice_presets import DEFAULT_DESIGN_INSTRUCTIONS, DESIGN_ATTRIBUTES, OPENAI_VOICE_PRESETS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

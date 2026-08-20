@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 
 import torch
+from omnivoice.models.omnivoice import VoiceClonePrompt
 
 from omnivoice_server.config import Settings
 from omnivoice_server.services.inference import InferenceService, SynthesisRequest
@@ -69,6 +70,57 @@ def test_inference_uses_cached_voice_clone_prompt_for_profiles(tmp_path):
     assert "ref_audio" not in fake_model.generate_calls[1]
     assert first.duration_s == 1.0
     assert second.duration_s == 1.0
+
+
+def test_voice_clone_prompt_persists_as_cpu_token_cache(tmp_path):
+    class PromptModel(FakeOmniVoiceModel):
+        def create_voice_clone_prompt(self, ref_audio, ref_text=None, preprocess_prompt=True):
+            self.prompt_calls += 1
+            return VoiceClonePrompt(
+                ref_audio_tokens=torch.ones(8, 4, dtype=torch.long),
+                ref_text="Reference transcript.",
+                ref_rms=0.25,
+            )
+
+    cfg, model_svc = _make_model_service(tmp_path)
+    model_svc._model = PromptModel()
+    ref_audio_path = tmp_path / "sky.wav"
+    ref_audio_path.write_bytes(b"fake wav bytes")
+    req = SynthesisRequest(
+        text="Hello from disk cache",
+        mode="clone",
+        ref_audio_path=str(ref_audio_path),
+        ref_text="Reference transcript",
+        profile_id="sky",
+    )
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        first_service = InferenceService(model_svc=model_svc, executor=executor, cfg=cfg)
+        first_service._run_sync(req)
+    finally:
+        executor.shutdown(wait=False)
+
+    cache_path = ref_audio_path.with_suffix(".tokens.pt")
+    assert cache_path.is_file()
+
+    second_cfg, second_model_svc = _make_model_service(tmp_path)
+    second_model = PromptModel()
+    second_model_svc._model = second_model
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        second_service = InferenceService(
+            model_svc=second_model_svc,
+            executor=executor,
+            cfg=second_cfg,
+        )
+        second_service._run_sync(req)
+    finally:
+        executor.shutdown(wait=False)
+
+    assert second_model.prompt_calls == 0
+    cached_prompt = second_model.generate_calls[0]["voice_clone_prompt"]
+    assert cached_prompt.ref_audio_tokens.device.type == "cpu"
 
 
 def test_cleanup_is_disabled_by_default(monkeypatch, tmp_path):

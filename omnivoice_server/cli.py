@@ -131,7 +131,10 @@ def main() -> None:
         type=int,
         default=None,
         dest="cleanup_interval",
-        help="Run memory cleanup every N syntheses. 0 disables it (env: OMNIVOICE_CLEANUP_INTERVAL)",
+        help=(
+            "Run memory cleanup every N syntheses. 0 disables it "
+            "(env: OMNIVOICE_CLEANUP_INTERVAL)"
+        ),
     )
     parser.add_argument(
         "--cuda-alloc-conf",
@@ -142,6 +145,32 @@ def main() -> None:
             "Use 'off' to disable the server override "
             "(env: OMNIVOICE_CUDA_ALLOC_CONF)"
         ),
+    )
+    parser.add_argument(
+        "--offload-voice-encoder",
+        action="store_true",
+        default=None,
+        dest="offload_voice_encoder",
+        help="Keep voice-reference encoder modules off GPU between preparations",
+    )
+    parser.add_argument(
+        "--no-offload-voice-encoder",
+        action="store_false",
+        dest="offload_voice_encoder",
+        help="Keep voice-reference encoder modules resident",
+    )
+    parser.add_argument(
+        "--skip-voice-encoder",
+        action="store_true",
+        default=None,
+        dest="skip_voice_encoder",
+        help="Request skip_encoder=True from compatible OmniVoice builds",
+    )
+    parser.add_argument(
+        "--no-skip-voice-encoder",
+        action="store_false",
+        dest="skip_voice_encoder",
+        help="Use the standard OmniVoice loader",
     )
     parser.add_argument(
         "--shutdown-timeout",

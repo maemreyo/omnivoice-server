@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import inspect
 import logging
 import threading
 import time
@@ -68,6 +69,7 @@ class ModelService:
         self._loaded = False
         self._timing_local = threading.local()
         self._prompt_cache_lock = threading.Lock()
+        self._voice_encoder_lock = threading.Lock()
         self._voice_clone_prompt_cache: dict[str, CachedVoiceClonePrompt] = {}
         self._memory_summary: dict[str, float] = {}
 
@@ -91,12 +93,37 @@ class ModelService:
                     "device_map": self.cfg.torch_device_map,
                     "dtype": dtype,
                 }
+                skip_encoder_supported = (
+                    self.cfg.skip_voice_encoder
+                    and self._supports_skip_encoder(OmniVoice)
+                )
+                if skip_encoder_supported:
+                    from_pretrained_kwargs["skip_encoder"] = True
                 if self.cfg.model_cache_dir is not None:
                     from_pretrained_kwargs["cache_dir"] = str(self.cfg.model_cache_dir)
-                model = OmniVoice.from_pretrained(
-                    self.cfg.model_id,
-                    **from_pretrained_kwargs,
-                )
+                try:
+                    model = OmniVoice.from_pretrained(
+                        self.cfg.model_id,
+                        **from_pretrained_kwargs,
+                    )
+                except Exception as exc:
+                    if not skip_encoder_supported:
+                        raise
+                    logger.info(
+                        "OmniVoice build does not support skip_encoder=True; "
+                        "retrying with the standard loader: %s",
+                        exc,
+                    )
+                    from_pretrained_kwargs.pop("skip_encoder", None)
+                    model = OmniVoice.from_pretrained(
+                        self.cfg.model_id,
+                        **from_pretrained_kwargs,
+                    )
+                if self.cfg.skip_voice_encoder and not skip_encoder_supported:
+                    logger.info(
+                        "Installed OmniVoice build has no skip_encoder implementation; "
+                        "using CPU encoder offload and persistent prompt caching instead"
+                    )
                 test = model.generate(text="test", num_step=4)
                 if self._has_nan(test):
                     logger.warning(f"dtype={dtype} produced NaN, trying next...")
@@ -104,6 +131,8 @@ class ModelService:
                     gc.collect()
                     continue
                 self._instrument_model(model)
+                self._remember_audio_tokenizer_device(model)
+                self._offload_voice_encoder(model)
                 self._model = model
                 self._memory_summary = self._compute_model_memory_summary(model)
                 break
@@ -192,10 +221,32 @@ class ModelService:
             ):
                 return cached.prompt
 
-        prompt = self.model.create_voice_clone_prompt(
-            ref_audio=ref_audio_path,
+        disk_prompt = self._load_disk_prompt(
+            ref_audio_path=ref_audio_path,
             ref_text=ref_text,
+            audio_mtime_ns=stat.st_mtime_ns,
+            audio_size=stat.st_size,
         )
+        if disk_prompt is not None:
+            prompt = disk_prompt
+        else:
+            with self._voice_encoder_lock:
+                self._restore_voice_encoder()
+                try:
+                    prompt = self.model.create_voice_clone_prompt(
+                        ref_audio=ref_audio_path,
+                        ref_text=ref_text,
+                    )
+                finally:
+                    self._offload_voice_encoder()
+            prompt = self._move_prompt_to_cpu(prompt)
+            self._save_disk_prompt(
+                ref_audio_path=ref_audio_path,
+                ref_text=ref_text,
+                audio_mtime_ns=stat.st_mtime_ns,
+                audio_size=stat.st_size,
+                prompt=prompt,
+            )
 
         with self._prompt_cache_lock:
             self._voice_clone_prompt_cache[profile_id] = CachedVoiceClonePrompt(
@@ -213,7 +264,9 @@ class ModelService:
             if profile_id is None:
                 self._voice_clone_prompt_cache.clear()
                 return
-            self._voice_clone_prompt_cache.pop(profile_id, None)
+            cached = self._voice_clone_prompt_cache.pop(profile_id, None)
+        if cached is not None:
+            self._prompt_cache_path(cached.ref_audio_path).unlink(missing_ok=True)
 
     def debug_snapshot(self) -> dict[str, float | int]:
         snapshot: dict[str, float | int] = {
@@ -244,6 +297,143 @@ class ModelService:
         snapshot["prompt_cache_cuda_mb"] = round(cache_cuda_bytes / 1024 / 1024, 3)
         snapshot["prompt_cache_cpu_mb"] = round(cache_cpu_bytes / 1024 / 1024, 3)
         return snapshot
+
+    @staticmethod
+    def _prompt_cache_path(ref_audio_path: str) -> Path:
+        return Path(ref_audio_path).with_suffix(".tokens.pt")
+
+    @staticmethod
+    def _move_prompt_to_cpu(prompt):
+        """Keep reusable voice tokens off GPU; generation moves them as needed."""
+        tokens = getattr(prompt, "ref_audio_tokens", None)
+        if not torch.is_tensor(tokens):
+            return prompt
+        if not tokens.is_cuda and tokens.device.type == "cpu":
+            return prompt
+        prompt_type = type(prompt)
+        return prompt_type(
+            ref_audio_tokens=tokens.detach().to("cpu"),
+            ref_text=prompt.ref_text,
+            ref_rms=prompt.ref_rms,
+        )
+
+    def _load_disk_prompt(
+        self,
+        ref_audio_path: str,
+        ref_text: str | None,
+        audio_mtime_ns: int,
+        audio_size: int,
+    ):
+        cache_path = self._prompt_cache_path(ref_audio_path)
+        if not cache_path.is_file():
+            return None
+        try:
+            payload = torch.load(cache_path, map_location="cpu", weights_only=True)
+            if not isinstance(payload, dict):
+                return None
+            cached_text = payload.get("ref_text")
+            has_source_metadata = "audio_mtime_ns" in payload and "audio_size" in payload
+            if has_source_metadata:
+                if (
+                    payload.get("audio_mtime_ns") != audio_mtime_ns
+                    or payload.get("audio_size") != audio_size
+                ):
+                    return None
+                if cached_text != ref_text:
+                    return None
+            else:
+                # Sonorus-compatible sidecars contain audio_codes, ref_rms, and
+                # ref_text. Reuse them only when newer than the source audio.
+                if cache_path.stat().st_mtime_ns < audio_mtime_ns:
+                    return None
+                if ref_text is not None and cached_text != ref_text:
+                    return None
+            tokens = payload.get("audio_codes", payload.get("ref_audio_tokens"))
+            if not torch.is_tensor(tokens) or tokens.ndim != 2 or tokens.numel() == 0:
+                return None
+            from omnivoice.models.omnivoice import VoiceClonePrompt
+
+            return VoiceClonePrompt(
+                ref_audio_tokens=tokens.to("cpu"),
+                ref_text=str(payload.get("prompt_ref_text", cached_text)),
+                ref_rms=float(payload["ref_rms"]),
+            )
+        except Exception as exc:
+            logger.warning("Ignoring invalid voice prompt cache %s: %s", cache_path, exc)
+            return None
+
+    def _save_disk_prompt(
+        self,
+        ref_audio_path: str,
+        ref_text: str | None,
+        audio_mtime_ns: int,
+        audio_size: int,
+        prompt,
+    ) -> None:
+        tokens = getattr(prompt, "ref_audio_tokens", None)
+        if not torch.is_tensor(tokens):
+            return
+        cache_path = self._prompt_cache_path(ref_audio_path)
+        temporary = cache_path.with_name(f".{cache_path.name}.{threading.get_ident()}.tmp")
+        try:
+            torch.save(
+                {
+                    "audio_mtime_ns": audio_mtime_ns,
+                    "audio_size": audio_size,
+                    "ref_text": ref_text,
+                    "prompt_ref_text": prompt.ref_text,
+                    "ref_rms": float(prompt.ref_rms),
+                    "audio_codes": tokens.detach().to("cpu"),
+                },
+                temporary,
+            )
+            temporary.replace(cache_path)
+        except Exception as exc:
+            logger.warning("Could not persist voice prompt cache %s: %s", cache_path, exc)
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _remember_audio_tokenizer_device(model) -> None:
+        tokenizer = getattr(model, "audio_tokenizer", None)
+        if tokenizer is None:
+            return
+        try:
+            model._omnivoice_server_audio_tokenizer_device = next(tokenizer.parameters()).device
+        except StopIteration:
+            model._omnivoice_server_audio_tokenizer_device = None
+
+    @staticmethod
+    def _supports_skip_encoder(omnivoice_cls) -> bool:
+        try:
+            return "skip_encoder" in inspect.getsource(omnivoice_cls.from_pretrained)
+        except (OSError, TypeError):
+            return False
+
+    def _restore_voice_encoder(self) -> None:
+        if not self.cfg.offload_voice_encoder:
+            return
+        tokenizer = getattr(self.model, "audio_tokenizer", None)
+        device = getattr(self.model, "_omnivoice_server_audio_tokenizer_device", None)
+        if tokenizer is None or device is None:
+            return
+        for name in ("semantic_model", "acoustic_encoder", "encoder_semantic", "fc", "fc1"):
+            module = getattr(tokenizer, name, None)
+            if module is not None:
+                module.to(device)
+
+    def _offload_voice_encoder(self, model=None) -> None:
+        if not self.cfg.offload_voice_encoder:
+            return
+        model = model or self.model
+        tokenizer = getattr(model, "audio_tokenizer", None)
+        if tokenizer is None:
+            return
+        for name in ("semantic_model", "acoustic_encoder", "encoder_semantic", "fc", "fc1"):
+            module = getattr(tokenizer, name, None)
+            if module is not None:
+                module.to("cpu")
+        if self.cfg.device == "cuda" and torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     def _instrument_model(self, model) -> None:
         if getattr(model, "_omnivoice_server_timing_instrumented", False):
@@ -403,10 +593,18 @@ class ModelService:
             return sum(t.numel() * t.element_size() for _, t in items)
 
         audio_param_bytes = _bytes(
-            [(name, tensor) for name, tensor in named_parameters if name.startswith("audio_tokenizer.")]
+            [
+                (name, tensor)
+                for name, tensor in named_parameters
+                if name.startswith("audio_tokenizer.")
+            ]
         )
         audio_buffer_bytes = _bytes(
-            [(name, tensor) for name, tensor in named_buffers if name.startswith("audio_tokenizer.")]
+            [
+                (name, tensor)
+                for name, tensor in named_buffers
+                if name.startswith("audio_tokenizer.")
+            ]
         )
         total_param_bytes = _bytes(named_parameters)
         total_buffer_bytes = _bytes(named_buffers)

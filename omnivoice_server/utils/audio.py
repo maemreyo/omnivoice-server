@@ -8,9 +8,9 @@ from __future__ import annotations
 import io
 import logging
 import shutil
+import wave
 from dataclasses import dataclass
 from typing import Literal
-import wave
 
 import numpy as np
 import soundfile as sf

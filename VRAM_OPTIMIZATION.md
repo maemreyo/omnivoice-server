@@ -130,6 +130,26 @@ not mostly fake or obviously wasted by the application.
 
 ## Recommendations
 
+### 0. Persist and offload voice-reference state
+
+The server now applies the lowest-risk part of Sonorus's voice lifecycle:
+
+- Stored profile prompts are persisted beside the reference WAV as
+  `ref_audio.tokens.pt` after the first successful encoding.
+- Prompt tokens are kept CPU-resident between requests and moved to the model
+  device only during generation.
+- On compatible OmniVoice builds, the server requests `skip_encoder=True`.
+  Older builds automatically fall back to the standard loader.
+- When the installed tokenizer exposes the expected encoder modules, those
+  modules are moved to CPU between reference preparations and restored only for
+  a cache miss.
+
+This reduces repeated reference encoding and avoids retaining cached voice
+tokens in VRAM. It does not by itself reproduce Sonorus's full ~600 MB saving:
+that requires a patched OmniVoice loader that can omit the encoder weights at
+startup and reload only those weights on demand. The current upstream Python
+package does not provide that API.
+
 ### 1. Lowest-risk next experiment: allocator tuning
 
 Best first test:

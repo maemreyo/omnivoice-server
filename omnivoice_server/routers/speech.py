@@ -19,8 +19,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from ..services.inference import InferenceService, SynthesisRequest, SynthesisResult
-from ..services.metrics import MetricsService
-from ..services.metrics import StreamObservation
+from ..services.metrics import MetricsService, StreamObservation
 from ..services.profiles import ProfileNotFoundError, ProfileService
 from ..utils.audio import (
     ResponseFormat,

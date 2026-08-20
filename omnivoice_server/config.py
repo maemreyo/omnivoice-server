@@ -101,6 +101,20 @@ class Settings(BaseSettings):
             "Use empty/off/disabled to skip the override."
         ),
     )
+    offload_voice_encoder: bool = Field(
+        default=True,
+        description=(
+            "Keep OmniVoice reference-encoder modules on CPU between voice preparations "
+            "when the installed model exposes compatible modules."
+        ),
+    )
+    skip_voice_encoder: bool = Field(
+        default=True,
+        description=(
+            "Request skip_encoder=True from patched OmniVoice builds; automatically falls "
+            "back to the standard loader when unsupported."
+        ),
+    )
     shutdown_timeout: int = Field(
         default=10,
         ge=1,
