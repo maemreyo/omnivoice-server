@@ -531,8 +531,17 @@ class ModelService:
         tokenizer = getattr(model, "audio_tokenizer", None)
         if tokenizer is None:
             return
+        # The tokenizer becomes a heterogeneous module after reference-encoder
+        # offload. PreTrainedModel.device returns the device of its first
+        # parameter, which is then CPU even though decode layers remain on the
+        # accelerator. fc2 is the first projection used by decode(), so prefer
+        # its device and retain it before moving encoder-only modules.
+        decoder_projection = getattr(tokenizer, "fc2", None)
+        device_source = decoder_projection if decoder_projection is not None else tokenizer
         try:
-            model._omnivoice_server_audio_tokenizer_device = next(tokenizer.parameters()).device
+            model._omnivoice_server_audio_tokenizer_device = next(
+                device_source.parameters()
+            ).device
         except StopIteration:
             model._omnivoice_server_audio_tokenizer_device = None
 
@@ -623,8 +632,27 @@ class ModelService:
                 model._generate_iterative,
                 model,
             )
+        tokenizer = getattr(model, "audio_tokenizer", None)
+        if tokenizer is not None and hasattr(tokenizer, "decode"):
+            tokenizer.decode = self._wrap_audio_tokenizer_decode(tokenizer.decode, model)
 
         model._omnivoice_server_timing_instrumented = True
+
+    @staticmethod
+    def _wrap_audio_tokenizer_decode(fn, model):
+        """Move audio codes to the decoder device after encoder CPU offload."""
+
+        def wrapped(audio_codes, *args, __fn=fn, __model=model, **kwargs):
+            device = getattr(
+                __model,
+                "_omnivoice_server_audio_tokenizer_device",
+                None,
+            )
+            if device is not None and torch.is_tensor(audio_codes):
+                audio_codes = audio_codes.to(device)
+            return __fn(audio_codes, *args, **kwargs)
+
+        return wrapped
 
     def _wrap_timed_call(self, fn, timing_name: str):
         def wrapped(*args, __fn=fn, **kwargs):

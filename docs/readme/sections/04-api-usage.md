@@ -35,8 +35,8 @@ response = httpx.post(
 
 `instructions` is the strongest control and overrides preset selection. If `instructions`
 is absent, `/v1/audio/speech` also accepts OpenAI-style preset names in `voice` or
-`speaker`, such as `alloy`, `nova`, `onyx`, and `shimmer`. Unknown values are ignored,
-and the server falls back to the default design prompt `male, middle-aged, moderate pitch, british accent`.
+`speaker`, such as `alloy`, `nova`, `onyx`, `shimmer`, and `sky`. Unknown values are
+rejected with HTTP 422 instead of silently selecting a different voice.
 
 **Canonical instruction vocabulary** (upstream OmniVoice attributes):
 - **Gender**: `male`, `female`
@@ -49,7 +49,7 @@ and the server falls back to the default design prompt `male, middle-aged, moder
 **Note**: Short accent aliases like `british`, `american` are accepted but canonicalized internally to full forms like `british accent`.
 
 **OpenAI-compatible presets** (server-only convenience mappings):
-- `alloy`, `ash`, `ballad`, `cedar`, `coral`, `echo`, `fable`, `marin`, `nova`, `onyx`, `sage`, `shimmer`, `verse`
+- `alloy`, `ash`, `ballad`, `cedar`, `coral`, `echo`, `fable`, `marin`, `nova`, `onyx`, `sage`, `shimmer`, `sky`, `verse`
 
 Preset mapping table:
 
@@ -67,6 +67,7 @@ Preset mapping table:
 | `onyx` | `male, middle-aged, very low pitch, british accent` |
 | `sage` | `female, elderly, low pitch, british accent` |
 | `shimmer` | `female, young adult, very high pitch, american accent` |
+| `sky` | `female, young adult, moderate pitch, american accent` |
 | `verse` | `male, young adult, moderate pitch, british accent` |
 
 ### Voice Cloning

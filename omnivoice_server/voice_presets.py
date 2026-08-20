@@ -19,6 +19,7 @@ OPENAI_VOICE_PRESETS = {
     "onyx": "male, middle-aged, very low pitch, british accent",
     "sage": "female, elderly, low pitch, british accent",
     "shimmer": "female, young adult, very high pitch, american accent",
+    "sky": "female, young adult, moderate pitch, american accent",
     "verse": "male, young adult, moderate pitch, british accent",
 }
 

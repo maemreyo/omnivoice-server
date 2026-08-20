@@ -71,7 +71,7 @@ def test_list_voices_includes_openai_presets(client):
     assert resp.status_code == 200
 
     ids = [voice["id"] for voice in resp.json()["voices"]]
-    for preset_name in ("alloy", "nova", "onyx", "shimmer", "verse", "cedar", "marin"):
+    for preset_name in ("alloy", "nova", "onyx", "shimmer", "sky", "verse", "cedar", "marin"):
         assert preset_name in ids
 
 
