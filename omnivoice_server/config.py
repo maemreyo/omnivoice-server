@@ -217,6 +217,10 @@ class Settings(BaseSettings):
         le=200,
         description="Max upload size for ref_audio files in megabytes.",
     )
+    allow_private_voice_urls: bool = Field(
+        default=False,
+        description="Allow voice_url downloads from loopback or private network addresses.",
+    )
 
     default_voice: str = Field(
         default="female, british accent",

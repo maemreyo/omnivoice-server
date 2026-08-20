@@ -105,6 +105,42 @@ and output equivalence on the actual 3070 before making a performance claim.
 FlashInfer accelerates decoding; the low-VRAM tokenizer mode remains the
 separate mechanism for removing encoder weights from steady-state VRAM.
 
+## RTX 3070 Launch Profiles
+
+Use the speed-oriented profile when the model fits comfortably and throughput
+or latency is the priority:
+
+```bash
+uv run omnivoice-server \
+  --device cuda \
+  --flashinfer \
+  --flashinfer-cuda-graph \
+  --tf32 \
+  --no-low-vram \
+  --no-split-cfg-batch \
+  --max-concurrent 1
+```
+
+Use the VRAM-oriented profile on an 8 GB RTX 3070 or when requests approach
+the memory limit:
+
+```bash
+uv run omnivoice-server \
+  --device cuda \
+  --low-vram \
+  --no-flashinfer \
+  --split-cfg-batch \
+  --tf32 \
+  --max-concurrent 1
+```
+
+The speed profile keeps the standard model resident and uses FlashInfer CUDA
+graphs; graphs are shape-sensitive and work best with serialized requests. The
+VRAM profile unloads reference-encoder weights between cold references and
+splits standard CFG forwards to reduce peak memory. Measure both profiles on
+the target card with `benchmarks/run_benchmark.py` before choosing production
+defaults.
+
 Static loaded model footprint on CUDA:
 
 - Core OmniVoice model params: `~1168.4 MB`

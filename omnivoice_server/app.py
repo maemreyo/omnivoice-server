@@ -168,7 +168,15 @@ def create_app(cfg: Settings) -> FastAPI:
             allow_credentials=cfg.cors_allow_credentials,
             allow_methods=["*"],
             allow_headers=["*"],
-            expose_headers=["X-Audio-Duration-S", "X-Synthesis-Latency-S"],
+            expose_headers=[
+                "X-Audio-Duration-S",
+                "X-Synthesis-Latency-S",
+                "X-Audio-Sample-Rate",
+                "X-Audio-Channels",
+                "X-Audio-Bit-Depth",
+                "X-Audio-Format",
+                "X-Request-Id",
+            ],
         )
 
     # ── Auth middleware ───────────────────────────────────────────────────────
@@ -179,7 +187,12 @@ def create_app(cfg: Settings) -> FastAPI:
             if request.method == "OPTIONS":
                 return await call_next(request)
             # Skip auth for health, metrics, and model listing
-            if request.url.path in ("/health", "/metrics", "/v1/models"):
+            if request.url.path in (
+                "/health",
+                "/metrics",
+                "/v1/models",
+                "/v1/audio/models",
+            ):
                 return await call_next(request)
             auth = request.headers.get("Authorization", "")
             if auth != f"Bearer {cfg.api_key}":
@@ -231,6 +244,7 @@ def create_app(cfg: Settings) -> FastAPI:
     # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(speech.router, prefix="/v1")
     app.include_router(voices.router, prefix="/v1")
+    app.include_router(voices.compat_router)
     app.include_router(models.router, prefix="/v1")
     app.include_router(script.router, prefix="/v1")
     app.include_router(health.router)

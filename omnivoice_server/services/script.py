@@ -217,7 +217,7 @@ class ScriptOrchestrator:
                     _logger.info(
                         f"[TRACE] Clone profile found: {profile_id!r} -> ref_audio={ref_audio_path}"
                     )
-                except ProfileNotFoundError:
+                except (ProfileNotFoundError, ValueError):
                     self._metrics.increment_voice_resolution_failures()
                     _logger.error(f"[TRACE] Clone profile NOT FOUND: {profile_id!r}")
                     raise HTTPException(

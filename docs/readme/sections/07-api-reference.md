@@ -17,6 +17,10 @@ Generate speech from text (OpenAI-compatible).
   "response_format": "wav",
   "speed": 1.0,
   "stream": false,
+  "stream_format": "sse",
+  "reference_text": "Optional compatibility alias for ref_text",
+  "voice_url": "https://example.com/reference.wav",
+  "chunk_size": 8,
   "num_step": 32,
   "guidance_scale": 3.0,
   "denoise": true,
@@ -39,6 +43,11 @@ Generate speech from text (OpenAI-compatible).
 - server default prompt
 
 **Response:** Audio file (WAV or PCM)
+
+`stream_format: "sse"` returns `text/event-stream` events compatible with the
+faster-qwen3-tts server. Each `audio.chunk` event contains base64 audio data,
+followed by a `done` event and `data: [DONE]`. Streaming `pcm` returns raw PCM;
+streaming `wav` begins with an unknown-length WAV header.
 
 #### `POST /v1/audio/speech/clone`
 
@@ -100,6 +109,34 @@ List available voices and profiles.
   "total": 3
 }
 ```
+
+### faster-qwen3-tts compatibility endpoints
+
+The following aliases are provided for clients written against the local
+`faster-qwen3-tts` OpenAI server:
+
+- `GET /v1/audio/models` — alias for `/v1/models`.
+- `GET /v1/audio/voices` — OpenAI-style `{object: "list", data: [...]}` voice list.
+- `GET /v1/audio/voices/{voice_id}` — retrieve a preset or stored profile.
+- `PATCH /v1/audio/voices/{voice_id}` — update stored voice `name` and `ref_text`.
+- `DELETE /v1/audio/voices/{voice_id}` — delete a stored voice profile.
+- `POST /upload_voice` and `POST /v1/upload_voice` — upload a reference voice.
+
+`/upload_voice` accepts `voice_file`, `voice_url`, `name` (or `voice_name`),
+`ref_text` (or `reference_text`), and an optional JSON `data` form field. It
+returns a generated `voice_id`. Uploaded voices can be selected in speech
+requests by either their ID or display name.
+
+For server-side URL imports, `voice_url` is restricted to public HTTP(S)
+addresses by default. Private and loopback addresses can be enabled for trusted
+networks with `--allow-private-voice-urls` or
+`OMNIVOICE_ALLOW_PRIVATE_VOICE_URLS=true`. Do not enable this for untrusted API
+clients because it permits access to services on the server's local network.
+
+The speech endpoint also accepts `ref_text`, `reference_text`, `voice_url`,
+`stream_format`, and `chunk_size` request fields used by faster-qwen3-tts.
+`chunk_size` is accepted for client compatibility; OmniVoice continues to use
+its own `num_step` and audio chunk controls.
 
 #### `POST /v1/voices/profiles`
 

@@ -258,6 +258,19 @@ def main() -> None:
         dest="profile_dir",
         help="Voice profile directory (env: OMNIVOICE_PROFILE_DIR)",
     )
+    parser.add_argument(
+        "--allow-private-voice-urls",
+        action="store_true",
+        default=None,
+        dest="allow_private_voice_urls",
+        help="Allow voice_url downloads from loopback/private networks",
+    )
+    parser.add_argument(
+        "--no-allow-private-voice-urls",
+        action="store_false",
+        dest="allow_private_voice_urls",
+        help="Require voice_url downloads to resolve only to public addresses",
+    )
 
     # Auth
     parser.add_argument(

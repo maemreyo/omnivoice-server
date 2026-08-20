@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -63,12 +65,91 @@ class ProfileService:
         logger.debug(f"[TRACE] ref_text for {profile_id!r}: {result!r}")
         return result
 
+    def resolve_profile_id(self, identifier: str) -> str:
+        """Resolve an exact profile ID or a stored display name."""
+        try:
+            exact = self._profile_path(identifier)
+        except ValueError:
+            exact = None
+        if exact is not None and (exact / PROFILE_AUDIO_FILE).exists():
+            return exact.name
+        matches = [
+            profile["profile_id"]
+            for profile in self.list_profiles()
+            if profile.get("name") == identifier
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ValueError(f"Voice name '{identifier}' is ambiguous")
+        raise ProfileNotFoundError(f"Profile '{identifier}' not found")
+
+    def update_metadata(
+        self,
+        profile_id: str,
+        *,
+        name: str | None = None,
+        ref_text: str | None = None,
+        update_name: bool = False,
+        update_ref_text: bool = False,
+    ) -> dict:
+        """Update editable metadata without rewriting reference audio."""
+        profile_path = self._profile_path(profile_id)
+        audio_path = profile_path / PROFILE_AUDIO_FILE
+        if not audio_path.exists():
+            raise ProfileNotFoundError(f"Profile '{profile_id}' not found")
+        meta = self._read_meta(profile_path) or {}
+        if update_name:
+            cleaned_name = (name or "").strip()
+            if not cleaned_name:
+                raise ValueError("Voice name cannot be empty")
+            meta["name"] = cleaned_name
+        if update_ref_text:
+            meta["ref_text"] = (ref_text or "").strip() or None
+        self._write_atomic(
+            profile_path / PROFILE_META_FILE,
+            json.dumps(meta, ensure_ascii=False, indent=2).encode(),
+        )
+        return {"profile_id": profile_id, **meta}
+
+    def update_profile(
+        self,
+        profile_id: str,
+        *,
+        audio_bytes: bytes | None = None,
+        ref_text: str | None = None,
+        update_ref_text: bool = False,
+    ) -> dict:
+        """Update profile content while preserving metadata not being changed."""
+        profile_path = self._profile_path(profile_id)
+        audio_path = profile_path / PROFILE_AUDIO_FILE
+        if not audio_path.exists():
+            raise ProfileNotFoundError(f"Profile '{profile_id}' not found")
+
+        stored_meta = self._read_meta(profile_path)
+        meta = stored_meta or {
+            "name": profile_id,
+            "ref_text": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        if audio_bytes is not None:
+            self._write_atomic(audio_path, audio_bytes)
+        if update_ref_text:
+            meta["ref_text"] = (ref_text or "").strip() or None
+        if update_ref_text or stored_meta is None:
+            self._write_atomic(
+                profile_path / PROFILE_META_FILE,
+                json.dumps(meta, ensure_ascii=False, indent=2).encode(),
+            )
+        return {"profile_id": profile_id, **meta}
+
     def save_profile(
         self,
         profile_id: str,
         audio_bytes: bytes,
         ref_text: str | None = None,
         overwrite: bool = False,
+        name: str | None = None,
     ) -> dict:
         """
         Save a new profile. Raises ProfileAlreadyExistsError if exists and overwrite=False.
@@ -80,22 +161,29 @@ class ProfileService:
                 f"Profile '{profile_id}' already exists. Use overwrite=true to replace."
             )
 
+        newly_created = not profile_path.exists()
         profile_path.mkdir(parents=True, exist_ok=True)
 
-        # Write audio
-        audio_path = profile_path / PROFILE_AUDIO_FILE
-        audio_path.write_bytes(audio_bytes)
+        try:
+            # Write audio
+            audio_path = profile_path / PROFILE_AUDIO_FILE
+            self._write_atomic(audio_path, audio_bytes)
 
-        # Write metadata
-        now = datetime.now(timezone.utc).isoformat()
-        meta = {
-            "name": profile_id,
-            "ref_text": ref_text,
-            "created_at": now,
-        }
-        (profile_path / PROFILE_META_FILE).write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2)
-        )
+            # Write metadata
+            now = datetime.now(timezone.utc).isoformat()
+            meta = {
+                "name": name or profile_id,
+                "ref_text": ref_text,
+                "created_at": now,
+            }
+            self._write_atomic(
+                profile_path / PROFILE_META_FILE,
+                json.dumps(meta, ensure_ascii=False, indent=2).encode(),
+            )
+        except Exception:
+            if newly_created:
+                shutil.rmtree(profile_path, ignore_errors=True)
+            raise
 
         logger.info(f"Saved profile '{profile_id}'")
         return {"profile_id": profile_id, **meta}
@@ -108,9 +196,10 @@ class ProfileService:
         logger.info(f"Deleted profile '{profile_id}'")
 
     def _profile_path(self, profile_id: str) -> Path:
-        # Sanitize: only allow alphanumeric + dash + underscore
+        # Reject rather than rewrite invalid IDs: rewriting could target a
+        # different valid profile (for example, "voice!" -> "voice").
         safe = "".join(c for c in profile_id if c.isalnum() or c in "-_")
-        if not safe:
+        if not safe or safe != profile_id:
             raise ValueError(f"Invalid profile_id: '{profile_id}'")
         return self._dir / safe
 
@@ -122,3 +211,21 @@ class ProfileService:
             return json.loads(meta_file.read_text())
         except (json.JSONDecodeError, OSError):
             return None
+
+    @staticmethod
+    def _write_atomic(path: Path, data: bytes) -> None:
+        """Replace one profile file without exposing partial contents."""
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as temp_file:
+                temp_path = Path(temp_file.name)
+                temp_file.write(data)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+            temp_path.replace(path)
+        finally:
+            if temp_path is not None and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass

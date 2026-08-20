@@ -114,6 +114,36 @@ def test_delete_profile(client, sample_audio_bytes):
     assert resp.status_code == 204
 
 
+def test_invalid_profile_alias_cannot_delete_valid_profile(client, sample_audio_bytes):
+    created = client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "protected"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert created.status_code == 201
+
+    response = client.delete("/v1/voices/profiles/protected!")
+    assert response.status_code == 404
+    assert client.get("/v1/voices/profiles/protected").status_code == 200
+
+
+def test_invalid_profile_alias_cannot_update_valid_profile(client, sample_audio_bytes):
+    created = client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "protected", "ref_text": "original"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert created.status_code == 201
+
+    response = client.patch(
+        "/v1/voices/profiles/protected!",
+        data={"ref_text": "changed"},
+    )
+    assert response.status_code == 404
+    profile = client.get("/v1/voices/profiles/protected").json()
+    assert profile["ref_text"] == "original"
+
+
 def test_invalid_profile_id_rejected(client, sample_audio_bytes):
     """Invalid ID returns 422."""
     resp = client.post(

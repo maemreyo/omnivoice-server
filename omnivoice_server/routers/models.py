@@ -18,6 +18,7 @@ from fastapi import APIRouter, Request
 router = APIRouter()
 
 
+@router.get("/audio/models")
 @router.get("/models")
 async def list_models(request: Request):
     """
@@ -61,6 +62,7 @@ async def list_models(request: Request):
     }
 
 
+@router.get("/audio/models/{model_id}")
 @router.get("/models/{model_id}")
 async def get_model(model_id: str, request: Request):
     """Retrieve a specific model by ID."""

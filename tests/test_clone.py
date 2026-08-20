@@ -118,6 +118,17 @@ def test_clone_empty_audio_rejected(client):
     assert resp.status_code == 422
 
 
+def test_clone_blank_text_rejected_before_inference(client, sample_audio_bytes):
+    client.app.state.inference_svc.synthesize.reset_mock()
+    resp = client.post(
+        "/v1/audio/speech/clone",
+        data={"text": "   \n"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 422
+    client.app.state.inference_svc.synthesize.assert_not_awaited()
+
+
 # === Tests for 5 missing upstream generation parameters (clone endpoint) ===
 
 

@@ -6,17 +6,25 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import ipaddress
+import json
 import logging
+import socket
 import tempfile
 import time
+import urllib.parse
+import urllib.request
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
+from starlette.background import BackgroundTask
 
 from ..services.inference import InferenceService, SynthesisRequest, SynthesisResult
 from ..services.metrics import MetricsService, StreamObservation
@@ -52,6 +60,25 @@ class SpeechRequest(BaseModel):
     response_format: ResponseFormat = Field(default="wav")
     speed: float = Field(default=1.0, ge=0.25, le=4.0)
     stream: bool = Field(default=False)
+    stream_format: Literal["sse"] | None = Field(
+        default=None, description="Optional SSE streaming format"
+    )
+    reference_text: str | None = Field(
+        default=None,
+        max_length=10_000,
+        description="Compatibility alias for ref_text",
+    )
+    ref_text: str | None = Field(
+        default=None,
+        max_length=10_000,
+        description="Reference transcript override",
+    )
+    voice_url: str | None = Field(
+        default=None,
+        max_length=2_048,
+        description="HTTP(S) reference audio URL",
+    )
+    chunk_size: int | None = Field(default=None, ge=1, le=128)
     num_step: int | None = Field(default=None, ge=1, le=64)
     guidance_scale: float | None = Field(default=None, ge=0.0, le=10.0)
     denoise: bool | None = Field(default=None)
@@ -76,6 +103,18 @@ class SpeechRequest(BaseModel):
         if v not in ("omnivoice", "tts-1", "tts-1-hd"):
             logger.debug(f"model='{v}' mapped to omnivoice")
         return v
+
+    @field_validator("input")
+    @classmethod
+    def validate_input(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("input text cannot be blank")
+        return value
+
+    @field_validator("response_format", "stream_format", mode="before")
+    @classmethod
+    def normalize_format(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
 
 
 def _get_inference(request: Request) -> InferenceService:
@@ -114,6 +153,199 @@ def _pcm_stream_response(
         media_type="audio/pcm",
         headers=headers,
     )
+
+
+def _wav_stream_response(stream_iter: AsyncIterator[bytes], request_id: str) -> StreamingResponse:
+    """Stream PCM with an unknown-length WAV header for compatible clients."""
+    async def generator() -> AsyncIterator[bytes]:
+        import struct
+
+        sample_rate = 24_000
+        header = (
+            b"RIFF" + struct.pack("<I", 0xFFFFFFFF) + b"WAVEfmt "
+            + struct.pack("<IHHIIHH", 16, 1, 1, sample_rate, sample_rate * 2, 2, 16)
+            + b"data" + struct.pack("<I", 0xFFFFFFFF)
+        )
+        yield header
+        async for chunk in stream_iter:
+            yield chunk
+
+    return StreamingResponse(
+        generator(),
+        media_type="audio/wav",
+        headers={"X-Audio-Sample-Rate": "24000", "X-Request-Id": request_id},
+    )
+
+
+def _sse_stream_response(
+    stream_iter: AsyncIterator[bytes],
+    response_format: str,
+    request_id: str,
+) -> StreamingResponse:
+    """Wrap generated chunks in the SSE envelope used by faster-qwen3-tts."""
+    async def generator() -> AsyncIterator[str]:
+        index = 0
+        pending: bytes | None = None
+
+        def encode_chunk(pcm: bytes) -> tuple[bytes, str, str]:
+            if response_format == "pcm":
+                return pcm, "audio/pcm", "pcm"
+            import struct
+
+            header = (
+                b"RIFF" + struct.pack("<I", 36 + len(pcm)) + b"WAVEfmt "
+                + struct.pack("<IHHIIHH", 16, 1, 1, 24_000, 48_000, 2, 16)
+                + b"data" + struct.pack("<I", len(pcm))
+            )
+            return header + pcm, "audio/wav", "wav"
+
+        def event(pcm: bytes, final: bool) -> str:
+            nonlocal index
+            encoded, mime_type, output_format = encode_chunk(pcm)
+            payload = {
+                "type": "audio.chunk",
+                "data": base64.b64encode(encoded).decode("ascii"),
+                "format": output_format,
+                "mime_type": mime_type,
+                "sample_rate": 24_000,
+                "chunk_index": index,
+                "final": final,
+            }
+            index += 1
+            return f"data: {json.dumps(payload)}\n\n"
+
+        try:
+            async for pcm in stream_iter:
+                if pending is not None:
+                    yield event(pending, final=False)
+                pending = pcm
+            if pending is not None:
+                yield event(pending, final=True)
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+            yield "data: [DONE]\n\n"
+            return
+        yield f"data: {json.dumps({'type': 'done', 'chunks': index, 'request_id': request_id})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-Request-Id": request_id,
+        },
+    )
+
+
+def _validate_voice_url_target(url: str, allow_private: bool) -> urllib.parse.ParseResult:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("voice_url must use http or https")
+    if not parsed.hostname:
+        raise ValueError("voice_url must include a hostname")
+    if allow_private:
+        return parsed
+    try:
+        addresses = {
+            ipaddress.ip_address(item[4][0])
+            for item in socket.getaddrinfo(parsed.hostname, parsed.port, type=socket.SOCK_STREAM)
+        }
+    except OSError as exc:
+        raise ValueError(f"voice_url hostname could not be resolved: {exc}") from exc
+    if not addresses or any(not address.is_global for address in addresses):
+        raise ValueError("voice_url resolves to a private or non-public address")
+    return parsed
+
+
+async def _download_voice_url(
+    url: str,
+    max_bytes: int,
+    allow_private: bool = False,
+) -> str:
+    """Download a bounded HTTP(S) reference audio file to a temporary path."""
+    def download() -> str:
+        parsed = _validate_voice_url_target(url, allow_private)
+        suffix = Path(parsed.path).suffix or ".wav"
+        request = urllib.request.Request(url, headers={"User-Agent": "omnivoice-server"})
+        output_path: str | None = None
+        try:
+            if allow_private:
+                response_context = urllib.request.urlopen(request, timeout=30)
+            else:
+                class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+                    def redirect_request(self, req, fp, code, msg, headers, newurl):
+                        _validate_voice_url_target(newurl, allow_private=False)
+                        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+                opener = urllib.request.build_opener(SafeRedirectHandler())
+                response_context = opener.open(request, timeout=30)
+            with response_context as response:
+                content_length = response.headers.get("Content-Length")
+                if content_length and int(content_length) > max_bytes:
+                    raise ValueError("voice_url response exceeds the configured audio limit")
+                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as output:
+                    output_path = output.name
+                    total = 0
+                    while chunk := response.read(1024 * 1024):
+                        total += len(chunk)
+                        if total > max_bytes:
+                            raise ValueError(
+                                "voice_url response exceeds the configured audio limit"
+                            )
+                        output.write(chunk)
+                    return output.name
+        except Exception:
+            if output_path:
+                with suppress(OSError):
+                    Path(output_path).unlink()
+            raise
+
+    download_task = asyncio.create_task(asyncio.to_thread(download))
+    try:
+        path = await asyncio.shield(download_task)
+    except asyncio.CancelledError:
+        def cleanup_late_download(task: asyncio.Task[str]) -> None:
+            try:
+                late_path = task.result()
+            except (asyncio.CancelledError, Exception):
+                return
+            with suppress(OSError):
+                Path(late_path).unlink()
+
+        download_task.add_done_callback(cleanup_late_download)
+        raise
+    try:
+        from ..utils.audio import validate_audio_bytes
+
+        validate_audio_bytes(Path(path).read_bytes(), "voice_url")
+    except Exception:
+        with suppress(OSError):
+            Path(path).unlink()
+        raise
+    return path
+
+
+async def _cleanup_stream(stream_iter: AsyncIterator[bytes], path: str) -> AsyncIterator[bytes]:
+    """Delete a temporary voice URL file after a stream ends or is cancelled."""
+    try:
+        async for chunk in stream_iter:
+            yield chunk
+    finally:
+        with suppress(OSError):
+            Path(path).unlink()
+
+
+def _attach_file_cleanup(response: StreamingResponse, path: str | None) -> StreamingResponse:
+    """Ensure temporary input audio is removed even if streaming never begins."""
+    if path:
+        def cleanup() -> None:
+            with suppress(OSError):
+                Path(path).unlink()
+
+        response.background = BackgroundTask(cleanup)
+    return response
 
 
 def _resolve_synthesis_mode(
@@ -176,21 +408,27 @@ def _resolve_synthesis_mode(
             profile_id = profile_id.split(":", 1)[1]
             logger.debug(f"[TRACE] clone: prefix detected, extracted profile_id={profile_id!r}")
         try:
-            ref_audio_path = profile_svc.get_ref_audio_path(profile_id)
-            ref_text = profile_svc.get_ref_text(profile_id)
+            resolved_profile_id = profile_svc.resolve_profile_id(profile_id)
+            ref_audio_path = profile_svc.get_ref_audio_path(resolved_profile_id)
+            ref_text = profile_svc.get_ref_text(resolved_profile_id)
             logger.info(
                 "[TRACE] Resolved to CLONE mode: profile_id=%r, ref_audio=%s",
-                profile_id,
+                resolved_profile_id,
                 ref_audio_path,
             )
             return "clone", None, str(ref_audio_path), ref_text
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
         except ProfileNotFoundError:
             if explicit_clone:
                 logger.warning(f"[TRACE] Clone profile not found: {profile_id!r}")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Voice profile '{profile_id}' not found. "
-                    "Create it via POST /v1/audio/voices/profiles first.",
+                    "Create it via POST /v1/voices/profiles first.",
                 )
             logger.debug(
                 f"[TRACE] Profile '{profile_id}' not found; falling back to design/preset mode"
@@ -273,9 +511,9 @@ def _resolve_synthesis_mode(
 
 def _extract_clone_profile_id(voice_str: str) -> str | None:
     voice = voice_str.strip()
-    if not voice.startswith("clone:"):
+    if not voice.lower().startswith("clone:"):
         return None
-    profile_id = voice[len("clone:") :].strip()
+    profile_id = voice.split(":", 1)[1].strip()
     return profile_id or None
 
 
@@ -289,7 +527,44 @@ async def create_speech(
 ):
     """Generate speech from text."""
     mode, instruct, ref_audio_path, ref_text = _resolve_synthesis_mode(body, profile_svc)
+    wants_stream = body.stream or cfg.stream or body.stream_format == "sse"
+    forced_stream = cfg.stream and not body.stream and body.stream_format is None
+    if wants_stream and (
+        body.response_format not in {"pcm", "wav"}
+        or (forced_stream and body.response_format != "pcm")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Streaming only supports response_format='pcm' or 'wav', "
+                f"got '{body.response_format}'"
+            ),
+        )
     profile_id = _extract_clone_profile_id(body.voice)
+    if mode == "clone" and profile_id is None and not body.voice_url:
+        profile_name = body.speaker or body.voice
+        with suppress(ProfileNotFoundError, ValueError):
+            profile_id = profile_svc.resolve_profile_id(profile_name)
+    requested_ref_text = (
+        body.reference_text if body.reference_text is not None else body.ref_text
+    )
+    if requested_ref_text is not None:
+        ref_text = requested_ref_text
+
+    voice_url_path: str | None = None
+    if body.voice_url:
+        try:
+            voice_url_path = await _download_voice_url(
+                body.voice_url,
+                cfg.max_ref_audio_bytes,
+                allow_private=cfg.allow_private_voice_urls,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Failed to download voice_url: {exc}")
+        mode = "clone"
+        instruct = None
+        ref_audio_path = voice_url_path
+        profile_id = None
 
     req = SynthesisRequest(
         text=body.input,
@@ -314,19 +589,8 @@ async def create_speech(
         audio_chunk_threshold=body.audio_chunk_threshold,
     )
 
-    if body.stream or cfg.stream:
+    if wants_stream:
         request_id = uuid.uuid4().hex[:12]
-        # Streaming only supports PCM
-        # (WAV streaming requires implementation of streaming RIFF headers)
-        if body.response_format not in {"pcm", "wav"} or (
-            cfg.stream and body.response_format != "pcm"
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Streaming only supports response_format='pcm', got '{body.response_format}'"
-                ),
-            )
         stream_iter = (
             _stream_sentences_overlapped(body.input, req, inference_svc, metrics_svc, cfg)
             if cfg.stream_overlap
@@ -340,49 +604,71 @@ async def create_speech(
                 profile_id,
             )
         )
-        return _pcm_stream_response(stream_iter, request_id)
+        if body.stream_format and body.stream_format.lower() == "sse":
+            if voice_url_path:
+                stream_iter = _cleanup_stream(stream_iter, voice_url_path)
+            return _attach_file_cleanup(
+                _sse_stream_response(stream_iter, body.response_format, request_id),
+                voice_url_path,
+            )
+        if voice_url_path:
+            stream_iter = _cleanup_stream(stream_iter, voice_url_path)
+        if body.response_format == "wav":
+            return _attach_file_cleanup(
+                _wav_stream_response(stream_iter, request_id), voice_url_path
+            )
+        return _attach_file_cleanup(_pcm_stream_response(stream_iter, request_id), voice_url_path)
 
     timeout_s = _effective_timeout_s(body.request_timeout_s, cfg)
 
     try:
-        if body.request_timeout_s is not None:
-            result = await inference_svc.synthesize(req, timeout_override=body.request_timeout_s)
-        else:
-            result = await inference_svc.synthesize(req)
-        metrics_svc.record_success(result.latency_s)
-    except asyncio.TimeoutError:
-        metrics_svc.record_timeout()
-        raise HTTPException(
-            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
-            detail=f"Synthesis timed out after {timeout_s}s",
-        )
-    except Exception as e:
-        metrics_svc.record_error()
-        logger.exception("Synthesis failed")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Synthesis failed: {e}",
-        )
+        try:
+            if body.request_timeout_s is not None:
+                result = await inference_svc.synthesize(
+                    req, timeout_override=body.request_timeout_s
+                )
+            else:
+                result = await inference_svc.synthesize(req)
+            metrics_svc.record_success(result.latency_s)
+        except asyncio.TimeoutError:
+            metrics_svc.record_timeout()
+            raise HTTPException(
+                status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                detail=f"Synthesis timed out after {timeout_s}s",
+            )
+        except Exception as e:
+            metrics_svc.record_error()
+            logger.exception("Synthesis failed")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Synthesis failed: {e}",
+            )
 
-    # Generate audio in requested format
-    try:
-        audio_bytes, media_type = tensors_to_formatted_bytes(result.tensors, body.response_format)
-    except RuntimeError as e:
-        # Format not available (e.g., pydub or ffmpeg missing)
-        logger.warning(f"Format conversion failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"Audio format '{body.response_format}' not available: {e}",
-        )
+        # Generate audio in requested format
+        try:
+            audio_bytes, media_type = tensors_to_formatted_bytes(
+                result.tensors, body.response_format
+            )
+        except RuntimeError as e:
+            # Format not available (e.g., pydub or ffmpeg missing)
+            logger.warning(f"Format conversion failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=f"Audio format '{body.response_format}' not available: {e}",
+            )
 
-    return Response(
-        content=audio_bytes,
-        media_type=media_type,
-        headers={
-            "X-Audio-Duration-S": str(round(result.duration_s, 3)),
-            "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
-        },
-    )
+        return Response(
+            content=audio_bytes,
+            media_type=media_type,
+            headers={
+                "X-Audio-Duration-S": str(round(result.duration_s, 3)),
+                "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
+            },
+        )
+    finally:
+        if voice_url_path:
+            with suppress(OSError):
+                Path(voice_url_path).unlink()
 
 
 def _chunk_request(sentence: str, base_req: SynthesisRequest) -> SynthesisRequest:
@@ -796,6 +1082,12 @@ async def create_speech_clone(
     cfg=Depends(_get_cfg),
 ):
     """One-shot voice cloning. Upload reference audio + text to synthesize."""
+    if not text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="text cannot be blank",
+        )
+
     # Fail-fast: reject oversized uploads before reading body
     content_length = request.headers.get("content-length")
     if content_length is not None:
@@ -816,7 +1108,7 @@ async def create_speech_clone(
 
     from ..utils.audio import read_upload_bounded, validate_audio_bytes
 
-    raw = await ref_audio.read()
+    raw = await ref_audio.read(cfg.max_ref_audio_bytes + 1)
     try:
         audio_bytes = read_upload_bounded(raw, cfg.max_ref_audio_bytes)
         validate_audio_bytes(audio_bytes)
