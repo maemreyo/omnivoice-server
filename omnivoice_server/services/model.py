@@ -72,6 +72,9 @@ class ModelService:
         self._voice_encoder_lock = threading.Lock()
         self._voice_clone_prompt_cache: dict[str, CachedVoiceClonePrompt] = {}
         self._memory_summary: dict[str, float] = {}
+        self._low_vram_active = False
+        self._low_vram_tokenizer_path: str | None = None
+        self._low_vram_dtype: torch.dtype | None = None
 
     async def load(self) -> None:
         """Load model in a thread (blocking op, must not block event loop)."""
@@ -89,6 +92,64 @@ class ModelService:
 
         for dtype in self._dtype_candidates():
             try:
+                if self.cfg.low_vram_mode:
+                    try:
+                        from ..low_vram import load as load_low_vram
+
+                        model = load_low_vram(
+                            self.cfg.model_id,
+                            device_map=self.cfg.torch_device_map,
+                            dtype=dtype,
+                            cache_dir=self.cfg.model_cache_dir,
+                        )
+                        self._low_vram_active = True
+                        self._low_vram_tokenizer_path = model._omnivoice_server_tokenizer_path
+                        self._low_vram_dtype = dtype
+                        logger.info("Loaded vendored OmniVoice 0.1.2 decoder-only tokenizer")
+                    except Exception as exc:
+                        logger.warning(
+                            "Low-VRAM OmniVoice loader unavailable; falling back to standard "
+                            "loader: %s",
+                            exc,
+                        )
+                        self._low_vram_active = False
+                        self._low_vram_tokenizer_path = None
+                        self._low_vram_dtype = None
+                        model = None
+                    if model is not None:
+                        try:
+                            test = model.generate(text="test", num_step=4)
+                        except Exception as exc:
+                            logger.warning(
+                                "Low-VRAM model compatibility test failed; falling back "
+                                "to standard loader: %s",
+                                exc,
+                            )
+                            self._low_vram_active = False
+                            self._low_vram_tokenizer_path = None
+                            self._low_vram_dtype = None
+                            del model
+                            gc.collect()
+                            model = None
+                        else:
+                            if self._has_nan(test):
+                                logger.warning(
+                                    "Low-VRAM model compatibility test produced NaN; "
+                                    "falling back to standard loader"
+                                )
+                                self._low_vram_active = False
+                                self._low_vram_tokenizer_path = None
+                                self._low_vram_dtype = None
+                                del model
+                                gc.collect()
+                                model = None
+                            else:
+                                self._instrument_model(model)
+                                self._apply_flashinfer(model)
+                                self._remember_audio_tokenizer_device(model)
+                                self._model = model
+                                self._memory_summary = self._compute_model_memory_summary(model)
+                                break
                 from_pretrained_kwargs = {
                     "device_map": self.cfg.torch_device_map,
                     "dtype": dtype,
@@ -131,6 +192,7 @@ class ModelService:
                     gc.collect()
                     continue
                 self._instrument_model(model)
+                self._apply_flashinfer(model)
                 self._remember_audio_tokenizer_device(model)
                 self._offload_voice_encoder(model)
                 self._model = model
@@ -154,6 +216,20 @@ class ModelService:
             f"(+{ram_after - ram_before:.0f}MB)"
         )
         self._loaded = True
+
+    def _apply_flashinfer(self, model) -> None:
+        if not self.cfg.flashinfer_mode or self.cfg.device != "cuda":
+            return
+        try:
+            from ..vendor.omnivoice_flashinfer_012 import apply_flashinfer
+
+            apply_flashinfer(model, enable_cuda_graph=self.cfg.flashinfer_cuda_graph)
+            logger.info(
+                "FlashInfer acceleration enabled%s",
+                " with CUDA graphs" if self.cfg.flashinfer_cuda_graph else "",
+            )
+        except Exception as exc:
+            logger.warning("FlashInfer unavailable or incompatible; using standard path: %s", exc)
 
     def _dtype_candidates(self) -> list:
         if self.cfg.device in ("cuda", "mps"):
@@ -410,6 +486,19 @@ class ModelService:
             return False
 
     def _restore_voice_encoder(self) -> None:
+        if self._low_vram_active:
+            from ..low_vram import load_encoder_modules
+
+            tokenizer = getattr(self.model, "audio_tokenizer", None)
+            if tokenizer is None or self._low_vram_tokenizer_path is None:
+                raise RuntimeError("low-VRAM tokenizer metadata is missing")
+            if self._low_vram_dtype is None:
+                raise RuntimeError("low-VRAM tokenizer dtype is missing")
+            modules = load_encoder_modules(self._low_vram_tokenizer_path, self._low_vram_dtype)
+            device = getattr(self.model, "_omnivoice_server_audio_tokenizer_device", None)
+            for name, module in modules.items():
+                setattr(tokenizer, name, module.to(device))
+            return
         if not self.cfg.offload_voice_encoder:
             return
         tokenizer = getattr(self.model, "audio_tokenizer", None)
@@ -422,6 +511,19 @@ class ModelService:
                 module.to(device)
 
     def _offload_voice_encoder(self, model=None) -> None:
+        if self._low_vram_active:
+            from ..low_vram import ENCODER_MODULES
+
+            model = model or self.model
+            tokenizer = getattr(model, "audio_tokenizer", None)
+            if tokenizer is not None:
+                for name in ENCODER_MODULES:
+                    if hasattr(tokenizer, name):
+                        setattr(tokenizer, name, None)
+            gc.collect()
+            if self.cfg.device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            return
         if not self.cfg.offload_voice_encoder:
             return
         model = model or self.model

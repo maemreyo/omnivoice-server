@@ -173,6 +173,39 @@ def main() -> None:
         help="Use the standard OmniVoice loader",
     )
     parser.add_argument(
+        "--low-vram",
+        action="store_true",
+        default=None,
+        dest="low_vram_mode",
+        help="Enable opt-in decoder-only tokenizer loading (env: OMNIVOICE_LOW_VRAM_MODE)",
+    )
+    parser.add_argument(
+        "--no-low-vram",
+        action="store_false",
+        dest="low_vram_mode",
+        help="Disable decoder-only tokenizer loading",
+    )
+    parser.add_argument(
+        "--flashinfer",
+        action="store_true",
+        default=None,
+        dest="flashinfer_mode",
+        help="Enable optional FlashInfer CUDA acceleration (env: OMNIVOICE_FLASHINFER_MODE)",
+    )
+    parser.add_argument(
+        "--no-flashinfer",
+        action="store_false",
+        dest="flashinfer_mode",
+        help="Disable FlashInfer acceleration",
+    )
+    parser.add_argument(
+        "--flashinfer-cuda-graph",
+        action="store_true",
+        default=None,
+        dest="flashinfer_cuda_graph",
+        help="Enable FlashInfer CUDA graphs (env: OMNIVOICE_FLASHINFER_CUDA_GRAPH)",
+    )
+    parser.add_argument(
         "--shutdown-timeout",
         type=int,
         default=None,

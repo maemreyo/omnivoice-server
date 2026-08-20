@@ -11,7 +11,82 @@ Primary question:
 - Why does `nvidia-smi` show roughly `6.8-7.0 GiB` for a process whose loaded
   model weights are closer to `~2 GiB`?
 
+## Opt-in Python low-VRAM mode
+
+Set `OMNIVOICE_LOW_VRAM_MODE=true`, `--low-vram`, or `low_vram_mode=True` to
+use the vendored OmniVoice 0.1.2 loader. The setting is default-off. The normal
+OmniVoice loader remains the compatibility path.
+
+At startup, the main model is loaded in the requested FP16/BF16 mode and the
+audio tokenizer is constructed from its config. Only `audio_tokenizer/model.safetensors`
+keys outside `semantic_model.*`, `acoustic_encoder.*`, `encoder_semantic.*`,
+`fc.*`, and `fc1.*` are loaded. Those encoder attributes are then absent from
+the live tokenizer, leaving the decoder, quantizer, and synthesis components
+resident.
+
+For a cold reference, the existing encoder lock protects a short lifecycle:
+
+1. Reconstruct the omitted encoder modules from the tokenizer config and their
+   Safetensors keys.
+2. Move them to the tokenizer device and encode the reference.
+3. Move reusable prompt tensors to CPU and atomically write the `.tokens.pt`
+   sidecar containing audio codes, RMS, transcript, source mtime, and size.
+4. Remove the encoder modules, run garbage collection, and clear CUDA's cache.
+
+A warm in-memory or valid disk sidecar hit never reconstructs the encoder. A
+sidecar is invalidated when the source mtime/size or requested reference text
+changes; legacy sidecars are accepted only when newer than the source audio.
+Malformed, incomplete, or incompatible sidecars are ignored and regenerated.
+
+This mode reduces steady-state VRAM by the size of the omitted tokenizer
+encoder weights. A cold reference temporarily pays the encoder allocation and
+may therefore peak above startup; the exact savings and peak depend on the
+checkpoint, CUDA allocator, and hardware and must be measured with the
+optional CUDA smoke test rather than assumed.
+
+The loader is intentionally guarded. Missing model files, unsupported weight
+layouts, tokenizer API changes, or generation incompatibilities are logged and
+fall back to the standard OmniVoice loader. Profile cloning, one-shot cloning,
+streaming, and profile invalidation use the same server API in either mode.
+
+The implementation is Python-only. It vendors the pinned OmniVoice 0.1.2 model
+source and Apache license notice under `omnivoice_server/vendor/`; it does not
+use or reproduce the separate Sonorus GGUF/Vulkan architecture. Sonorus's
+implementation motivated the lifecycle (decoder resident, encoder on demand,
+CPU token sidecars), while this server retains its existing prompt format and
+standard-loader fallback.
+
 ## Current Measured Footprint
+
+## FlashInfer on an RTX 3070
+
+The server now includes an opt-in FlashInfer path based on upstream OmniVoice's
+July 2026 patch. Install the matching CUDA package separately, for example for
+the repository's CUDA 12.8 PyTorch build:
+
+```bash
+uv pip install 'omnivoice-server[flashinfer]' \
+  --extra-index-url https://flashinfer.ai/whl/cu128/
+uv pip install 'flashinfer-jit-cache==0.6.15.post1+cu128' \
+  --extra-index-url https://flashinfer.ai/whl/cu128/
+```
+
+Then use `--flashinfer` or `OMNIVOICE_FLASHINFER_MODE=true`. For one request at
+a time, `--flashinfer-cuda-graph` can reduce launch overhead further, but it
+requires more warm-up memory and is shape-sensitive. The server logs and falls
+back to the regular OmniVoice forward path if FlashInfer is missing or its
+private model patch does not match the installed runtime.
+
+FlashInfer mode automatically serializes synthesis requests because its packed
+attention context and CUDA-graph state are model-global; standard mode still
+uses the configured `max_concurrent` value.
+
+The RTX 3070 is Ampere SM 8.6 and is within FlashInfer's supported architecture
+range. Upstream's reported 2–2.9x result was measured on an H100, so this
+project must benchmark TTFA, end-to-end latency, peak allocated/reserved VRAM,
+and output equivalence on the actual 3070 before making a performance claim.
+FlashInfer accelerates decoding; the low-VRAM tokenizer mode remains the
+separate mechanism for removing encoder weights from steady-state VRAM.
 
 Static loaded model footprint on CUDA:
 

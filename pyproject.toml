@@ -38,6 +38,7 @@ dependencies = [
 
 [project.optional-dependencies]
 formats = ["pydub>=0.25.0"]  # For mp3, opus, aac, flac support (also requires ffmpeg)
+flashinfer = ["flashinfer-python==0.6.15.post1"]
 benchmark = ["psutil", "tqdm"]
 dev = [
     "pytest>=8.0.0",

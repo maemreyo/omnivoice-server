@@ -244,7 +244,13 @@ class InferenceService:
         self._model_svc = model_svc
         self._executor = executor
         self._cfg = cfg
-        self._semaphore = asyncio.Semaphore(cfg.max_concurrent)
+        # FlashInfer keeps per-model packed-attention context and optional CUDA
+        # graphs; serialize its opt-in path to avoid cross-request context
+        # corruption. Standard inference retains configured concurrency.
+        concurrency = (
+            1 if cfg.flashinfer_mode and cfg.device == "cuda" else cfg.max_concurrent
+        )
+        self._semaphore = asyncio.Semaphore(concurrency)
         self._adapter = OmniVoiceAdapter(cfg)
         self._cleanup_counter = 0
         self._cleanup_lock = threading.Lock()

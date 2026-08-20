@@ -115,6 +115,24 @@ class Settings(BaseSettings):
             "back to the standard loader when unsupported."
         ),
     )
+    low_vram_mode: bool = Field(
+        default=False,
+        description=(
+            "Opt in to the vendored OmniVoice 0.1.2 decoder-only tokenizer loader; "
+            "incompatible models automatically use the standard loader."
+        ),
+    )
+    flashinfer_mode: bool = Field(
+        default=False,
+        description=(
+            "Opt in to the vendored FlashInfer decoder patch; unavailable or incompatible "
+            "installations fall back to the standard OmniVoice forward path."
+        ),
+    )
+    flashinfer_cuda_graph: bool = Field(
+        default=False,
+        description="Use FlashInfer CUDA graphs for fixed-shape, single-request decoding.",
+    )
     shutdown_timeout: int = Field(
         default=10,
         ge=1,
