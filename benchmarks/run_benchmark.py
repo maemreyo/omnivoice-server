@@ -69,6 +69,17 @@ class RunResult:
     ram_before_mb: float
     ram_after_mb: float
     ram_delta_mb: float
+    cuda_allocated_before_mb: float | None
+    cuda_allocated_after_mb: float | None
+    cuda_peak_allocated_mb: float | None
+    cuda_reserved_before_mb: float | None
+    cuda_reserved_after_mb: float | None
+    cuda_peak_reserved_mb: float | None
+    startup_allocated_mb: float | None
+    startup_reserved_mb: float | None
+    startup_peak_allocated_mb: float | None
+    startup_peak_reserved_mb: float | None
+    audio_tokenizer_parameter_mb: float | None
     error: str | None = None
 
 
@@ -110,6 +121,40 @@ def main() -> None:
         dtype=dtype,
     )
     print(f"Model loaded in {time.monotonic() - t0:.1f}s")
+
+    cuda_enabled = args.device == "cuda" and torch.cuda.is_available()
+
+    def sync_cuda() -> None:
+        if cuda_enabled:
+            torch.cuda.synchronize()
+
+    def cuda_memory() -> tuple[float | None, float | None]:
+        if not cuda_enabled:
+            return None, None
+        return (
+            torch.cuda.memory_allocated() / 1024 / 1024,
+            torch.cuda.memory_reserved() / 1024 / 1024,
+        )
+
+    def module_parameter_memory(module) -> float | None:
+        if module is None:
+            return None
+        return sum(p.numel() * p.element_size() for p in module.parameters()) / 1024 / 1024
+
+    sync_cuda()
+    startup_allocated, startup_reserved = cuda_memory()
+    if cuda_enabled:
+        startup_peak_allocated = torch.cuda.max_memory_allocated() / 1024 / 1024
+        startup_peak_reserved = torch.cuda.max_memory_reserved() / 1024 / 1024
+    else:
+        startup_peak_allocated = startup_peak_reserved = None
+    tokenizer_parameter_mb = module_parameter_memory(getattr(model, "audio_tokenizer", None))
+    print(
+        "Startup VRAM: "
+        f"allocated={startup_allocated or 0:.1f} MB, "
+        f"reserved={startup_reserved or 0:.1f} MB, "
+        f"audio-tokenizer parameters={tokenizer_parameter_mb or 0:.1f} MB"
+    )
 
     def get_ram() -> float:
         return psutil.Process().memory_info().rss / 1024 / 1024
@@ -163,6 +208,10 @@ def main() -> None:
         # Benchmark
         for i in range(args.runs):
             ram_before = get_ram()
+            if cuda_enabled:
+                torch.cuda.reset_peak_memory_stats()
+            sync_cuda()
+            cuda_allocated_before, cuda_reserved_before = cuda_memory()
             t_start = time.perf_counter()
             error = None
             duration_ms = 0.0
@@ -175,6 +224,13 @@ def main() -> None:
                 latency_ms = -1
                 error = str(e)
 
+            sync_cuda()
+            cuda_allocated_after, cuda_reserved_after = cuda_memory()
+            if cuda_enabled:
+                cuda_peak_allocated = torch.cuda.max_memory_allocated() / 1024 / 1024
+                cuda_peak_reserved = torch.cuda.max_memory_reserved() / 1024 / 1024
+            else:
+                cuda_peak_allocated = cuda_peak_reserved = None
             cleanup()
             ram_after = get_ram()
             rtf = (latency_ms / 1000) / (duration_ms / 1000) if duration_ms > 0 else -1
@@ -191,6 +247,17 @@ def main() -> None:
                 ram_before_mb=round(ram_before, 1),
                 ram_after_mb=round(ram_after, 1),
                 ram_delta_mb=round(ram_after - ram_before, 1),
+                cuda_allocated_before_mb=_round_optional(cuda_allocated_before),
+                cuda_allocated_after_mb=_round_optional(cuda_allocated_after),
+                cuda_peak_allocated_mb=_round_optional(cuda_peak_allocated),
+                cuda_reserved_before_mb=_round_optional(cuda_reserved_before),
+                cuda_reserved_after_mb=_round_optional(cuda_reserved_after),
+                cuda_peak_reserved_mb=_round_optional(cuda_peak_reserved),
+                startup_allocated_mb=_round_optional(startup_allocated),
+                startup_reserved_mb=_round_optional(startup_reserved),
+                startup_peak_allocated_mb=_round_optional(startup_peak_allocated),
+                startup_peak_reserved_mb=_round_optional(startup_peak_reserved),
+                audio_tokenizer_parameter_mb=_round_optional(tokenizer_parameter_mb),
                 error=error,
             )
             all_results.append(result)
@@ -198,6 +265,8 @@ def main() -> None:
             if i % 10 == 0:
                 status = f"run {i:3d}: lat={latency_ms:.0f}ms  rtf={rtf:.3f}  " \
                          f"ram_Δ={result.ram_delta_mb:+.1f}MB  ram={ram_after:.0f}MB"
+                if cuda_enabled:
+                    status += f"  vram_peak={result.cuda_peak_allocated_mb:.0f}MB"
                 if error:
                     status += f"  ERR={error[:40]}"
                 print(f"  {status}")
@@ -217,6 +286,10 @@ def main() -> None:
     print(f"✓ Report → {report_path}")
     print(f"\nUpstream Discussion post: paste {report_path} to")
     print("  https://github.com/k2-fsa/OmniVoice/discussions")
+
+
+def _round_optional(value: float | None) -> float | None:
+    return round(value, 1) if value is not None else None
 
 
 def _write_report(results: list[RunResult], path: Path, args) -> None:
@@ -272,6 +345,27 @@ def _write_report(results: list[RunResult], path: Path, args) -> None:
         "- **RTF < 1.0** = faster than real-time (good)\n",
         "- **RTF > 1.0** = slower than real-time (server usable but audio chunks will lag)\n",
         "- **RAM Δ > 200MB** across 100 runs = memory leak detected\n",
+    ]
+
+    first = results[0] if results else None
+    if first and first.cuda_peak_allocated_mb is not None:
+        lines += [
+            "\n## CUDA VRAM\n\n",
+            f"- Startup allocated: **{first.startup_allocated_mb:.1f} MB**\n",
+            f"- Startup reserved: **{first.startup_reserved_mb:.1f} MB**\n",
+            f"- Startup peak allocated: **{first.startup_peak_allocated_mb:.1f} MB**\n",
+            f"- Startup peak reserved: **{first.startup_peak_reserved_mb:.1f} MB**\n",
+            "- Static audio-tokenizer parameters: "
+            f"**{first.audio_tokenizer_parameter_mb:.1f} MB**\n",
+            "\n| Test Case | Peak Allocated (MB) | Peak Reserved (MB) |\n",
+            "|-----------|---------------------|--------------------|\n",
+        ]
+        for (_, _, case), rs in sorted(groups.items()):
+            peak_allocated = max(r.cuda_peak_allocated_mb for r in rs)
+            peak_reserved = max(r.cuda_peak_reserved_mb for r in rs)
+            lines.append(f"| {case} | {peak_allocated:.1f} | {peak_reserved:.1f} |\n")
+
+    lines += [
         "\n*Generated by omnivoice-server benchmark harness*\n",
     ]
 
