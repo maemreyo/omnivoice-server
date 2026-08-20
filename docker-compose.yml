@@ -1,43 +1,42 @@
 services:
   omnivoice-server:
-    build: .
+    image: ${OMNIVOICE_IMAGE:-ghcr.io/remominor/omnivoice-server:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: omnivoice-server
     ports:
-      - "8880:8880"
+      - "${OMNIVOICE_HOST_PORT:-8880}:8880"
     volumes:
-      # Persist voice profiles
-      - ./profiles:/app/profiles
+      - profiles:/data/profiles
+      - huggingface-cache:/cache/huggingface
     environment:
-      # Server configuration
-      - OMNIVOICE_HOST=0.0.0.0
-      - OMNIVOICE_PORT=8880
-      - OMNIVOICE_DEVICE=cpu
-      - OMNIVOICE_NUM_STEP=32
-      - OMNIVOICE_MAX_CONCURRENT=2
-
-      # Optional: Enable authentication
-      # - OMNIVOICE_API_KEY=your-secret-key
-
-      # Optional: Adjust inference quality
-      # - OMNIVOICE_GUIDANCE_SCALE=2.0
-      # - OMNIVOICE_DENOISE=true
-
-      # Optional: Logging
-      # - OMNIVOICE_LOG_LEVEL=info
+      OMNIVOICE_HOST: 0.0.0.0
+      OMNIVOICE_PORT: 8880
+      OMNIVOICE_DEVICE: cuda
+      OMNIVOICE_MAX_CONCURRENT: ${OMNIVOICE_MAX_CONCURRENT:-1}
+      OMNIVOICE_CUDA_TF32: ${OMNIVOICE_CUDA_TF32:-true}
+      OMNIVOICE_FLASHINFER_MODE: ${OMNIVOICE_FLASHINFER_MODE:-false}
+      OMNIVOICE_FLASHINFER_CUDA_GRAPH: ${OMNIVOICE_FLASHINFER_CUDA_GRAPH:-false}
+      OMNIVOICE_LOW_VRAM_MODE: ${OMNIVOICE_LOW_VRAM_MODE:-false}
+      OMNIVOICE_SPLIT_CFG_BATCH: ${OMNIVOICE_SPLIT_CFG_BATCH:-false}
+      OMNIVOICE_API_KEY: ${OMNIVOICE_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8880/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8880/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 5m
 
-# For CUDA GPU support, use this configuration instead:
-# services:
-#   omnivoice-server:
-#     build:
-#       context: .
-#       dockerfile: Dockerfile.cuda  # You'll need to create this
-#     runtime: nvidia
-#     environment:
-#       - OMNIVOICE_DEVICE=cuda
-#     # ... rest of config same as above
+volumes:
+  profiles:
+  huggingface-cache:

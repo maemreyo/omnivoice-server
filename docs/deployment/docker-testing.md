@@ -11,7 +11,7 @@ Quick reference for testing Docker deployment locally.
 ## Manual Steps
 
 1. **Build**: `docker build -t omnivoice-server:test .` (3-5 min)
-2. **Run**: `docker-compose up -d`
+2. **Run CUDA**: `docker compose up -d`
 3. **Health**: `curl http://localhost:8880/health`
 4. **Test TTS**: 
    ```bash
@@ -20,12 +20,13 @@ Quick reference for testing Docker deployment locally.
      -d '{"model":"omnivoice","input":"Hello!","voice":"auto"}' \
      --output test.wav
    ```
-5. **Stop**: `docker-compose down`
+5. **Stop**: `docker compose down`
 
 ## Troubleshooting
 
 - **Build fails**: `docker system prune -a` to free space
-- **Port conflict**: Change port in docker-compose.yml
+- **CPU-only host**: Use `docker compose -f docker-compose-cpu.yml up -d --build`
+- **Port conflict**: Set `OMNIVOICE_HOST_PORT` before starting Compose
 - **Memory**: Increase Docker memory to 4GB minimum
 - **Slow**: First run downloads model (~3GB), subsequent runs are faster
 

@@ -1,0 +1,30 @@
+services:
+  omnivoice-server:
+    image: ${OMNIVOICE_CPU_IMAGE:-omnivoice-server:cpu}
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    container_name: omnivoice-server-cpu
+    ports:
+      - "${OMNIVOICE_HOST_PORT:-8880}:8880"
+    volumes:
+      - profiles-cpu:/data/profiles
+      - huggingface-cache-cpu:/cache/huggingface
+    environment:
+      OMNIVOICE_HOST: 0.0.0.0
+      OMNIVOICE_PORT: 8880
+      OMNIVOICE_DEVICE: cpu
+      OMNIVOICE_MAX_CONCURRENT: ${OMNIVOICE_MAX_CONCURRENT:-1}
+      OMNIVOICE_API_KEY: ${OMNIVOICE_API_KEY:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8880/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+
+volumes:
+  profiles-cpu:
+  huggingface-cache-cpu:

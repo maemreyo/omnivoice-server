@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1.7
+
+FROM python:3.10-slim AS builder
+
+ARG PYTORCH_VERSION=2.8.0
+ARG TORCHCODEC_VERSION=0.7.0
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    VIRTUAL_ENV=/opt/venv
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python -m venv "${VIRTUAL_ENV}"
+ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
+
+WORKDIR /build
+COPY pyproject.toml README.md ./
+COPY omnivoice_server ./omnivoice_server
+
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install \
+        --index-url https://download.pytorch.org/whl/cpu \
+        "torch==${PYTORCH_VERSION}" \
+        "torchaudio==${PYTORCH_VERSION}" \
+        "torchcodec==${TORCHCODEC_VERSION}" \
+    && python -m pip install ".[formats]"
+
+
+FROM python:3.10-slim AS runtime
+
+ARG APP_UID=10001
+ARG APP_GID=10001
+
+LABEL org.opencontainers.image.source="https://github.com/remominor/omnivoice-server" \
+      org.opencontainers.image.description="CPU OpenAI-compatible OmniVoice TTS server" \
+      org.opencontainers.image.licenses="MIT"
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:${PATH}" \
+    HF_HOME=/cache/huggingface \
+    TORCH_HOME=/cache/torch \
+    OMNIVOICE_HOST=0.0.0.0 \
+    OMNIVOICE_PORT=8880 \
+    OMNIVOICE_DEVICE=cpu \
+    OMNIVOICE_MAX_CONCURRENT=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg libgomp1 libsndfile1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid "${APP_GID}" omnivoice \
+    && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home omnivoice \
+    && mkdir -p /data/profiles /cache/huggingface /cache/torch \
+    && chown -R omnivoice:omnivoice /data /cache
+
+COPY --from=builder /opt/venv /opt/venv
+
+WORKDIR /app
+USER omnivoice
+
+VOLUME ["/data/profiles", "/cache/huggingface"]
+EXPOSE 8880
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8880/health', timeout=5)" || exit 1
+
+CMD ["omnivoice-server", "--profile-dir", "/data/profiles"]

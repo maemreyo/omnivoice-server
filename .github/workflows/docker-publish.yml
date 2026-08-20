@@ -1,80 +1,74 @@
-name: Build and Push Docker Images
+name: Build and publish CUDA container image
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/docker-publish.yml"
+      - ".dockerignore"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "pyproject.toml"
+      - "omnivoice_server/**"
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Docker tag (e.g., v0.2.0, latest)'
-        required: false
-        default: ''
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: containers-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  push-docker:
+  cuda:
+    name: CUDA image (default)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout code
+      - name: Checkout source
         uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Generate CUDA image metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: maemreyo/omnivoice-server
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
           tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=cuda-latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
             type=ref,event=tag
-            type=sha,prefix=
-            latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern=cuda-{{version}}
 
-      - name: Build and push CPU image
+      - name: Build and publish CUDA image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            maemreyo/omnivoice-server:latest
-            maemreyo/omnivoice-server:cpu-latest
-            ${{ github.event.inputs.tag != '' && format('maemreyo/omnivoice-server:{0}', github.event.inputs.tag) || '' }}
-            ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          file: Dockerfile
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push CUDA image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.cuda
-          push: true
-          tags: |
-            maemreyo/omnivoice-server:cuda-latest
-            ${{ github.event.inputs.tag != '' && format('maemreyo/omnivoice-server:cuda-{0}', github.event.inputs.tag) || '' }}
-            ${{ format('maemreyo/omnivoice-server:{0}-cuda', github.event.inputs.tag != '' && github.event.inputs.tag || 'latest') }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Show pushed images
-        run: |
-          echo "✅ Pushed Docker images:"
-          echo "  - maemreyo/omnivoice-server:latest"
-          echo "  - maemreyo/omnivoice-server:cpu-latest"
-          echo "  - maemreyo/omnivoice-server:cuda-latest"
-          ${{ github.event.inputs.tag != '' && format('echo "  - maemreyo/omnivoice-server:{0}"', github.event.inputs.tag) || '' }}
+          cache-from: type=gha,scope=container-cuda
+          cache-to: type=gha,mode=max,scope=container-cuda
