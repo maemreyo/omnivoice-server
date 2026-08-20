@@ -133,6 +133,12 @@ class Settings(BaseSettings):
         default=False,
         description="Use FlashInfer CUDA graphs for fixed-shape, single-request decoding.",
     )
+    flashinfer_cuda_graph_max_shapes: int = Field(
+        default=4,
+        ge=1,
+        le=32,
+        description="Maximum number of FlashInfer CUDA-graph shapes retained in VRAM.",
+    )
     split_cfg_batch: bool = Field(
         default=False,
         description=(

@@ -50,7 +50,9 @@ dev = [
     "mypy>=1.11.0",
     # Keep torchcodec off Windows in the default dev extra.
     # Windows users can still opt in manually if they align torch/torchaudio/torchcodec.
-    "torchcodec>=0.11; sys_platform != 'win32'",
+    # Torch 2.8 (the current OmniVoice-compatible series) requires the
+    # TorchCodec 0.6/0.7 API. Newer TorchCodec wheels fail at import time.
+    "torchcodec>=0.7,<0.8; sys_platform != 'win32'",
 ]
 
 [project.urls]

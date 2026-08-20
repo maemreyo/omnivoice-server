@@ -108,3 +108,20 @@ def test_stream_overlap_env_var_parsed():
             os.environ.pop("OMNIVOICE_STREAM_OVERLAP", None)
         else:
             os.environ["OMNIVOICE_STREAM_OVERLAP"] = prev
+
+
+def test_flashinfer_graph_shape_limit_env_var_parsed():
+    import os
+
+    from omnivoice_server.config import Settings
+
+    prev = os.environ.get("OMNIVOICE_FLASHINFER_CUDA_GRAPH_MAX_SHAPES")
+    os.environ["OMNIVOICE_FLASHINFER_CUDA_GRAPH_MAX_SHAPES"] = "2"
+    try:
+        cfg = Settings()
+        assert cfg.flashinfer_cuda_graph_max_shapes == 2
+    finally:
+        if prev is None:
+            os.environ.pop("OMNIVOICE_FLASHINFER_CUDA_GRAPH_MAX_SHAPES", None)
+        else:
+            os.environ["OMNIVOICE_FLASHINFER_CUDA_GRAPH_MAX_SHAPES"] = prev

@@ -96,6 +96,22 @@ def main() -> None:
                         help="Iterations per test case (for memory leak detection)")
     parser.add_argument("--warmup", type=int, default=1,
                         help="Warm-up runs (not counted)")
+    parser.add_argument(
+        "--ref-text",
+        default=None,
+        help=(
+            "Reference transcript for clone cases; avoids loading the ASR "
+            "pipeline and its TorchCodec dependency"
+        ),
+    )
+    parser.add_argument(
+        "--ref-audio",
+        default=None,
+        help=(
+            "Speech reference WAV for clone cases; overrides the bundled test-tone "
+            "fixture"
+        ),
+    )
     parser.add_argument("--cases", nargs="+", default=list(TEST_CASES.keys()),
                         help="Test cases to run")
     parser.add_argument("--output-dir", default="benchmarks/results",
@@ -164,12 +180,15 @@ def main() -> None:
         if case["mode"] == "design":
             kwargs["instruct"] = case["instruct"]
         elif case["mode"] == "clone":
-            if not Path(case["ref_audio"]).exists():
+            ref_audio = args.ref_audio or case["ref_audio"]
+            if not Path(ref_audio).exists():
                 raise FileNotFoundError(
-                    f"sample_ref.wav not found at {case['ref_audio']}. "
-                    "Please provide a 5–10s WAV file at benchmarks/sample_ref.wav"
+                    f"Reference audio not found at {ref_audio}. "
+                    "Provide a 5–10s speech WAV with --ref-audio."
                 )
-            kwargs["ref_audio"] = case["ref_audio"]
+            kwargs["ref_audio"] = ref_audio
+            if args.ref_text:
+                kwargs["ref_text"] = args.ref_text
         tensors = model.generate(**kwargs)
         duration_s = sum(t.shape[-1] for t in tensors) / SAMPLE_RATE
         return tensors, duration_s

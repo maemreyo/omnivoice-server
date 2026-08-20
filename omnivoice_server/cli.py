@@ -206,6 +206,16 @@ def main() -> None:
         help="Enable FlashInfer CUDA graphs (env: OMNIVOICE_FLASHINFER_CUDA_GRAPH)",
     )
     parser.add_argument(
+        "--flashinfer-cuda-graph-max-shapes",
+        type=int,
+        default=None,
+        dest="flashinfer_cuda_graph_max_shapes",
+        help=(
+            "Maximum retained FlashInfer CUDA-graph shapes (env: "
+            "OMNIVOICE_FLASHINFER_CUDA_GRAPH_MAX_SHAPES)"
+        ),
+    )
+    parser.add_argument(
         "--split-cfg-batch",
         action="store_true",
         default=None,

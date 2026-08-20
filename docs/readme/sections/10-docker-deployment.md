@@ -87,6 +87,9 @@ Compose accepts the normal `OMNIVOICE_*` settings. Common overrides include:
 - `OMNIVOICE_LOW_VRAM_MODE=true` — lazy reference encoder loading.
 - `OMNIVOICE_SPLIT_CFG_BATCH=true` — lower peak CFG tensor memory.
 - `OMNIVOICE_FLASHINFER_MODE=true` — enable FlashInfer acceleration.
+- `OMNIVOICE_FLASHINFER_CUDA_GRAPH_MAX_SHAPES=4` — cap retained CUDA-graph
+  shapes to prevent text-length diversity from growing private VRAM pools.
+  Reference-conditioned clone requests bypass graph capture automatically.
 - `OMNIVOICE_FLASHINFER_CUDA_GRAPH=true` — enable its CUDA graph path.
 
 Use `OMNIVOICE_IMAGE` to override the CUDA image name or

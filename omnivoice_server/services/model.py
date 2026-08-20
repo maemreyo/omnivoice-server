@@ -229,7 +229,11 @@ class ModelService:
         try:
             from ..vendor.omnivoice_flashinfer_012 import apply_flashinfer
 
-            apply_flashinfer(model, enable_cuda_graph=self.cfg.flashinfer_cuda_graph)
+            apply_flashinfer(
+                model,
+                enable_cuda_graph=self.cfg.flashinfer_cuda_graph,
+                cuda_graph_max_shapes=self.cfg.flashinfer_cuda_graph_max_shapes,
+            )
             logger.info(
                 "FlashInfer acceleration enabled%s",
                 " with CUDA graphs" if self.cfg.flashinfer_cuda_graph else "",
@@ -456,6 +460,11 @@ class ModelService:
 
         snapshot["prompt_cache_cuda_mb"] = round(cache_cuda_bytes / 1024 / 1024, 3)
         snapshot["prompt_cache_cpu_mb"] = round(cache_cpu_bytes / 1024 / 1024, 3)
+        graph_cache = getattr(self._model, "_fi_graph_cache", None)
+        snapshot["flashinfer_graph_cache_entries"] = len(graph_cache or {})
+        snapshot["flashinfer_graph_cache_max_shapes"] = int(
+            getattr(self._model, "_fi_graph_cache_max_shapes", 0) or 0
+        )
         return snapshot
 
     @staticmethod

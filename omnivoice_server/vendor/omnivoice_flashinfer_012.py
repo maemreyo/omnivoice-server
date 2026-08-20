@@ -28,6 +28,8 @@ Usage:
 
 import math
 import time
+import gc
+from collections import OrderedDict
 from types import MethodType
 from typing import List
 
@@ -44,6 +46,7 @@ from .omnivoice_012 import (
 )
 
 _WORKSPACE_SIZE = 128 * 1024 * 1024
+_DEFAULT_GRAPH_CACHE_MAX_SHAPES = 4
 # Context read by the registered attention function. "wrapper" must be planned
 # for the current packed layout before any llm forward.
 _CTX = {"wrapper": None}
@@ -255,7 +258,15 @@ def _generate_iterative_packed(
     for c, u in zip(c_lens, u_lens):
         doc_lens.extend([c, u])
 
-    use_graph = getattr(self, "_fi_enable_cuda_graph", False)
+    # A clone prompt is part of the packed conditioning sequence. Cycling
+    # through voices therefore creates a different capture shape for each
+    # reference length. CUDA graph private pools are not reliably reclaimed
+    # after eviction on all supported PyTorch/CUDA combinations, so graph
+    # capture is intentionally limited to reference-free generation. Clone
+    # requests still use the FlashInfer eager path and its shape plan is
+    # reused by the model-level runner.
+    has_reference = any(ref is not None for ref in task.ref_audio_tokens)
+    use_graph = getattr(self, "_fi_enable_cuda_graph", False) and not has_reference
     buckets = getattr(self, "_fi_graph_buckets", None)  # durations in seconds
 
     # Choose the packed layout. Bucketed-graph mode places each item in fixed
@@ -477,6 +488,7 @@ def _get_or_capture_graph(model, doc_lens_key, tgt_index):
     cache = model._fi_graph_cache
     entry = cache.get(doc_lens_key)
     if entry is not None:
+        cache.move_to_end(doc_lens_key)
         return entry
 
     device = model.device
@@ -548,6 +560,7 @@ def _get_or_capture_graph(model, doc_lens_key, tgt_index):
         **static,
     }
     cache[doc_lens_key] = entry
+    _trim_graph_cache(model)
     return entry
 
 
@@ -625,7 +638,27 @@ def _get_or_capture_bucket_graph(model, B, U_b, C_b):
         **static,
     }
     cache[key] = entry
+    _trim_graph_cache(model)
     return entry
+
+
+def _trim_graph_cache(model) -> None:
+    """Evict old CUDA graphs so shape diversity cannot grow VRAM forever."""
+    cache = model._fi_graph_cache
+    max_shapes = max(int(getattr(model, "_fi_graph_cache_max_shapes", 1)), 1)
+    evicted = False
+    while len(cache) > max_shapes:
+        _, stale_entry = cache.popitem(last=False)
+        del stale_entry
+        evicted = True
+
+    if evicted:
+        # CUDA graph private pools are released when their graph/static tensor
+        # references are destroyed. Synchronize before collecting so no graph
+        # capture/replay is still using an evicted pool.
+        torch.cuda.synchronize()
+        gc.collect()
+        torch.cuda.empty_cache()
 
 
 def apply_flashinfer(
@@ -635,6 +668,7 @@ def apply_flashinfer(
     fuse_attention: bool = True,
     cuda_graph_buckets=None,
     overhead_budget: int = 512,
+    cuda_graph_max_shapes: int = _DEFAULT_GRAPH_CACHE_MAX_SHAPES,
 ):
     """Patch an OmniVoice instance to use flashinfer packed attention."""
     model.llm.set_attn_implementation("omnivoice_fi")
@@ -654,7 +688,8 @@ def apply_flashinfer(
         llm_cfg.head_dim,
         model.device,
     )
-    model._fi_graph_cache = {}
+    model._fi_graph_cache = OrderedDict()
+    model._fi_graph_cache_max_shapes = max(int(cuda_graph_max_shapes), 1)
     model._fi_enable_cuda_graph = enable_cuda_graph or cuda_graph_buckets is not None
     model._fi_graph_buckets = cuda_graph_buckets
     model._fi_overhead_budget = overhead_budget

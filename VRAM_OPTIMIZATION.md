@@ -87,6 +87,20 @@ FlashInfer mode automatically serializes synthesis requests because its packed
 attention context and CUDA-graph state are model-global; standard mode still
 uses the configured `max_concurrent` value.
 
+CUDA graphs retain static tensors and private CUDA memory pools per packed
+sequence shape. The server bounds this cache to four shapes by default and
+evicts older shapes with `OMNIVOICE_FLASHINFER_CUDA_GRAPH_MAX_SHAPES` or
+`--flashinfer-cuda-graph-max-shapes`. This is important for workloads that
+exercise many voice/text lengths; without a bound, shape diversity can consume
+the remaining VRAM even though prompt tokens are CPU-resident.
+
+For additional safety, CUDA-graph capture is disabled automatically for
+reference-conditioned requests, including uploaded voice clones. Reference
+lengths vary by voice and can create graph-private pools that are not fully
+reclaimed after eviction on all PyTorch/CUDA combinations. These requests
+still use FlashInfer's eager packed-attention path. CUDA graphs remain enabled
+for reference-free design/auto requests.
+
 For the standard (non-FlashInfer) path, `--split-cfg-batch` is an additional
 opt-in memory fallback. It runs the conditional and unconditional CFG branches
 as separate right-sized forwards, avoiding the padded combined `2B` tensors at
