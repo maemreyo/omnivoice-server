@@ -1,0 +1,139 @@
+Task 10: CLI/Config Alignment Review
+=====================================
+
+Date: 2026-04-17
+Reviewer: Sisyphus-Junior (quick)
+
+## Executive Summary
+
+**DECISION: No CLI/config changes required.**
+
+The five newly exposed parameters (layer_penalty_factor, preprocess_prompt, postprocess_output, audio_chunk_duration, audio_chunk_threshold) are intentionally **request-only** parameters and should NOT have server-level CLI flags or environment variables.
+
+## Analysis
+
+### Current Server-Level Defaults (config.py)
+
+The server exposes CLI flags and env vars for these generation parameters:
+- `num_step` (--num-step, OMNIVOICE_NUM_STEP) - default: 32
+- `guidance_scale` (--guidance-scale, OMNIVOICE_GUIDANCE_SCALE) - default: 2.0
+- `denoise` (--denoise/--no-denoise, OMNIVOICE_DENOISE) - default: True
+- `t_shift` (--t-shift, OMNIVOICE_T_SHIFT) - default: 0.1
+- `position_temperature` (--position-temperature, OMNIVOICE_POSITION_TEMPERATURE) - default: 5.0
+- `class_temperature` (--class-temperature, OMNIVOICE_CLASS_TEMPERATURE) - default: 0.0
+
+These parameters have server-level defaults because they affect **quality/performance tradeoffs** that operators tune for their deployment environment.
+
+### New Parameters (Task 5 Implementation)
+
+The five new parameters are **request-only** (default to `None` in SynthesisRequest):
+- `layer_penalty_factor` - No server default
+- `preprocess_prompt` - No server default
+- `postprocess_output` - No server default
+- `audio_chunk_duration` - No server default
+- `audio_chunk_threshold` - No server default
+
+When `None`, these parameters are **omitted from model.generate() kwargs**, allowing upstream OmniVoice to use its own defaults.
+
+### Design Pattern Consistency
+
+**Existing pattern in config.py (lines 43-44):**
+```python
+# Advanced generation params (passed through to OmniVoice.generate())
+# Expose the ones users are likely to tune; leave the rest at upstream defaults.
+```
+
+The comment explicitly states the design intent: only expose server-level defaults for parameters users are **likely to tune** at the deployment level.
+
+**Parameters with server defaults:**
+- Quality/speed tradeoffs: `num_step`, `guidance_scale`, `t_shift`
+- Voice consistency: `position_temperature`, `class_temperature`
+- Quality enhancement: `denoise`
+
+**Parameters without server defaults (request-only):**
+- Advanced/experimental: `layer_penalty_factor`, `preprocess_prompt`, `postprocess_output`
+- Audio chunking: `audio_chunk_duration`, `audio_chunk_threshold`
+- Optional overrides: `duration`, `language`
+
+### Rationale for Request-Only Status
+
+1. **layer_penalty_factor**: Advanced parameter with unclear production use case. Users should experiment per-request.
+
+2. **preprocess_prompt / postprocess_output**: Boolean toggles for upstream preprocessing/postprocessing. No clear reason to disable globally.
+
+3. **audio_chunk_duration / audio_chunk_threshold**: Audio chunking parameters. Likely experimental or use-case specific, not deployment-wide settings.
+
+4. **Consistency with existing request-only params**: `duration` and `language` are also request-only with no server defaults.
+
+### CLI Surface Review
+
+**cli.py (lines 39-86)**: CLI flags exist for the 6 parameters with server defaults:
+- `--num-step`
+- `--guidance-scale`
+- `--denoise` / `--no-denoise`
+- `--t-shift`
+- `--position-temperature`
+- `--class-temperature`
+
+**No CLI flags for request-only parameters** (duration, language, and the 5 new params).
+
+This is **intentional and correct**.
+
+### README Documentation Review
+
+**Configuration table (lines 329-337)**: Documents only the parameters with CLI flags.
+
+**API Reference (lines 356-365)**: Documents all request parameters including the 5 new ones.
+
+**Advanced Generation Parameters section (lines 445-465)**: Documents all 11 upstream generation parameters with usage examples.
+
+The README correctly distinguishes:
+- **Server configuration** (CLI/env vars) - deployment-level settings
+- **Request parameters** (API body) - per-request overrides
+
+## Verification Commands
+
+```bash
+# Confirm no CLI flags exist for new params
+grep -E "layer.penalty|preprocess.prompt|postprocess.output|audio.chunk" omnivoice_server/cli.py
+# Expected: No matches
+
+# Confirm no server defaults exist for new params
+grep -E "layer_penalty_factor|preprocess_prompt|postprocess_output|audio_chunk_duration|audio_chunk_threshold" omnivoice_server/config.py
+# Expected: No Field() definitions (only in comments/type hints)
+
+# Confirm request-level support exists
+grep -E "layer_penalty_factor|preprocess_prompt|postprocess_output|audio_chunk_duration|audio_chunk_threshold" omnivoice_server/routers/speech.py
+# Expected: Matches in SpeechRequest and clone Form fields
+
+# Confirm README documents request-level usage
+grep -E "layer_penalty_factor|preprocess_prompt|postprocess_output|audio_chunk_duration|audio_chunk_threshold" README.md
+# Expected: Matches in API reference and examples
+```
+
+## Conclusion
+
+**No code changes required.**
+
+The five newly exposed parameters are correctly implemented as **request-only** parameters without server-level CLI flags or environment variables. This design:
+
+1. **Follows existing patterns**: Matches the treatment of `duration` and `language`
+2. **Respects upstream defaults**: Omits params from kwargs when not explicitly provided
+3. **Maintains clear boundaries**: Server config for deployment settings, request params for per-request overrides
+4. **Documented correctly**: README distinguishes server config from request parameters
+
+The implementation from Task 5 is complete and requires no CLI/config alignment changes.
+
+## Files Reviewed
+
+- omnivoice_server/config.py (lines 40-78) - Server defaults
+- omnivoice_server/cli.py (lines 39-86) - CLI flags
+- omnivoice_server/routers/speech.py (lines 60-64, 278-282) - Request schemas
+- omnivoice_server/services/inference.py (lines 45-49, 112-121) - Parameter propagation
+- README.md (lines 329-337, 356-365, 445-465) - Documentation
+
+## Evidence Artifacts
+
+- This review document
+- Verification commands provided above
+- Cross-reference with Task 5 learnings in notepad

@@ -1,0 +1,267 @@
+Task 19: Readiness Assessment - Define Future Default Switch Criteria
+========================================================================
+
+Date: 2026-04-19T18:18:19Z
+Status: INCOMPLETE (blocked by Task 16, Task 17, Task 18 dependencies)
+
+================================================================================
+PLAN ACCEPTANCE CRITERIA (Literal Requirements)
+================================================================================
+
+From .sisyphus/plans/torchcodec-windows-long-term-fix.md (lines 1271-1274):
+
+1. [ ] Future default-switch criteria are explicit and evidence-based
+   Status: ❌ CANNOT COMPLETE
+   Reason: Task 16 and Task 17 evidence missing (blocked by environment)
+
+2. [ ] The procedure for changing default backend is documented
+   Status: ⚠️ STRUCTURAL ONLY
+   Reason: Can document procedure, but cannot validate without Task 16/17 evidence
+
+3. [ ] Immediate rollback procedure after future default switch is documented
+   Status: ✅ ALREADY EXISTS
+   Reason: Task 13 rollback runbook covers post-switch rollback
+
+OVERALL: ❌ PLAN ACCEPTANCE CRITERIA CANNOT BE MET
+
+================================================================================
+DEPENDENCY ANALYSIS
+================================================================================
+
+Plan Dependency Matrix (line 1264):
+- Task 19 blocked by: 3, 13, 14, 16, 17, 18
+
+Dependency Status:
+- Task 3 (compatibility matrix): ✅ COMPLETE
+- Task 13 (rollback runbook): ✅ COMPLETE
+- Task 14 (documentation): ✅ COMPLETE
+- Task 16 (support matrix validation): ❌ NOT COMPLETE (blocked by environment)
+- Task 17 (transcript equivalence): ❌ NOT COMPLETE (blocked by environment)
+- Task 18 (rollout state): ⚠️ IMPLEMENTED-BUT-BLOCKED (by Task 17)
+
+Critical Blockers:
+- Task 16: Runtime validation evidence missing
+- Task 17: Fixture comparison evidence missing
+- Task 18: Blocked by Task 17
+
+Impact on Task 19:
+- Cannot define evidence-based switch criteria without Task 16/17 evidence
+- Cannot validate switch criteria without runtime validation results
+- Cannot assess rollout readiness without Task 18 completion
+
+================================================================================
+WHAT CURRENT ARTIFACTS PROVIDE
+================================================================================
+
+✓ Structural Documentation Exists:
+- Task 3 compatibility matrix defines 7 switch criteria (lines 75-83)
+- Task 13 rollback runbook documents rollback procedure
+- Task 14 documentation describes current rollout stage
+- Task 15 command matrix provides validation blueprint
+
+✓ Rollback Mechanism Operational:
+- 10/10 rollback tests pass
+- Three rollback methods documented (env var, CLI flag, config field)
+- Rollback procedure verified and tested
+
+✓ Switch Criteria Framework Defined:
+Task 3 compatibility matrix (lines 75-83) defines 7 criteria:
+1. All supported environments validated (Task 16) - ❌ NOT MET
+2. Transcript equivalence verified (Task 17) - ❌ NOT MET
+3. Clone success rate ≥ 90% - ⚠️ CANNOT MEASURE (no runtime validation)
+4. No critical regressions - ⚠️ CANNOT ASSESS (no runtime validation)
+5. Rollback procedure tested - ✅ MET (10/10 tests pass)
+6. Documentation complete - ✅ MET (Task 14 complete)
+7. Minimum 2 weeks opt-in feedback - ⚠️ PENDING (rollout not started)
+
+================================================================================
+WHAT IS MISSING (Required for Task 19)
+================================================================================
+
+❌ Runtime Validation Evidence (Task 16):
+- No execution evidence for supported environment/backend combinations
+- Cannot assess criterion 1: "All supported environments validated"
+- Cannot assess criterion 3: "Clone success rate ≥ 90%"
+- Cannot assess criterion 4: "No critical regressions"
+
+❌ Transcript Equivalence Evidence (Task 17):
+- No fixture-based backend comparison executed
+- Cannot assess criterion 2: "Transcript equivalence verified"
+- Cannot validate switch criteria against actual runtime behavior
+
+❌ Rollout Completion (Task 18):
+- Task 18 blocked by Task 17
+- Cannot assess criterion 7: "Minimum 2 weeks opt-in feedback"
+- Cannot gather real-world usage data for switch decision
+
+❌ Evidence-Based Switch Criteria:
+- Cannot define criteria without evidence from Tasks 16-18
+- Plan explicitly requires: "criteria reference concrete outcomes from validation tasks"
+- Structural framework exists, but evidence gaps prevent completion
+
+================================================================================
+CURRENT ARTIFACTS ASSESSMENT
+================================================================================
+
+Existing Documentation:
+1. docs/ASR_ROLLBACK_RUNBOOK.md (Task 13)
+   - Covers rollback procedure comprehensively
+   - Includes post-switch rollback (same procedure)
+   - Acceptance criterion 3 already satisfied
+
+2. docs/readme/sections/05-cli-usage.md (Task 14)
+   - Documents current rollout stage (transformers default, faster-whisper opt-in)
+   - Describes backend selection methods
+   - Provides operator guidance
+
+3. docs/readme/sections/06-configuration.md (Task 14)
+   - Documents selection precedence
+   - Describes both backends
+   - Clarifies current rollout stage
+
+4. docs/readme/sections/14-troubleshooting.md (Task 14)
+   - Documents Windows workaround (short-term)
+   - Documents faster-whisper backend (long-term)
+   - Links to rollback runbook
+
+5. .sisyphus/evidence/task-3-compatibility-matrix.txt (Task 3)
+   - Defines 7 switch criteria
+   - Provides framework for switch decision
+   - Specifies rollback triggers
+
+Can These Satisfy Task 19?
+- Acceptance criterion 3 (rollback procedure): ✅ YES (already documented)
+- Acceptance criterion 2 (switch procedure): ⚠️ STRUCTURAL ONLY (cannot validate)
+- Acceptance criterion 1 (evidence-based criteria): ❌ NO (evidence missing)
+
+================================================================================
+TASK 19 VERDICT
+================================================================================
+
+Status: ❌ INCOMPLETE
+
+Reason: Cannot complete Task 19 without evidence from Tasks 16, 17, and 18.
+
+Structural Work: COMPLETE
+- Rollback procedure documented (Task 13)
+- Switch criteria framework defined (Task 3)
+- Current rollout stage documented (Task 14)
+
+Evidence Work: BLOCKED
+- Runtime validation evidence missing (Task 16)
+- Fixture comparison evidence missing (Task 17)
+- Rollout completion blocked (Task 18)
+
+What Remains:
+1. Complete Task 16 in proper environment (runtime validation)
+2. Complete Task 17 in proper environment (fixture comparison)
+3. Unblock Task 18 (rollout state assessment)
+4. Gather opt-in feedback (minimum 2 weeks)
+5. Assess all 7 switch criteria against evidence
+6. Document evidence-based switch decision
+7. Validate switch procedure
+
+================================================================================
+CONSERVATIVE INTERPRETATION
+================================================================================
+
+Plan Requirement (line 1251):
+"Do not define future-switch criteria without evidence from tasks 16-18."
+
+Current State:
+- Task 16: NOT COMPLETE (evidence missing)
+- Task 17: NOT COMPLETE (evidence missing)
+- Task 18: IMPLEMENTED-BUT-BLOCKED (by Task 17)
+
+Interpretation:
+- Task 19 CANNOT proceed without Tasks 16-18 complete
+- Structural documentation alone does not satisfy "evidence-based" requirement
+- Plan explicitly forbids defining criteria without validation evidence
+
+Decision:
+- Mark Task 19 as INCOMPLETE
+- Document blockers explicitly
+- Preserve structural work for future completion
+- Do NOT overclaim completion based on structural artifacts alone
+
+================================================================================
+LESSONS FROM PRIOR TASKS
+================================================================================
+
+Task 16 Lesson:
+- Initial verdict claimed "COMPLETE with documented constraints"
+- Corrected to "NOT COMPLETE" because runtime validation evidence missing
+- Structural validation alone does not satisfy plan acceptance criteria
+
+Task 17 Lesson:
+- Initial verdict claimed "COMPLETE" based on contract-level equivalence
+- Corrected to "NOT COMPLETE" because fixture comparison evidence missing
+- Plan acceptance criteria are literal requirements, not suggestions
+
+Task 18 Lesson:
+- Implementation complete, acceptance criteria met
+- But marked "IMPLEMENTED-BUT-BLOCKED" due to Task 17 dependency
+- Respecting dependency arrows prevents cascading overclaims
+
+Task 19 Application:
+- Do NOT claim completion based on structural artifacts alone
+- Do NOT overclaim that framework = evidence-based criteria
+- Respect dependency blockers (Tasks 16, 17, 18)
+- Mark INCOMPLETE until evidence available
+
+================================================================================
+WHAT CAN BE DOCUMENTED NOW (Structural Only)
+================================================================================
+
+Switch Procedure (Structural):
+1. Assess all 7 criteria from Task 3 compatibility matrix
+2. Verify minimum 2 weeks opt-in feedback collected
+3. Review runtime validation results (Task 16)
+4. Review transcript equivalence results (Task 17)
+5. If all criteria met, update default in factory.py
+6. Update documentation to reflect new default
+7. Monitor rollback triggers for 1 week post-switch
+
+Post-Switch Rollback (Already Documented):
+- Same procedure as Task 13 rollback runbook
+- Three methods: env var, CLI flag, config field
+- Rollback time: < 5 minutes (restart required)
+- Verification steps documented
+
+Limitation:
+- Procedure is structural only
+- Cannot validate without runtime evidence
+- Cannot assess criteria without Task 16/17 results
+- Cannot define evidence-based criteria without evidence
+
+================================================================================
+FINAL VERDICT
+================================================================================
+
+TASK 19 VERDICT: INCOMPLETE
+
+Justification:
+1. Task 16 NOT COMPLETE (runtime validation blocked)
+2. Task 17 NOT COMPLETE (fixture comparison blocked)
+3. Task 18 IMPLEMENTED-BUT-BLOCKED (by Task 17)
+4. Cannot define evidence-based criteria without evidence
+5. Plan explicitly forbids proceeding without Tasks 16-18 evidence
+6. Structural documentation exists but does not satisfy "evidence-based" requirement
+
+What Exists:
+- Rollback procedure (Task 13) ✅
+- Switch criteria framework (Task 3) ✅
+- Current rollout documentation (Task 14) ✅
+- Structural switch procedure ⚠️
+
+What Is Missing:
+- Runtime validation evidence (Task 16) ❌
+- Fixture comparison evidence (Task 17) ❌
+- Rollout completion (Task 18) ❌
+- Evidence-based switch criteria ❌
+
+Blocker: Tasks 16, 17, 18 must complete before Task 19 can proceed.
+
+================================================================================
+END OF READINESS ASSESSMENT
+================================================================================

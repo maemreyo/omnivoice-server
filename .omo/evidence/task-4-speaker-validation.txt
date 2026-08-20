@@ -1,0 +1,34 @@
+SPEAKER ID VALIDATION - VERIFICATION RESULTS
+============================================
+
+Test Date: 2026-04-17
+File: omnivoice_server/routers/script.py
+
+REGEX PATTERN: ^[a-zA-Z0-9_-]{1,64}$
+
+VALID SPEAKER IDs (ACCEPTED):
+✓ alice
+✓ bob_123
+✓ speaker-1
+✓ a (single char)
+✓ 64-character string
+
+INVALID SPEAKER IDs (REJECTED):
+✓ 65-character string (exceeds max length)
+✓ empty string
+✓ "alice bob" (contains space)
+✓ "alice@test" (contains @)
+✓ "alice!" (contains !)
+✓ "alice.wav" (contains .)
+
+VALIDATION BEHAVIOR:
+- Pydantic field_validator raises ValueError with clear message
+- Error message format: "Invalid speaker ID '{id}': must be 1-64 alphanumeric/underscore/hyphen characters"
+- Validation occurs at request parsing time (before endpoint logic)
+
+INTEGRATION WITH ScriptSegment:
+- Field: speaker: str = Field(..., min_length=1, max_length=64)
+- Validator: @field_validator("speaker") with regex check
+- Rejects invalid IDs before they reach orchestrator
+
+CONCLUSION: Speaker validation working correctly - invalid IDs rejected with clear error messages

@@ -1,0 +1,160 @@
+Task 17: Corrected Verdict - NOT COMPLETE
+==========================================
+
+Date: 2026-04-19T18:07:15Z
+Status: ❌ NOT COMPLETE (blocked by environment constraints)
+
+================================================================================
+CORRECTED ASSESSMENT
+================================================================================
+
+Task 17 is NOT COMPLETE. The plan's acceptance criteria require runtime 
+backend-to-backend comparison on fixtures, which cannot be executed in this
+environment.
+
+================================================================================
+PLAN ACCEPTANCE CRITERIA (Literal Requirements)
+================================================================================
+
+From .sisyphus/plans/torchcodec-windows-long-term-fix.md:
+
+1. [ ] Both backends are compared on the agreed fixture set
+   Status: ❌ NOT MET
+   Reason: Cannot execute both backends on fixtures (environment blocked)
+
+2. [ ] Results are judged against an explicit equivalence rule
+   Status: ❌ NOT MET
+   Reason: No runtime results to judge (no fixture comparison executed)
+
+3. [ ] Findings are documented for rollout/default-switch decisions
+   Status: ⚠️ PARTIAL
+   Reason: Structural findings documented, but runtime findings missing
+
+OVERALL: ❌ PLAN ACCEPTANCE CRITERIA NOT MET
+
+================================================================================
+WHAT WAS COMPLETED (Structural Validation)
+================================================================================
+
+✓ Contract-level equivalence validated
+  - Both backends implement identical transcript contract (Task 5)
+  - 29/29 contract tests pass
+  - Mock backend equivalence tests pass
+  - Structural analysis confirms compliance
+
+✓ Clone path compatibility validated
+  - Backend abstraction integrated (Task 11)
+  - No backend-specific branching required
+  - ref_text=None trigger preserved
+  - Rollback mechanism operational (10/10 tests pass)
+
+✓ Environment constraints documented
+  - Python 3.9.6 blocks OmniVoice import
+  - Cannot execute runtime comparison
+  - Blocker explicitly documented
+
+✓ Evidence files created
+  - Comprehensive analysis of structural equivalence
+  - Clear distinction between validated and blocked work
+
+================================================================================
+WHAT IS BLOCKED (Runtime Validation - Plan Requirement)
+================================================================================
+
+❌ Fixture-based backend comparison
+   - Cannot run transformers backend on fixtures
+   - Cannot run faster-whisper backend on fixtures
+   - Cannot compare actual transcript outputs
+
+❌ Equivalence rule application
+   - Equivalence rule defined (Task 5 contract)
+   - Cannot apply rule to runtime outputs (no outputs available)
+
+❌ Rollout decision findings
+   - Cannot document runtime equivalence for rollout decision
+   - Structural evidence alone insufficient per plan requirements
+
+================================================================================
+ENVIRONMENT CONSTRAINTS
+================================================================================
+
+Blocking Factors:
+- Python 3.9.6 (project requires 3.10+)
+- transformers 4.45.2 missing HiggsAudioV2TokenizerModel
+- OmniVoice import fails
+- Cannot execute full OmniVoice runtime
+
+Impact:
+- Backend-to-backend comparison: BLOCKED
+- Fixture-based validation: BLOCKED
+- Runtime equivalence assessment: BLOCKED
+
+================================================================================
+WHAT REMAINS TO COMPLETE TASK 17
+================================================================================
+
+Required Actions:
+1. Setup proper environment
+   - Python 3.10+
+   - Compatible transformers version (with HiggsAudioV2TokenizerModel)
+   - OmniVoice importable
+
+2. Execute fixture comparison
+   - Run transformers backend on representative fixtures
+   - Run faster-whisper backend on same fixtures
+   - Compare actual transcript outputs
+
+3. Apply equivalence rule
+   - Judge results against Task 5 transcript contract
+   - Document equivalence assessment
+
+4. Document rollout findings
+   - Runtime equivalence status
+   - Rollout recommendation based on actual comparison
+
+5. Update Task 17 evidence
+   - Add runtime comparison results
+   - Mark plan acceptance criteria as met
+   - Change status to COMPLETE
+
+================================================================================
+PREVIOUS INCORRECT ASSESSMENT
+================================================================================
+
+Initial Claim: Task 17 COMPLETE based on structural evidence
+
+Error: Overclaimed that contract-level equivalence satisfied plan requirements
+
+Why Incorrect:
+- Plan explicitly requires fixture comparison
+- Structural evidence does not substitute for runtime validation
+- Plan acceptance criteria are literal requirements, not suggestions
+
+Correction: Task 17 is NOT COMPLETE until fixture comparison executes
+
+================================================================================
+CORRECTED VERDICT
+================================================================================
+
+Task 17 Status: ❌ NOT COMPLETE (Blocked)
+
+Structural Work: COMPLETE
+Runtime Work: BLOCKED (required by plan)
+Overall: NOT COMPLETE
+
+Blocker: Python 3.9.6 environment prevents OmniVoice runtime execution
+Blocked Since: 2026-04-19T18:07:00Z
+
+What Remains: Execute fixture comparison in proper environment
+
+================================================================================
+LESSON LEARNED
+================================================================================
+
+Plan acceptance criteria are literal requirements. Structural validation alone
+does not satisfy fixture comparison requirements. Task cannot be marked complete
+without executing the specific validation steps defined in plan acceptance criteria.
+
+================================================================================
+END OF CORRECTED VERDICT
+================================================================================

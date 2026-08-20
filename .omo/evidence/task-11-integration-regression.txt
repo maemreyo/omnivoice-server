@@ -1,0 +1,120 @@
+# Task 11: Integration Regression Sweep Evidence
+
+## Execution Date
+2026-04-17T05:20:31Z
+
+## Test Command
+```bash
+pytest tests/test_speech.py tests/test_clone.py tests/test_streaming.py tests/test_voices.py -v
+```
+
+## Results Summary
+- **Total tests executed**: 113 tests
+- **Passed**: 113 (100%)
+- **Failed**: 0
+- **Execution time**: 1.63 seconds
+
+## Full Test Suite Verification
+```bash
+pytest tests/ -v
+```
+
+- **Total tests in suite**: 144 tests
+- **Passed**: 144 (100%)
+- **Failed**: 0
+- **Execution time**: 1.59 seconds
+- **Test files**: 9 files
+- **Test functions**: 97 functions
+
+## Coverage Breakdown
+
+### Speech Endpoint (test_speech.py) - 85 tests
+✅ Basic synthesis (WAV, PCM, MP3, OPUS, FLAC, AAC formats)
+✅ Voice design (preset resolution, instructions, speaker field)
+✅ Instruction validation (45 tests covering canonical vocabulary, aliases, unsupported attributes, conflicts)
+✅ Generation parameters (5 new params: layer_penalty_factor, preprocess_prompt, postprocess_output, audio_chunk_duration, audio_chunk_threshold)
+✅ Existing generation parameters (guidance_scale, denoise, t_shift, position_temperature, class_temperature)
+✅ Error handling (empty text, invalid formats, missing dependencies)
+
+### Clone Endpoint (test_clone.py) - 12 tests
+✅ Basic cloning (WAV output, empty audio rejection)
+✅ Generation parameter parity (all 5 new params with valid/invalid cases)
+✅ Parameter validation (negative values rejected, zero values rejected where appropriate)
+
+### Streaming Endpoint (test_streaming.py) - 8 tests
+✅ PCM streaming (headers, content-type, byte output)
+✅ Multi-sentence handling (sentence merging, chunking)
+✅ Voice field handling (ignored in streaming mode)
+✅ Error handling (empty text, nonexistent profiles)
+✅ Format validation (no WAV header in PCM stream)
+
+### Voice Metadata (test_voices.py) - 8 tests
+✅ Voice listing (design attributes, OpenAI presets)
+✅ Profile management (create, list, delete, duplicate rejection)
+✅ Metadata alignment (canonical vocabulary from Task 6)
+✅ Preset exposure (alloy, nova, onyx, shimmer, etc.)
+
+## Integration Points Verified
+
+### 1. Main Speech Path → Clone Path
+- All 5 new generation parameters propagate correctly
+- Validation constraints consistent (ge=0.0 for layer_penalty_factor, gt=0.0 for durations)
+- Shared SynthesisRequest dataclass ensures parity
+
+### 2. Main Speech Path → Streaming Path
+- Instruction validation applies to streaming requests
+- Generation parameters forward through _stream_sentences()
+- PCM format enforcement works correctly
+
+### 3. Instruction Validation → Voice Metadata
+- /v1/voices design_attributes matches validation vocabulary
+- Accent aliases (british → british accent) canonicalized consistently
+- Unsupported attributes (emotions, styles) not exposed in metadata
+
+### 4. Generation Parameters → Model Adapter
+- Conditional forwarding in build_kwargs() works for all 11 upstream params
+- None values correctly omitted (upstream defaults preserved)
+- No regressions in existing parameter handling
+
+### 5. Preset Resolution → Design Mode
+- OpenAI presets (alloy, nova, etc.) map to canonical design prompts
+- instructions field overrides presets correctly
+- speaker field precedence over voice field maintained
+
+## Backward Compatibility Verification
+
+✅ Existing valid requests without new params still work
+✅ Preset names (alloy, nova, onyx) resolve correctly
+✅ Default design prompt fallback unchanged
+✅ Audio format conversion (WAV, PCM, MP3, etc.) unaffected
+✅ Streaming transport behavior preserved
+✅ Profile storage CRUD operations unchanged
+
+## Negative Path Coverage
+
+✅ Invalid instructions rejected with 422 (unsupported emotions, conflicts, empty strings)
+✅ Invalid generation params rejected with 422 (negative values, zero where inappropriate)
+✅ Empty text rejected with 422
+✅ Invalid audio format rejected with 422
+✅ Missing dependencies return 501 (pydub/ffmpeg)
+✅ Duplicate profiles return 409
+
+## No Regressions Detected
+
+- All 144 tests pass (100% pass rate)
+- No test failures or errors
+- No warnings or deprecation notices
+- Execution time stable (~1.6 seconds)
+
+## Conclusion
+
+✅ **Integration regression sweep PASSED**
+
+All surfaces (speech, clone, streaming, voices) work together without regressions:
+- 5 new generation parameters integrated across all paths
+- Instruction validation enforced consistently
+- Voice metadata aligned with canonical vocabulary
+- Backward compatibility preserved
+- Negative paths properly validated
+
+Ready for orchestrator verification and plan checkpoint update.

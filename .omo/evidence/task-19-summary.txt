@@ -1,0 +1,129 @@
+Task 19: Summary - Define Future Default Switch Criteria
+==========================================================
+
+Date: 2026-04-19T18:18:19Z
+Status: INCOMPLETE
+
+================================================================================
+QUICK VERDICT
+================================================================================
+
+TASK 19 VERDICT: INCOMPLETE
+
+Reason: Cannot define evidence-based switch criteria without evidence from Tasks 16, 17, and 18.
+
+================================================================================
+DEPENDENCY BLOCKERS
+================================================================================
+
+Task 19 blocked by (per plan line 1264):
+- Task 16: ❌ NOT COMPLETE (runtime validation blocked by environment)
+- Task 17: ❌ NOT COMPLETE (fixture comparison blocked by environment)
+- Task 18: ⚠️ IMPLEMENTED-BUT-BLOCKED (by Task 17)
+
+Critical Gap: No runtime validation evidence available to assess switch criteria.
+
+================================================================================
+PLAN ACCEPTANCE CRITERIA STATUS
+================================================================================
+
+From plan lines 1271-1274:
+
+1. [ ] Future default-switch criteria are explicit and evidence-based
+   Status: ❌ CANNOT COMPLETE
+   Reason: Evidence from Tasks 16-18 missing
+
+2. [ ] The procedure for changing default backend is documented
+   Status: ⚠️ STRUCTURAL ONLY
+   Reason: Procedure can be documented, but cannot validate without evidence
+
+3. [ ] Immediate rollback procedure after future default switch is documented
+   Status: ✅ ALREADY EXISTS
+   Reason: Task 13 rollback runbook covers post-switch rollback
+
+Overall: ❌ 1/3 acceptance criteria met (only rollback procedure)
+
+================================================================================
+WHAT EXISTS (Structural Documentation)
+================================================================================
+
+✓ Task 3 compatibility matrix: 7 switch criteria defined
+✓ Task 13 rollback runbook: Post-switch rollback documented
+✓ Task 14 documentation: Current rollout stage documented
+✓ Task 15 command matrix: Validation blueprint exists
+
+Limitation: Structural framework exists, but evidence gaps prevent completion.
+
+================================================================================
+WHAT IS MISSING (Required Evidence)
+================================================================================
+
+❌ Runtime validation results (Task 16)
+❌ Fixture comparison results (Task 17)
+❌ Rollout completion (Task 18)
+❌ Opt-in feedback (minimum 2 weeks)
+❌ Evidence-based switch criteria assessment
+
+================================================================================
+SWITCH CRITERIA FRAMEWORK (Task 3)
+================================================================================
+
+7 criteria defined in Task 3 compatibility matrix:
+
+1. All supported environments validated (Task 16) - ❌ NOT MET
+2. Transcript equivalence verified (Task 17) - ❌ NOT MET
+3. Clone success rate ≥ 90% - ⚠️ CANNOT MEASURE
+4. No critical regressions - ⚠️ CANNOT ASSESS
+5. Rollback procedure tested - ✅ MET (10/10 tests pass)
+6. Documentation complete - ✅ MET (Task 14 complete)
+7. Minimum 2 weeks opt-in feedback - ⚠️ PENDING
+
+Status: 2/7 criteria met, 2/7 blocked, 3/7 pending evidence
+
+================================================================================
+WHAT REMAINS TO COMPLETE TASK 19
+================================================================================
+
+Required Actions:
+1. Complete Task 16 in proper environment (runtime validation)
+2. Complete Task 17 in proper environment (fixture comparison)
+3. Unblock Task 18 (rollout state assessment)
+4. Gather opt-in feedback (minimum 2 weeks post-rollout)
+5. Assess all 7 switch criteria against evidence
+6. Document evidence-based switch decision
+7. Validate switch procedure against criteria
+
+Estimated Time: Weeks (depends on environment setup + opt-in feedback period)
+
+================================================================================
+CONSERVATIVE INTERPRETATION
+================================================================================
+
+Plan Requirement (line 1251):
+"Do not define future-switch criteria without evidence from tasks 16-18."
+
+Current State: Tasks 16, 17, 18 not complete.
+
+Decision: Mark Task 19 as INCOMPLETE until evidence available.
+
+================================================================================
+EVIDENCE FILES
+================================================================================
+
+- task-19-readiness-assessment.txt (detailed analysis)
+- task-19-summary.txt (this file)
+
+================================================================================
+REFERENCES
+================================================================================
+
+- Plan: .sisyphus/plans/torchcodec-windows-long-term-fix.md (Task 19, lines 1242-1297)
+- Task 16 verdict: .sisyphus/evidence/task-16-summary.txt
+- Task 17 verdict: .sisyphus/evidence/task-17-corrected-verdict.txt
+- Task 18 verdict: .sisyphus/evidence/task-18-summary.txt
+- Switch criteria: .sisyphus/evidence/task-3-compatibility-matrix.txt
+- Rollback runbook: docs/ASR_ROLLBACK_RUNBOOK.md
+
+================================================================================
+END OF SUMMARY
+================================================================================

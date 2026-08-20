@@ -1,0 +1,16 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.12, pytest-9.0.3, pluggy-1.6.0 -- /opt/homebrew/opt/python@3.13/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /Users/trung.ngo/Documents/zaob-dev/omnivoice-server
+configfile: pyproject.toml
+plugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 85 items / 82 deselected / 3 selected
+
+tests/test_speech.py::test_speech_instruction_validation[valid-british-accent] PASSED [ 33%]
+tests/test_speech.py::test_speech_instruction_validation[duplicate-accent] PASSED [ 66%]
+tests/test_speech.py::test_speech_instruction_accent_alias_canonicalization FAILED [100%]
+
+=========================== short test summary info ============================
+FAILED tests/test_speech.py::test_speech_instruction_accent_alias_canonicalization
+================== 1 failed, 2 passed, 82 deselected in 0.07s ==================

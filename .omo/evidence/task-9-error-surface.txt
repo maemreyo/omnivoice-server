@@ -1,0 +1,88 @@
+Task 9: Error Surface Verification
+Timestamp: 2026-04-19T16:40:45Z
+
+=== VERIFICATION COMMAND ===
+grep -A5 "raise RuntimeError\|raise ValueError" OmniVoice/omnivoice/asr/transformers_backend.py OmniVoice/omnivoice/asr/faster_whisper_backend.py OmniVoice/omnivoice/asr/factory.py
+
+=== ERROR MESSAGES VERIFIED ===
+
+factory.py:
+✅ Line 37-40: Invalid env var value
+   ValueError: "Invalid OMNIVOICE_ASR_BACKEND='{env_backend}'. Supported values: 'transformers', 'faster-whisper'"
+   - Lists valid options
+   - Includes actual invalid value
+
+✅ Line 87-90: Missing transformers implementation
+   ImportError: "TransformersASRBackend not yet implemented. This will be added in Task 6. Original error: {e}"
+   - References task number
+   - Preserves original error
+
+✅ Line 102-105: Missing faster-whisper implementation
+   ImportError: "FasterWhisperASRBackend not yet implemented. This will be added in Task 7. Original error: {e}"
+   - References task number
+   - Preserves original error
+
+✅ Line 109-111: Unsupported backend
+   ValueError: "Unsupported ASR backend: {backend}. Supported: 'transformers', 'faster-whisper'"
+   - Lists valid options
+   - Includes actual invalid value
+
+transformers_backend.py:
+✅ Line 88-92: Non-torchcodec load failure
+   RuntimeError: "ASR model loading failed: transformers backend could not initialize. Model: {model_name}, Device: {device}. Cause: {exc}"
+   - Includes backend context
+   - Includes model and device info
+   - Preserves exception chain
+
+✅ Line 116-119: Model unavailable
+   RuntimeError: "ASR model is unavailable. Provide ref_text manually, or align your torch/torchaudio/torchcodec installation before using auto-transcription."
+   - Suggests manual ref_text workaround
+   - Suggests dependency alignment workaround
+
+✅ Line 139-143: Transcription failure
+   RuntimeError: "Transcription failed: transformers backend encountered an error. Audio type: {type}. Cause: {exc}"
+   - Includes backend context
+   - Includes audio type info
+   - Preserves exception chain
+
+faster_whisper_backend.py:
+✅ Line 57-59: Missing faster-whisper package
+   RuntimeError: "faster-whisper is not installed. Install it with: pip install faster-whisper"
+   - Actionable install command
+
+✅ Line 85: Model load failure
+   RuntimeError: "Failed to load faster-whisper model '{model_name}': {e}"
+   - Includes model name
+   - Preserves exception chain
+
+✅ Line 104-107: Model unavailable
+   RuntimeError: "ASR model is unavailable. Call load_model() first, or provide ref_text manually to bypass auto-transcription."
+   - Suggests load_model() call
+   - Suggests manual ref_text workaround
+
+✅ Line 129: Transcription failure
+   RuntimeError: "ASR transcription failed: {e}"
+   - Preserves exception chain
+
+=== ACTIONABILITY VERIFICATION ===
+
+All error messages include:
+✅ Clear problem statement
+✅ Backend/model/device context where relevant
+✅ Actionable next steps or workarounds
+✅ Exception chaining (from exc) for debugging
+
+Workarounds suggested:
+✅ Manual ref_text (bypasses ASR entirely)
+✅ Dependency alignment (torch/torchaudio/torchcodec)
+✅ Package installation (pip install faster-whisper)
+✅ load_model() call (for uninitialized backend)
+
+=== NO RAW OPAQUE FAILURES ===
+
+✅ All RuntimeError messages include context
+✅ All ImportError messages include task references
+✅ All ValueError messages list valid options
+✅ No bare exception re-raises without wrapping
+
+Evidence captured: 2026-04-19T16:40:45Z

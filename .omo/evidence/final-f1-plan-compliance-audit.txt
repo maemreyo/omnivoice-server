@@ -1,0 +1,253 @@
+# F1: Plan Compliance Audit
+# Execution Date: 2026-04-17T05:24:14Z
+
+## AUDIT METHODOLOGY
+
+Verified implementation against plan requirements by:
+1. Reading plan end-to-end (.sisyphus/plans/omnivoice-upstream-alignment.md)
+2. Checking evidence files for completed tasks (1-11)
+3. Running integration tests to verify behavior
+4. Searching codebase for forbidden patterns
+5. Verifying documentation alignment
+
+## MUST HAVE REQUIREMENTS (8/8 VERIFIED)
+
+### 1. Upstream-documented missing parameters exposed ✅
+**Requirement**: Expose 5 missing upstream generation parameters on API surfaces
+
+**Evidence**:
+- SpeechRequest schema (routers/speech.py lines 60-64): layer_penalty_factor, preprocess_prompt, postprocess_output, audio_chunk_duration, audio_chunk_threshold
+- Clone endpoint Form (routers/speech.py lines 278-282): All 5 params present
+- SynthesisRequest dataclass (services/inference.py lines 45-49): All 5 params present
+- build_kwargs() forwarding (services/inference.py lines 112-121): Conditional forwarding implemented
+- Tests pass: 18 param-specific tests (test_speech.py), 10 clone parity tests (test_clone.py)
+
+**Status**: ✅ VERIFIED
+
+### 2. Voice-design validation aligned with upstream ✅
+**Requirement**: API-layer validation for instructions using upstream-supported categories only
+
+**Evidence**:
+- Validation module exists: omnivoice_server/utils/instruction_validation.py
+- Canonical vocabulary enforced: gender, age, pitch, style, accent_en, dialect_zh
+- Accent aliases canonicalized: british → british accent (10 aliases supported)
+- Unsupported attributes rejected: 7 emotions (cheerful, sad, angry, etc.), 4 speaking styles (narration, customer_service, etc.)
+- Conflict detection: gender, age, pitch conflicts return 422
+- Tests pass: 45 instruction validation tests (test_speech.py)
+
+**Status**: ✅ VERIFIED
+
+### 3. Backward compatibility preserved ✅
+**Requirement**: Existing valid requests and preset usage continue to work
+
+**Evidence**:
+- All 144 tests pass (100% pass rate)
+- Preset resolution unchanged: alloy, nova, onyx, shimmer, etc. still map correctly
+- Default design prompt fallback preserved: "male, middle-aged, moderate pitch, british accent"
+- New params default to None (request-only, no breaking changes)
+- Audio format conversion (WAV, PCM, MP3, etc.) unaffected
+- Streaming transport behavior preserved
+
+**Status**: ✅ VERIFIED
+
+### 4. Clear labeling of server-only vs upstream-native ✅
+**Requirement**: Documentation distinguishes upstream features from server extensions
+
+**Evidence**:
+- README.md restructured with explicit sections:
+  - "Upstream OmniVoice Capabilities (Pass-Through)"
+  - "Server-Only Extensions"
+- Streaming labeled as "server-only HTTP streaming transport"
+- Profile storage labeled as "server-only storage feature"
+- OpenAI presets labeled as "server-only convenience mappings"
+- Voice metadata endpoint labeled correctly
+- Examples updated with explanatory notes
+
+**Status**: ✅ VERIFIED
+
+### 5. Main speech + clone parity ✅
+**Requirement**: /v1/audio/speech and /v1/audio/speech/clone remain aligned
+
+**Evidence**:
+- All 5 new params present in both endpoints
+- Validation constraints identical: ge=0.0 for layer_penalty_factor, gt=0.0 for durations
+- Shared SynthesisRequest dataclass ensures propagation parity
+- Clone tests pass: 12/12 tests including param parity cases
+- Streaming path forwards params correctly through _stream_sentences()
+
+**Status**: ✅ VERIFIED
+
+### 6. POST /v1/audio/speech accepts 5 new params ✅
+**Requirement**: Main endpoint accepts new params with validated types/ranges
+
+**Evidence**:
+- Schema validation: Field(ge=0.0) for layer_penalty_factor, Field(gt=0.0) for durations
+- Tests pass: test_speech_layer_penalty_factor (4 cases), test_speech_preprocess_prompt (2 cases), test_speech_postprocess_output (2 cases), test_speech_audio_chunk_duration (5 cases), test_speech_audio_chunk_threshold (5 cases)
+- Invalid values rejected with 422: negative layer_penalty_factor, zero/negative durations
+
+**Status**: ✅ VERIFIED
+
+### 7. Invalid instructions fail fast with 4xx ✅
+**Requirement**: Unsupported or conflicting instructions return actionable errors
+
+**Evidence**:
+- Unsupported emotions rejected: cheerful, sad, angry, surprised, happy, fearful, disgusted
+- Unsupported styles rejected: narration, customer_service, news_presentation, sportscasting
+- Conflicts detected: male+female, child+elderly, low pitch+high pitch
+- Empty instructions rejected: "" and whitespace-only
+- Error messages actionable: "Unsupported emotion attributes: cheerful. OmniVoice does not support emotion-based voice design."
+- Tests pass: 45 instruction validation tests
+
+**Status**: ✅ VERIFIED
+
+### 8. GET /v1/voices reflects supported attributes only ✅
+**Requirement**: Voice metadata exposes canonical vocabulary, no unsupported categories
+
+**Evidence**:
+- design_attributes field includes only: gender, age, pitch, style, accent_en, dialect_zh
+- Accent labels use full form: "british accent", "american accent", etc.
+- No emotion or speaking style attributes in metadata
+- Preset descriptions reference canonical prompts
+- Test passes: test_list_voices_design_attributes_match_omnivoice_validator
+
+**Status**: ✅ VERIFIED
+
+## MUST NOT HAVE GUARDRAILS (6/6 VERIFIED)
+
+### 1. No unsupported emotion/style attributes ✅
+**Forbidden**: cheerful, sad, angry, surprised, narration, customer_service
+
+**Verification**:
+```bash
+grep -r "cheerful\|sad\|angry\|surprised\|narration\|customer_service" --include="*.md" --include="*.py"
+```
+
+**Results**:
+- Found ONLY in validation rejection lists (instruction_validation.py lines 31-43)
+- Found ONLY in test cases for rejection (test_speech.py lines 590-599)
+- NOT found in user-facing docs (README.md, examples/)
+- NOT found in voice metadata (voice_presets.py, routers/voices.py)
+
+**Status**: ✅ VERIFIED - Forbidden attributes appear only in rejection logic
+
+### 2. No phoneme_input parameter ✅
+**Forbidden**: Separate phoneme_input parameter (pronunciation control remains inline in text)
+
+**Verification**:
+```bash
+grep -r "phoneme_input" --include="*.md" --include="*.py" --include="*.sh"
+```
+
+**Results**:
+- Found ONLY in plan guardrails (.sisyphus/plans/*.md)
+- Found ONLY in notepad learnings (.sisyphus/notepads/*.md)
+- NOT found in implementation code
+- NOT found in user-facing docs
+- NOT found in API schemas
+
+**Status**: ✅ VERIFIED - No phoneme_input parameter exists
+
+### 3. No unrelated refactoring ✅
+**Forbidden**: Refactor streaming/auth/profile systems just because adjacent files touched
+
+**Verification**:
+- Files modified: routers/speech.py, services/inference.py, utils/instruction_validation.py (new), voice_presets.py, routers/voices.py
+- Changes scoped to: parameter addition, validation logic, metadata alignment
+- Streaming logic unchanged (test_streaming.py: 8/8 pass)
+- Auth logic unchanged (no auth-related file modifications)
+- Profile storage logic unchanged (test_voices.py: 8/8 pass)
+
+**Status**: ✅ VERIFIED - No scope creep into unrelated systems
+
+### 4. No breaking changes to valid requests ✅
+**Forbidden**: Break existing valid preset names or request payloads
+
+**Verification**:
+- All 144 tests pass (100% pass rate)
+- Preset tests pass: test_speech_openai_voice_preset_maps_to_design_prompt
+- Default behavior preserved: test_speech_auto_uses_default_design_prompt
+- Backward compat tests pass: test_speech_default_returns_wav, test_speech_design_voice
+
+**Status**: ✅ VERIFIED - No breaking changes
+
+### 5. No silent acceptance of unsupported instructions ✅
+**Forbidden**: Silently accept unsupported instructions once validation added
+
+**Verification**:
+- Validation enforced: validate_and_canonicalize_instructions() called in _resolve_synthesis_mode()
+- Unsupported attributes return 422: test_speech_instruction_validation[unsupported-*] (11 tests)
+- Error messages explicit: "Unsupported emotion attributes: cheerful"
+- No silent fallback: InstructionValidationError raised, not caught
+
+**Status**: ✅ VERIFIED - Strict validation, no silent acceptance
+
+### 6. No mislabeling of server extensions ✅
+**Forbidden**: Relabel custom server extensions as native upstream features
+
+**Verification**:
+- README.md sections clearly separate upstream vs server-only
+- Streaming labeled: "Server-Only Extensions" → "HTTP streaming transport"
+- Profiles labeled: "server-only storage feature" (4 occurrences)
+- Presets labeled: "server-only convenience mappings"
+- Voice metadata labeled correctly in API reference
+
+**Status**: ✅ VERIFIED - Clear labeling throughout
+
+## TASKS COMPLETION (11/11 COMPLETED)
+
+✅ Task 1: Parameter parity matrix + failing schema tests
+✅ Task 2: Instruction validation spec + failing validation tests
+✅ Task 3: Docs/custom-extension inventory
+✅ Task 4: Clone endpoint parity audit + failing clone tests
+✅ Task 5: Main speech endpoint + inference mapping for missing params
+✅ Task 6: Instruction validation/canonicalization implementation
+✅ Task 7: Voice metadata/preset exposure alignment
+✅ Task 8: Clone endpoint parameter parity implementation
+✅ Task 9: README/API/examples/custom-extension labeling updates
+✅ Task 10: CLI/config alignment review (request-only decision)
+✅ Task 11: Integration regression sweep
+
+**Evidence files exist**:
+- .sisyphus/evidence/task-1-failing-speech-tests.txt
+- .sisyphus/evidence/task-2-instruction-failing-tests.txt
+- .sisyphus/evidence/task-3-doc-inventory.txt
+- .sisyphus/evidence/task-6-instruction-tests-pass.txt
+- .sisyphus/evidence/task-10-config-review.txt
+- .sisyphus/evidence/task-11-integration-regression.txt
+
+## VERIFICATION COMMANDS EXECUTED
+
+```bash
+# Integration tests
+pytest tests/test_speech.py tests/test_clone.py tests/test_streaming.py -v
+# Result: 105/105 passed
+
+# Full test suite
+pytest tests/ -v
+# Result: 144/144 passed in 1.62s
+
+# Linting
+ruff check omnivoice_server/ tests/
+# Result: All checks passed!
+
+# Type checking
+mypy omnivoice_server/
+# Result: Success (verified separately)
+
+# Forbidden pattern search
+grep -r "cheerful\|sad\|angry\|surprised\|narration\|customer_service" --include="*.md" --include="*.py"
+# Result: Found only in rejection lists and tests
+
+grep -r "phoneme_input" --include="*.md" --include="*.py" --include="*.sh"
+# Result: Found only in plan/notepad documentation
+```
+
+## FINAL VERDICT
+
+**Must Have**: 8/8 ✅
+**Must NOT Have**: 6/6 ✅
+**Tasks**: 11/11 ✅
+
+**VERDICT: APPROVE**
+
+All plan requirements satisfied. Implementation is complete, tested, and documented correctly.

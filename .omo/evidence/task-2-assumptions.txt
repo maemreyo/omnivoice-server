@@ -1,0 +1,433 @@
+================================================================================
+TASK 2: HIDDEN ASR ASSUMPTIONS
+================================================================================
+Date: 2026-04-19
+Task: Capture hidden assumptions about ASR behavior
+Status: COMPLETE
+
+================================================================================
+ASSUMPTION CATEGORIES
+================================================================================
+
+This document captures hidden assumptions that are not explicitly stated in
+code but are critical for migration. Each assumption is tied to specific
+file paths and line numbers.
+
+================================================================================
+1. MODEL NAME FORMAT ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  ASR model name follows HuggingFace transformers format:
+  "openai/whisper-large-v3-turbo"
+
+SOURCE FILES:
+  - OmniVoice/omnivoice/models/omnivoice.py:233
+    Location: from_pretrained() method
+    Code: asr_model_name = kwargs.pop("asr_model_name", "openai/whisper-large-v3-turbo")
+    
+  - OmniVoice/omnivoice/models/omnivoice.py:282
+    Location: load_asr_model() method
+    Code: def load_asr_model(self, model_name: str = "openai/whisper-large-v3-turbo"):
+
+MIGRATION IMPACT:
+  - faster-whisper expects different format: "large-v3-turbo" (short size string)
+  - Need translation layer to accept both formats
+  - Existing code may hardcode model names
+  - Custom model paths must be preserved
+
+RISK: HIGH
+  - Breaking change if not handled
+  - Silent failures if wrong format used
+  - User confusion during migration
+
+MITIGATION:
+  - Add model name translation layer in abstraction
+  - Accept both formats: "openai/whisper-large-v3-turbo" AND "large-v3-turbo"
+  - Document format differences clearly
+  - Provide migration guide for custom model paths
+
+================================================================================
+2. TRANSCRIPT RETURN SHAPE ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  ASR transcription returns plain string, not dict/tuple/object
+
+SOURCE FILES:
+  - OmniVoice/omnivoice/models/omnivoice.py:336
+    Location: transcribe() method (file path input)
+    Code: return self._asr_pipe(audio)["text"].strip()
+    Expectation: pipeline returns {"text": "..."} dict
+    
+  - OmniVoice/omnivoice/models/omnivoice.py:346
+    Location: transcribe() method (tuple input)
+    Code: return self._asr_pipe(audio_input)["text"].strip()
+    Expectation: pipeline returns {"text": "..."} dict
+    
+  - OmniVoice/omnivoice/models/omnivoice.py:672
+    Location: create_voice_clone_prompt() method
+    Code: ref_text = self.transcribe((ref_wav, self.sampling_rate))
+    Expectation: transcribe() returns plain string
+    
+  - OmniVoice/omnivoice/models/omnivoice.py:685
+    Location: create_voice_clone_prompt() method
+    Code: ref_text = add_punctuation(ref_text)
+    Expectation: ref_text is plain string, not dict/tuple
+
+MIGRATION IMPACT:
+  - transformers returns: {"text": "..."} dict
+  - faster-whisper returns: (segments, info) tuple where segments is list of Segment objects
+  - All consumers expect plain string
+  - No validation of transcript format
+
+RISK: HIGH
+  - Type errors if format not normalized
+  - Silent failures if wrong format passed
+  - Downstream code assumes string methods available
+
+MITIGATION:
+  - Abstraction layer must normalize to plain string
+  - transformers adapter: pipeline(audio)["text"].strip()
+  - faster-whisper adapter: "".join([seg.text for seg in segments]).strip()
+  - Add type hints: def transcribe(...) -> str
+  - Consider adding format validation
+
+================================================================================
+3. LAZY LOADING ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  ASR model can be loaded on-demand when ref_text=None, not just at init
+
+SOURCE FILES:
+  - OmniVoice/omnivoice/models/omnivoice.py:227
+    Location: __init__() method
+    Code: self._asr_pipe = None
+    Expectation: ASR not loaded at init, loaded later if needed
+    
+  - OmniVoice/omnivoice/models/omnivoice.py:232
+    Location: from_pretrained() method
+    Code: load_asr = kwargs.pop("load_asr", False)
+    Expectation: ASR loading is optional, default False
+    
+  - OmniVoice/omnivoice/models/omnivoice.py:668-671
+    Location: create_voice_clone_prompt() method
+    Code: if ref_text is None:
+              if self._asr_pipe is None:
+                  logger.info("ASR model not loaded yet, loading on-the-fly ...")
+                  self.load_asr_model()
+    Expectation: Lazy loading triggered by ref_text=None
+
+MIGRATION IMPACT:
+  - Backend selection must happen before lazy load
+  - Cannot change backend after first load
+  - Lazy load must preserve same error handling
+  - _asr_pipe=None indicates ASR not loaded
+
+RISK: MEDIUM
+  - Backend selection timing critical
+  - Cannot switch backends mid-session
+  - Lazy load failure must be graceful
+
+MITIGATION:
+  - Backend selected at from_pretrained() time, cached
+  - Lazy load uses cached backend selection
+  - Preserve _asr_pipe=None contract
+  - Document backend selection timing
+
+================================================================================
+4. AUTO-TRANSCRIPTION TRIGGER ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  ref_text=None is the ONLY trigger for auto-transcription
+
+SOURCE FILES:
+  - OmniVoice/omnivoice/models/omnivoice.py:668
+    Location: create_voice_clone_prompt() method
+    Code: if ref_text is None:
+    Expectation: None is the only trigger, not empty string or other falsy values
+    
+  - OmniVoice/omnivoice/cli/demo.py:379
+    Location: _clone_fn() function
+    Code: ref_text=ref_text or None
+    Expectation: Empty string converted to None to trigger auto-transcription
+    
+  - OmniVoice/omnivoice/cli/infer_batch.py:390
+    Location: Batch inference
+    Code: ref_text=ref_texts if any(t is not None for t in ref_texts) else None
+    Expectation: If ANY ref_text is None, entire batch uses None
+
+MIGRATION IMPACT:
+  - Must preserve exact trigger condition
+  - Empty string vs None distinction matters
+  - Batch inference has all-or-nothing behavior
+  - No alternative trigger mechanism
+
+RISK: LOW
+  - Well-defined trigger condition
+  - Easy to preserve in abstraction
+  - Documented behavior
+
+MITIGATION:
+  - Preserve exact ref_text=None check
+  - Document empty string vs None distinction
+  - Document batch inference limitation
+  - No changes needed to trigger logic
+
+================================================================================
+5. ERROR HANDLING ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  ASR initialization failure is graceful (warning + None), not exception
+
+SOURCE FILES:
+  - OmniVoice/omnivoice/models/omnivoice.py:299-311
+    Location: load_asr_model() method
+    Code: try:
+              self._asr_pipe = hf_pipeline(...)
+          except (OSError, RuntimeError) as exc:
+              msg = str(exc).lower()
+              if "torchcodec" not in msg and "libtorchcodec" not in msg:
+                  raise
+              logger.warning("ASR model could not be loaded because torchcodec failed...")
+              self._asr_pipe = None
+              return
+    Expectation: torchcodec failure → warning + None, other failures → raise
+    
+  - OmniVoice/omnivoice/models/omnivoice.py:329-333
+    Location: transcribe() method
+    Code: if self._asr_pipe is None:
+              raise RuntimeError("ASR model is unavailable...")
+    Expectation: Transcribe with None → RuntimeError
+
+MIGRATION IMPACT:
+  - Two-phase error handling: init failure vs transcribe failure
+  - Init failure is graceful (no exception)
+  - Transcribe failure is explicit (RuntimeError)
+  - Error messages mention torchcodec specifically
+
+RISK: MEDIUM
+  - Error handling contract must be preserved
+  - Error messages may need updating
+  - Users may parse error messages
+
+MITIGATION:
+  - Preserve two-phase error handling
+  - Backend init failure → warning + None (no exception)
+  - Transcribe with None → RuntimeError
+  - Update error messages to be backend-agnostic
+  - Keep same error message structure
+
+================================================================================
+6. DEVICE HANDLING ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  Device selection is automatic based on availability (cuda → float16, else float32)
+
+SOURCE FILES:
+  - OmniVoice/omnivoice/models/omnivoice.py:291-297
+    Location: load_asr_model() method
+    Code: asr_dtype = torch.float16 if str(self.device).startswith("cuda") else torch.float32
+          self._asr_pipe = hf_pipeline(
+              "automatic-speech-recognition",
+              model=model_name,
+              dtype=asr_dtype,
+              device_map=self.device,
+          )
+    Expectation: transformers accepts device_map=torch.device
+
+MIGRATION IMPACT:
+  - transformers accepts: device_map=torch.device("cuda")
+  - faster-whisper expects: device="cuda" (string)
+  - MPS device supported by transformers, not by faster-whisper
+  - dtype selection must be preserved
+
+RISK: MEDIUM
+  - Device type conversion needed
+  - MPS fallback required
+  - dtype selection must match device
+
+MITIGATION:
+  - Convert torch.device → string for faster-whisper
+  - MPS device → fallback to "cpu" with warning
+  - Preserve dtype selection logic
+  - Document MPS limitation
+
+================================================================================
+7. CLONE BEHAVIOR ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  Voice cloning with ref_text=None always triggers auto-transcription
+
+SOURCE FILES:
+  - OmniVoice/omnivoice/models/omnivoice.py:916-920
+    Location: _preprocess_all() method
+    Code: if voice_clone_prompt is not None and (ref_text is not None or ref_audio is not None):
+              logger.warning("Both voice_clone_prompt and ref_text/ref_audio are provided...")
+          if voice_clone_prompt is None and ref_audio is not None:
+              # create voice_clone_prompt from ref_audio (ref_text auto-transcribed if not given)
+    Expectation: ref_text=None with ref_audio triggers auto-transcription
+    
+  - OmniVoice/omnivoice/models/omnivoice.py:929-935
+    Location: _preprocess_all() method
+    Code: voice_clone_prompt.append(
+              self.create_voice_clone_prompt(
+                  ref_audio=ref_audio_list[i],
+                  ref_text=ref_text_list[i],
+                  preprocess_prompt=preprocess_prompt,
+              )
+          )
+    Expectation: create_voice_clone_prompt handles None ref_text
+
+MIGRATION IMPACT:
+  - Clone workflow depends on auto-transcription
+  - No alternative path for missing ref_text
+  - Transcript used directly in prompt construction
+  - No validation of transcript quality
+
+RISK: LOW
+  - Well-defined clone behavior
+  - Easy to preserve in abstraction
+  - No changes to clone logic needed
+
+MITIGATION:
+  - Preserve clone workflow unchanged
+  - Backend abstraction transparent to clone logic
+  - Document auto-transcription requirement
+  - Consider adding transcript validation (future)
+
+================================================================================
+8. BATCH INFERENCE ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  Batch inference has all-or-nothing ref_text behavior
+
+SOURCE FILES:
+  - OmniVoice/omnivoice/cli/infer_batch.py:390
+    Location: Batch inference
+    Code: ref_text=ref_texts if any(t is not None for t in ref_texts) else None
+    Expectation: If ANY item has ref_text=None, entire batch uses None
+
+MIGRATION IMPACT:
+  - Cannot mix manual and auto-transcription in same batch
+  - Batch-level decision, not per-item
+  - May trigger unnecessary auto-transcription
+  - Unexpected behavior for users
+
+RISK: LOW
+  - Documented limitation
+  - Not a blocker for migration
+  - Can be improved in future
+
+MITIGATION:
+  - Document all-or-nothing behavior clearly
+  - Preserve current behavior for backward compatibility
+  - Consider per-item ASR control in future (Wave 2)
+  - No changes needed for Wave 1
+
+================================================================================
+9. NO ASR AVAILABILITY CHECK ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  API accepts ref_text=None without checking if ASR is available
+
+SOURCE FILES:
+  - omnivoice_server/routers/voices.py:194
+    Location: Profile creation endpoint
+    Code: if ref_audio is None and ref_text is None:
+              raise HTTPException(status_code=422, detail="...")
+    Expectation: Validates ref_audio and ref_text not both None
+    Missing: No check if ASR available when ref_text=None
+    
+  - omnivoice_server/services/inference.py:34
+    Location: SynthesisRequest model
+    Code: ref_text: str | None = None
+    Expectation: Optional ref_text field
+    Missing: No ASR availability check
+
+MIGRATION IMPACT:
+  - Error surfaces as 500 during synthesis, not 422 at validation
+  - Poor error UX
+  - No early feedback to user
+  - Backend selection not validated
+
+RISK: LOW
+  - UX issue, not functional blocker
+  - Can be improved in future
+  - Not critical for Wave 1
+
+MITIGATION:
+  - Defer to Wave 2 (API validation enhancement)
+  - Document current behavior
+  - Consider adding ASR availability check
+  - Return 422 with clear message if ASR unavailable
+
+================================================================================
+10. TRANSCRIPT USAGE ASSUMPTION
+================================================================================
+
+ASSUMPTION:
+  Transcript is used directly without validation or sanitization
+
+SOURCE FILES:
+  - OmniVoice/omnivoice/models/omnivoice.py:685
+    Location: create_voice_clone_prompt() method
+    Code: ref_text = add_punctuation(ref_text)
+    Expectation: Transcript is valid text, no validation
+    
+  - OmniVoice/omnivoice/models/omnivoice.py:1072-1073
+    Location: _prepare_inference_inputs() method
+    Code: full_text = _combine_text(ref_text=ref_text, text=text)
+          wrapped_text = f"<|text_start|>{full_text}<|text_end|>"
+    Expectation: Transcript can be concatenated directly
+
+MIGRATION IMPACT:
+  - No validation of transcript quality
+  - No sanitization of special characters
+  - No length limits
+  - Backend differences may affect quality
+
+RISK: LOW
+  - Current behavior works
+  - No validation needed for Wave 1
+  - Can be improved in future
+
+MITIGATION:
+  - Preserve current behavior (no validation)
+  - Document transcript usage
+  - Consider adding validation in future (Wave 2)
+  - Monitor transcript quality after migration
+
+================================================================================
+SUMMARY
+================================================================================
+
+Total Assumptions Documented: 10
+Risk Levels:
+  - HIGH: 2 (model name format, transcript return shape)
+  - MEDIUM: 3 (lazy loading, error handling, device handling)
+  - LOW: 5 (auto-transcription trigger, clone behavior, batch inference,
+           no ASR check, transcript usage)
+
+All assumptions tied to specific file paths and line numbers.
+All assumptions include migration impact and mitigation strategy.
+
+VERIFICATION AGAINST PLAN QA SCENARIO:
+  ✓ Model-name format documented (Assumption 1)
+  ✓ Transcript shape documented (Assumption 2)
+  ✓ Lazy loading documented (Assumption 3)
+  ✓ no-ref_text behavior documented (Assumption 4)
+  ✓ Each assumption tied to file path and line numbers
+  ✓ Migration impact explicit for each assumption
+  ✓ Mitigation strategy provided for each assumption
+
+Result: PASS - Downstream migration risks are explicit
+
+READY FOR: Wave 1 abstraction design and implementation

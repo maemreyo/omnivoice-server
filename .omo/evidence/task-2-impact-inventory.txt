@@ -1,0 +1,269 @@
+================================================================================
+TASK 2: ASR IMPACT INVENTORY
+================================================================================
+Date: 2026-04-19
+Task: Inventory current ASR assumptions across code/tests/docs
+Status: COMPLETE
+
+================================================================================
+SCOPE
+================================================================================
+
+IN SCOPE:
+- Production code paths that load/use ASR for auto-transcription
+- CLI/demo surfaces that expose ASR behavior to users
+- Tests that exercise or mock ASR behavior
+- Documentation that describes ASR features/requirements
+- Server integration that wraps ASR functionality
+
+OUT OF SCOPE (explicitly excluded):
+- Evaluation scripts (seedtts.py, hubert.py, minimax.py) - separate workflow
+- FLEURS evaluation (fleurs.py) - uses different ASR backend (omnilingual_asr)
+- Profile storage/retrieval logic - wrapper only, no ASR-specific logic
+- API request/response models - wrapper only, no ASR-specific logic
+
+================================================================================
+PRODUCTION CODE PATHS
+================================================================================
+
+1. CORE MODEL (OmniVoice/omnivoice/models/omnivoice.py)
+   
+   1.1 ASR Model Loading
+       Location: lines 229-276 (from_pretrained method)
+       Behavior: Optional ASR loading via load_asr kwarg (default False)
+       Coupling: asr_model_name kwarg (default "openai/whisper-large-v3-turbo")
+       Impact: Model name format must be preserved or translated
+       
+   1.2 ASR Model Initialization
+       Location: lines 282-312 (load_asr_model method)
+       Behavior: Loads transformers pipeline for ASR
+       Coupling: 
+         - Model name format: "openai/whisper-large-v3-turbo"
+         - Device selection: cuda → float16, else float32
+         - Error handling: torchcodec failure → warning + _asr_pipe=None
+       Impact: Backend initialization must preserve error handling contract
+       
+   1.3 Transcription
+       Location: lines 314-346 (transcribe method)
+       Behavior: Transcribes audio using loaded ASR model
+       Coupling:
+         - Input formats: file path (str) OR (waveform, sample_rate) tuple
+         - Output format: plain string (pipeline(audio)["text"].strip())
+         - Error handling: RuntimeError if _asr_pipe is None
+       Impact: Backend must normalize output to plain string
+       
+   1.4 Auto-Transcription Trigger
+       Location: lines 667-673 (create_voice_clone_prompt method)
+       Behavior: Lazy loads ASR and transcribes when ref_text=None
+       Coupling:
+         - ref_text=None is ONLY trigger for auto-transcription
+         - Lazy loading: loads ASR on-demand if not already loaded
+         - Transcript used directly: add_punctuation(ref_text)
+       Impact: Backend selection must happen before lazy load
+
+2. CLI/DEMO SURFACES
+
+   2.1 Demo UI (OmniVoice/omnivoice/cli/demo.py)
+       Location: lines 337-342, 379, 525
+       Behavior: Gradio UI for voice cloning with optional ASR
+       Coupling:
+         - --no-asr flag skips ASR loading (line 525)
+         - Empty ref_text field triggers auto-transcription (line 379)
+         - Placeholder text: "Leave empty to auto-transcribe via ASR models."
+       Impact: UI must reflect backend selection and availability
+       
+   2.2 Single Inference CLI (OmniVoice/omnivoice/cli/infer.py)
+       Location: Not directly coupled (uses model.generate())
+       Behavior: CLI wrapper for single inference
+       Coupling: Inherits ASR behavior from model.generate()
+       Impact: No direct changes needed
+       
+   2.3 Batch Inference CLI (OmniVoice/omnivoice/cli/infer_batch.py)
+       Location: line 390
+       Behavior: Batch inference with optional ref_text
+       Coupling:
+         - JSONL field ref_text optional
+         - All-or-nothing: if ANY ref_text=None, entire batch uses None
+       Impact: Batch behavior preserved, document limitation
+
+3. SERVER INTEGRATION (omnivoice-server)
+
+   3.1 Profile Service (omnivoice_server/services/profiles.py)
+       Location: lines 58-62, 70
+       Behavior: Stores/retrieves ref_text from profile metadata
+       Coupling:
+         - ref_text stored as str | None
+         - No ASR availability check when ref_text=None
+       Impact: No direct changes needed (wrapper only)
+       
+   3.2 Inference Service (omnivoice_server/services/inference.py)
+       Location: line 34
+       Behavior: SynthesisRequest with optional ref_text
+       Coupling:
+         - ref_text: str | None = None
+         - No ASR availability check before accepting None
+       Impact: Consider adding ASR availability check (deferred to Wave 2)
+       
+   3.3 API Endpoints (omnivoice_server/routers/voices.py, speech.py)
+       Location: voices.py lines 98, 179, 194; speech.py line 406
+       Behavior: Form field ref_text: str | None = Form(default=None)
+       Coupling:
+         - Validates ref_audio and ref_text not both None
+         - No ASR availability check when ref_text=None
+       Impact: Consider adding ASR availability check (deferred to Wave 2)
+
+================================================================================
+TEST SURFACES
+================================================================================
+
+1. DIRECT ASR TESTS
+   Location: tests/test_speech.py
+   Status: NONE FOUND
+   Impact: HIGH RISK - no baseline for equivalence testing
+   
+2. INDIRECT ASR COVERAGE
+   Location: tests/test_speech.py lines 45-73 (test_full_clone_voice_workflow)
+   Behavior: Clone workflow creates profile without ref_text
+   Coupling: Test uses mocked inference service → ASR never called
+   Impact: Need integration tests for ASR pipeline
+   
+3. MISSING COVERAGE
+   - No test for ref_text=None → auto-transcription path
+   - No test for ASR failure modes (torchcodec unavailable, lazy loading)
+   - No test for transcript shape/format validation
+   - No test for lazy loading behavior
+   - No test for error handling (RuntimeError when ASR unavailable)
+   - No test for batch inference with mixed ref_text values
+
+================================================================================
+DOCUMENTATION SURFACES
+================================================================================
+
+1. USER-FACING DOCS (OmniVoice/README.md)
+   Location: Voice Cloning section
+   Content: "If you don't want to input ref_text manually, you can directly 
+            omit the ref_text. The model will use Whisper ASR to auto-transcribe it."
+   Coupling:
+     - Documents auto-transcription feature
+     - No mention of ASR availability requirements
+     - No mention of torchcodec dependency
+   Impact: Update after migration to document faster-whisper backend
+
+2. INTERNAL DOCS
+   Location: docs/reports/23/bug-analysis-23-torchcodec-windows.md
+   Content: Documents torchcodec Windows failure and faster-whisper migration
+   Coupling:
+     - Model name format issue documented
+     - Migration strategy outlined
+   Impact: Reference for migration implementation
+
+================================================================================
+MIGRATION CHECKLIST BY SURFACE
+================================================================================
+
+CORE MODEL (OmniVoice/omnivoice/models/omnivoice.py):
+  [ ] Update load_asr_model() to support backend selection
+  [ ] Add model name translation layer (transformers format → faster-whisper)
+  [ ] Normalize transcribe() output to plain string for both backends
+  [ ] Preserve lazy loading contract (_asr_pipe=None → load on demand)
+  [ ] Preserve error handling contract (torchcodec failure → warning + None)
+  [ ] Convert device handling (torch.device → string for faster-whisper)
+  [ ] Handle MPS device (faster-whisper doesn't support, fallback to CPU)
+
+CLI/DEMO (OmniVoice/omnivoice/cli/demo.py):
+  [ ] Update --no-asr flag documentation to reflect backend selection
+  [ ] Consider adding ASR availability indicator to UI (deferred to Wave 2)
+  [ ] Update placeholder text if backend changes (deferred to Wave 2)
+
+BATCH INFERENCE (OmniVoice/omnivoice/cli/infer_batch.py):
+  [ ] Document all-or-nothing ref_text behavior
+  [ ] Consider per-item ASR control in future (deferred to Wave 2)
+
+SERVER INTEGRATION (omnivoice-server):
+  [ ] Consider adding ASR availability check to API validation (deferred to Wave 2)
+  [ ] Update error messages to be backend-agnostic (deferred to Wave 2)
+
+TESTS (tests/test_speech.py):
+  [ ] Add integration tests for ASR pipeline
+  [ ] Test ref_text=None → auto-transcription path
+  [ ] Test lazy loading on-demand
+  [ ] Test ASR unavailable → RuntimeError
+  [ ] Test transcript format matches expected shape
+  [ ] Test clone workflow with auto-transcription
+  [ ] Test batch inference with mixed ref_text values
+  [ ] Create fixture-based equivalence tests (transformers vs faster-whisper)
+
+DOCUMENTATION (OmniVoice/README.md):
+  [ ] Update auto-transcription section to document backend selection
+  [ ] Document faster-whisper as preferred backend
+  [ ] Document transformers as fallback/legacy backend
+  [ ] Document backend selection mechanism (env var/kwarg)
+  [ ] Document rollback procedure
+  [ ] Remove/update torchcodec dependency mentions
+
+================================================================================
+VERIFICATION AGAINST PLAN QA SCENARIOS
+================================================================================
+
+QA Scenario 1: Impact inventory is complete
+  Tool: Bash (grep/read)
+  Steps:
+    1. Search for load_asr_model, transcribe(, ref_text, ASR model name
+    2. Compare results against migration checklist
+    3. Assert each production/CLI/test/doc match is accounted for
+  
+  VERIFICATION:
+    ✓ Searched load_asr_model: Found in omnivoice.py (lines 282-312)
+    ✓ Searched transcribe(: Found in omnivoice.py (lines 314-346)
+    ✓ Searched ref_text: Found in omnivoice.py, demo.py, infer_batch.py,
+                         profiles.py, inference.py, voices.py, speech.py
+    ✓ Searched ASR model name: Found "openai/whisper-large-v3-turbo" in
+                               omnivoice.py (lines 233, 282)
+    ✓ All production paths mapped: Core model, CLI/demo, server integration
+    ✓ All test paths mapped: test_speech.py (with gaps documented)
+    ✓ All doc paths mapped: README.md, bug-analysis doc
+    ✓ Evaluation scripts explicitly excluded with justification
+  
+  Result: PASS - Every relevant match is mapped or explicitly excluded
+
+QA Scenario 2: Hidden assumptions are captured
+  Tool: Bash
+  Steps:
+    1. Verify model-name format, transcript shape, lazy loading, 
+       no-ref_text behavior are listed
+    2. Verify each assumption is tied to a file path
+  
+  VERIFICATION:
+    ✓ Model-name format: Documented in section 1.1, 1.2
+                        Tied to omnivoice.py lines 233, 282
+    ✓ Transcript shape: Documented in section 1.3
+                       Tied to omnivoice.py lines 336, 346
+    ✓ Lazy loading: Documented in section 1.4
+                   Tied to omnivoice.py lines 667-673
+    ✓ no-ref_text behavior: Documented in section 1.4
+                           Tied to omnivoice.py lines 667-673
+    ✓ All assumptions tied to specific file paths and line numbers
+  
+  Result: PASS - Downstream migration risks are explicit
+
+================================================================================
+SUMMARY
+================================================================================
+
+Files Analyzed: 13 core files
+Production Paths: 3 major surfaces (core model, CLI/demo, server)
+Test Paths: 1 file (with 6 gaps documented)
+Doc Paths: 2 files (user-facing + internal)
+Migration Checklist Items: 24 items across 6 surfaces
+Explicitly Excluded: 4 evaluation scripts (with justification)
+
+All acceptance criteria met:
+  ✓ All directly impacted code/tests/docs paths are listed
+  ✓ Hidden coupling points are documented
+  ✓ Migration checklist exists for each impacted surface
+
+All QA scenarios passed:
+  ✓ Impact inventory is complete
+  ✓ Hidden assumptions are captured
+
+READY FOR: Wave 1 Tasks 10, 14, 15 (blocked by this inventory)

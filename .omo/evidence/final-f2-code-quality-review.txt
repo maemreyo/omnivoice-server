@@ -1,0 +1,146 @@
+================================================================================
+F2: CODE QUALITY REVIEW - ASR Backend Abstraction Implementation
+================================================================================
+Review Date: 2026-04-20
+Reviewer: Sisyphus-Junior (Code Quality Reviewer)
+Plan: torchcodec-windows-long-term-fix
+Repository: /Users/trung.ngo/Documents/zaob-dev/omnivoice-server
+
+================================================================================
+REVIEW CRITERIA & RESULTS
+================================================================================
+
+Build [PASS]: All Python files compile successfully
+  - python3 -m py_compile executed on all changed files
+  - No syntax errors detected
+  - All files: base.py, factory.py, transformers_backend.py, faster_whisper_backend.py, config.py, app.py
+
+Tests [PASS]: 137 passed in 2.66s
+  - test_asr_contract.py: All contract tests passing
+  - test_asr_rollback.py: All rollback/fallback tests passing
+  - test_speech.py: Integration tests passing
+  - No test failures or warnings
+
+Abstraction boundaries [PASS]: Backend-specific details properly contained
+  - ASRBackend abstract interface defines clear contract (base.py)
+  - TransformersASRBackend encapsulates HuggingFace pipeline details
+  - FasterWhisperASRBackend encapsulates CTranslate2 details
+  - Factory pattern (create_asr_backend) provides clean selection layer
+  - No backend-specific imports leak into OmniVoice core (omnivoice.py uses factory)
+  - ASR module can be imported independently without triggering heavy model imports
+
+Fallback clarity [PASS]: Fallback behavior is explicit, not silent
+  - Torchcodec failures in transformers backend: explicit warning logged, returns None
+  - Error messages include actionable guidance (lines 77-82, transformers_backend.py)
+  - No silent exception swallowing (grep confirmed: no "except...pass" patterns)
+  - RuntimeError raised for non-torchcodec failures with clear context
+  - Backend unavailability: explicit RuntimeError with workaround suggestions
+
+Dependency hygiene [PASS]: Default install path avoids faster-whisper
+  - faster-whisper is opt-in via pyproject.toml extras: asr-faster-whisper
+  - Default dependencies do not include faster-whisper
+  - Transformers backend remains default (preserves current behavior)
+  - ImportError handling in factory provides clear guidance if backend unavailable
+
+Naming consistency [PASS]: Backend identifiers are consistent
+  - BackendType = Literal["transformers", "faster-whisper"] (factory.py:13)
+  - backend_name property returns "transformers" and "faster-whisper" respectively
+  - Environment variable: OMNIVOICE_ASR_BACKEND accepts same identifiers
+  - No naming conflicts or inconsistencies detected
+
+Error messages [PASS]: Actionable and project-level
+  - RuntimeError messages include backend context and workarounds
+  - Examples:
+    * "ASR model is unavailable. Provide ref_text manually, or align your torch/torchaudio/torchcodec installation..."
+    * "faster-whisper is not installed. Install it with: pip install faster-whisper"
+    * "ASR model loading failed: transformers backend could not initialize. Model: X, Device: Y. Cause: Z"
+  - No raw library exceptions exposed without context
+  - Error messages guide users to resolution paths
+
+No silent exception swallowing [PASS]: Critical paths propagate errors
+  - All exceptions in load_model() and transcribe() are either:
+    1. Logged with warnings and handled gracefully (torchcodec-specific)
+    2. Re-raised as RuntimeError/ValueError with context
+  - No bare "except: pass" patterns found
+  - Transcription failures raise RuntimeError with audio type and cause
+
+================================================================================
+DETAILED FINDINGS
+================================================================================
+
+1. Architecture Quality:
+   - Clean separation: ASRBackend (interface) → concrete backends → factory
+   - Lazy loading contract preserved (load_model() called explicitly)
+   - Configuration via ASRConfig dataclass (immutable, type-safe)
+   - Backend selection via environment variable (testable, deterministic)
+
+2. Code Quality:
+   - Type annotations present on all function signatures
+   - Docstrings document contract guarantees and error conditions
+   - Logging at appropriate levels (info for success, warning for degradation, error for failures)
+   - No code duplication between backends (each handles format differences internally)
+
+3. Test Coverage:
+   - Contract tests validate interface requirements (test_asr_contract.py)
+   - Rollback tests validate selection precedence (test_asr_rollback.py)
+   - Integration tests validate end-to-end flow (test_speech.py)
+   - 137 tests passing, no failures
+
+4. Error Handling:
+   - Torchcodec failures: graceful degradation with warning (transformers backend)
+   - Missing dependencies: clear ImportError with installation instructions
+   - Invalid audio: ValueError with format details
+   - Model unavailable: RuntimeError with workaround suggestions
+
+5. Dependency Management:
+   - faster-whisper is opt-in (pyproject.toml extras)
+   - Default install uses transformers (preserves current behavior)
+   - No breaking changes to existing installations
+
+6. Configuration Integration:
+   - omnivoice_server/config.py: asr_backend field added (optional)
+   - omnivoice_server/app.py: sets OMNIVOICE_ASR_BACKEND env var at startup
+   - OmniVoice/omnivoice/models/omnivoice.py: uses factory for backend creation
+
+================================================================================
+VERIFICATION EVIDENCE
+================================================================================
+
+Build Verification:
+  Command: python3 -m py_compile <all changed files>
+  Result: No output (success)
+
+Test Verification:
+  Command: python3 -m pytest tests/test_asr_contract.py tests/test_asr_rollback.py tests/test_speech.py -q
+  Result: 137 passed in 2.66s
+
+Abstraction Verification:
+  - ASR module structure: __init__.py, base.py, factory.py, transformers_backend.py, faster_whisper_backend.py
+  - Factory pattern isolates backend selection
+  - No backend-specific imports in omnivoice.py (uses create_asr_backend)
+
+Dependency Verification:
+  Command: grep -n "faster.whisper\|faster_whisper" pyproject.toml
+  Result: Only in [project.optional-dependencies] section (opt-in)
+
+Naming Verification:
+  Command: grep -E "(transformers|faster-whisper)" OmniVoice/omnivoice/asr/*.py | grep -E "(backend_name|BackendType)"
+  Result: Consistent identifiers: "transformers", "faster-whisper"
+
+Error Message Verification:
+  Command: grep -n "raise RuntimeError\|raise ValueError" OmniVoice/omnivoice/asr/*.py
+  Result: 12 error raise sites, all with actionable context
+
+Silent Exception Verification:
+  Command: grep -rn "except.*pass" OmniVoice/omnivoice/asr/
+  Result: No silent exception swallowing found
+
+================================================================================
+VERDICT: APPROVE
+================================================================================
+
+Reason: All review criteria passed. The ASR backend abstraction is well-designed with clean boundaries, explicit fallback behavior, actionable error messages, and comprehensive test coverage. No critical issues detected.
+
+================================================================================
+REVIEW COMPLETE
+================================================================================

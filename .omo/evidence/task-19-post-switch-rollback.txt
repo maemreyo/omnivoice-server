@@ -1,0 +1,367 @@
+Task 19: Post-Switch Rollback Procedure Evidence
+=================================================
+
+Date: 2026-04-20
+Task: Document immediate rollback procedure after future default switch
+Status: COMPLETE
+
+================================================================================
+ROLLBACK CONTROL SURFACE CONSISTENCY
+================================================================================
+
+Reference Document: docs/ASR_ROLLBACK_RUNBOOK.md (Task 13)
+Post-Switch Document: docs/architecture/asr-default-switch-criteria.md (Section 3)
+
+Control Surface Comparison:
+----------------------------
+
+Environment Variable:
+  Pre-switch:  OMNIVOICE_ASR_BACKEND=faster-whisper (opt-in)
+  Post-switch: OMNIVOICE_ASR_BACKEND=transformers (rollback)
+  ✓ SAME variable name
+  ✓ SAME precedence level (2nd highest)
+
+CLI Flag:
+  Pre-switch:  --asr-backend faster-whisper (opt-in)
+  Post-switch: --asr-backend transformers (rollback)
+  ✓ SAME flag name
+  ✓ SAME precedence level (highest)
+  ✓ SAME availability (OmniVoice CLI tools only, not server)
+
+Config Field:
+  Pre-switch:  asr_backend="faster-whisper" (opt-in)
+  Post-switch: asr_backend="transformers" (rollback)
+  ✓ SAME field name
+  ✓ SAME precedence level (3rd highest)
+  ✓ SAME availability (server programmatic only)
+
+Default:
+  Pre-switch:  transformers (current)
+  Post-switch: faster-whisper (after switch)
+  ✓ SAME precedence level (lowest)
+  ✓ Only the value changes (direction reverses)
+
+Verdict: ✅ SAME CONTROL SURFACE
+- All 3 operator controls (env var, CLI flag, config field) remain identical
+- Only the direction changes: FROM faster-whisper TO transformers (post-switch)
+- Operators use the exact same commands, just with different backend values
+
+================================================================================
+ROLLBACK TRIGGER CRITERIA
+================================================================================
+
+Post-Switch Triggers (5 triggers defined):
+-------------------------------------------
+
+1. Import failure rate > 5%
+   - Metric: (failed imports / total import attempts) × 100%
+   - Threshold: 5%
+   - Action: Investigate immediately
+
+2. Transcription failure rate > 10%
+   - Metric: (failed transcriptions / total transcription attempts) × 100%
+   - Threshold: 10%
+   - Action: Consider rollback
+
+3. Clone success rate < 90%
+   - Metric: (successful clones / total clone attempts) × 100%
+   - Threshold: 90%
+   - Action: Consider rollback
+
+4. Critical production issue
+   - Definition: Any issue that blocks core functionality
+   - Action: Evaluate rollback immediately
+
+5. P0/P1 bug related to faster-whisper
+   - Definition: Critical or high-priority bug in issue tracker
+   - Action: Evaluate rollback
+
+Consistency with Task 13 Rollback Runbook:
+-------------------------------------------
+✓ Triggers 1-3 match Task 13 rollback triggers (lines 19-24)
+✓ Trigger 4 matches Task 13 trigger 4 (line 24)
+✓ Trigger 5 added for post-switch context (P0/P1 bug tracking)
+
+================================================================================
+ROLLBACK METHODS
+================================================================================
+
+Method 1: Environment Variable (Recommended)
+---------------------------------------------
+Use case: Quick rollback without code changes
+Command: export OMNIVOICE_ASR_BACKEND=transformers
+Restart: Required
+Rollback time: < 5 minutes
+Verification: Check logs for "ASR backend selection: transformers"
+
+Consistency with Task 13:
+✓ SAME method (Task 13 lines 28-59)
+✓ SAME command pattern
+✓ SAME verification steps
+✓ SAME rollback time
+
+Method 2: CLI Flag (Immediate)
+-------------------------------
+Use case: Single invocation rollback
+Command: --asr-backend transformers
+Restart: Not required
+Rollback time: Immediate
+Availability: OmniVoice CLI tools only (not server)
+
+Consistency with Task 13:
+✓ SAME method (Task 13 lines 61-84)
+✓ SAME command pattern
+✓ SAME availability constraint
+✓ SAME rollback time
+
+Method 3: Server Config Field (Persistent)
+-------------------------------------------
+Use case: Permanent rollback for server
+Command: export OMNIVOICE_ASR_BACKEND=transformers
+Restart: Required
+Rollback time: < 5 minutes
+
+Consistency with Task 13:
+✓ SAME method (Task 13 lines 86-106)
+✓ SAME command pattern
+✓ SAME rollback time
+
+================================================================================
+ROLLBACK VERIFICATION STEPS
+================================================================================
+
+Step 1: Backend Selection
+--------------------------
+Command: grep "ASR backend" <log-file>
+Expected: "ASR backend selection: transformers (source: environment variable...)"
+
+Step 2: Auto-Transcription Works
+---------------------------------
+Command: omnivoice-demo --model k2-fsa/OmniVoice --asr-backend transformers
+Expected: Demo starts successfully, transcription works
+
+Step 3: No Errors in Logs
+--------------------------
+Command: grep -i "asr.*error\|asr.*failed" <log-file>
+Expected: No matches (or only historical errors before rollback)
+
+Consistency with Task 13:
+✓ SAME 3 verification steps (Task 13 lines 109-143)
+✓ SAME commands
+✓ SAME expected outputs
+
+================================================================================
+ROLLBACK EVIDENCE COLLECTION
+================================================================================
+
+Evidence Item 1: Log Excerpt
+-----------------------------
+Command: grep "ASR backend" <log-file> > rollback-evidence.txt
+Purpose: Confirm backend selection after rollback
+
+Evidence Item 2: Test Transcription
+------------------------------------
+Command: omnivoice-infer --model k2-fsa/OmniVoice \
+  --text "Test" --ref_audio test.wav --output test-out.wav \
+  --asr-backend transformers
+Purpose: Verify transcription works after rollback
+
+Evidence Item 3: Error Rates
+-----------------------------
+Metrics:
+- Import failures: <count>
+- Transcription failures: <count>
+- Clone failures: <count>
+Purpose: Compare error rates before and after rollback
+
+Consistency with Task 13:
+✓ SAME 3 evidence items (Task 13 lines 195-214)
+✓ SAME collection commands
+✓ SAME metrics
+
+================================================================================
+SELECTION PRECEDENCE (POST-SWITCH)
+================================================================================
+
+Precedence Order (highest to lowest):
+--------------------------------------
+1. CLI flag: --asr-backend transformers|faster-whisper
+2. Environment variable: OMNIVOICE_ASR_BACKEND=transformers|faster-whisper
+3. Config field: asr_backend="transformers"|"faster-whisper"
+4. Default: faster-whisper (after switch)
+
+Example: CLI flag overrides env var, which overrides config field, which overrides default.
+
+Consistency with Task 13:
+✓ SAME precedence order (Task 13 lines 171-180)
+✓ Only default value changes (transformers → faster-whisper)
+
+================================================================================
+ROLLBACK SAFETY GUARANTEES
+================================================================================
+
+Guarantee 1: No Code Edits Required
+------------------------------------
+✓ Rollback via env var / CLI flag / config field
+✓ No changes to factory.py or other code files
+
+Guarantee 2: No Database Migration Required
+--------------------------------------------
+✓ Backend selection is stateless
+✓ No database schema changes
+
+Guarantee 3: No Model Re-Download Required
+-------------------------------------------
+✓ Both backends use separate model caches
+✓ transformers: ~/.cache/huggingface/hub/models--openai--whisper-*
+✓ faster-whisper: ~/.cache/huggingface/hub/models--Systran--faster-whisper-*
+
+Guarantee 4: Rollback in < 5 Minutes
+-------------------------------------
+✓ Environment variable method: < 5 minutes (restart required)
+✓ CLI flag method: Immediate (no restart)
+✓ Config field method: < 5 minutes (restart required)
+
+Guarantee 5: Same Control Surface
+----------------------------------
+✓ Uses SAME env var as pre-switch rollback
+✓ Uses SAME CLI flag as pre-switch rollback
+✓ Uses SAME config field as pre-switch rollback
+✓ Only direction changes (FROM faster-whisper TO transformers)
+
+Consistency with Task 13:
+✓ All 5 guarantees match Task 13 rollback safety (Task 13 lines 154-159)
+
+================================================================================
+OPERATOR EXPERIENCE CONSISTENCY
+================================================================================
+
+Pre-Switch Rollback (Current):
+-------------------------------
+Scenario: faster-whisper fails, need to roll back to transformers
+Command: export OMNIVOICE_ASR_BACKEND=transformers
+Result: System uses transformers backend
+
+Post-Switch Rollback (Future):
+-------------------------------
+Scenario: faster-whisper (now default) fails, need to roll back to transformers
+Command: export OMNIVOICE_ASR_BACKEND=transformers
+Result: System uses transformers backend
+
+Operator Experience:
+--------------------
+✓ SAME command
+✓ SAME environment variable
+✓ SAME verification steps
+✓ SAME rollback time
+✓ SAME safety guarantees
+
+Verdict: ✅ OPERATOR EXPERIENCE PRESERVED
+- Operators use the exact same rollback procedure before and after default switch
+- Only the context changes (default vs opt-in), not the mechanism
+
+================================================================================
+DOCUMENTATION REFERENCES
+================================================================================
+
+Pre-Switch Rollback Documentation:
+-----------------------------------
+File: docs/ASR_ROLLBACK_RUNBOOK.md
+Created: Task 13
+Evidence: .sisyphus/evidence/task-13-rollback-runbook.txt
+Status: ✅ Complete and validated (10/10 tests pass)
+
+Post-Switch Rollback Documentation:
+------------------------------------
+File: docs/architecture/asr-default-switch-criteria.md (Section 3)
+Created: Task 19
+Evidence: .sisyphus/evidence/task-19-post-switch-rollback.txt (this file)
+Status: ✅ Complete
+
+Cross-Reference:
+----------------
+✓ Post-switch rollback explicitly references Task 13 runbook
+✓ Post-switch rollback states "SAME operator control surface"
+✓ Post-switch rollback documents only the direction change
+✓ Post-switch rollback preserves all 3 rollback methods
+✓ Post-switch rollback preserves all verification steps
+
+================================================================================
+ACCEPTANCE CRITERION 3 VALIDATION
+================================================================================
+
+From Task 19 Plan:
+"Immediate rollback procedure after future default switch is documented
+(must use same operator control surface as Task 13 rollback runbook)"
+
+Validation Checklist:
+----------------------
+[✅] Rollback procedure documented in Section 3 of switch criteria document
+[✅] Uses SAME environment variable: OMNIVOICE_ASR_BACKEND
+[✅] Uses SAME CLI flag: --asr-backend
+[✅] Uses SAME config field: asr_backend
+[✅] Uses SAME 3 rollback methods (env var, CLI flag, config field)
+[✅] Uses SAME verification steps (3 steps)
+[✅] Uses SAME evidence collection (3 items)
+[✅] Uses SAME selection precedence (4 levels)
+[✅] Uses SAME safety guarantees (5 guarantees)
+[✅] Explicitly references Task 13 rollback runbook
+[✅] Documents only the direction change (FROM faster-whisper TO transformers)
+
+Verdict: ✅ ACCEPTANCE CRITERION 3 MET
+
+Post-switch rollback procedure uses the SAME operator control surface as Task 13 rollback runbook.
+Only the direction changes; all mechanisms, commands, and verification steps remain identical.
+
+================================================================================
+SUMMARY
+================================================================================
+
+Post-Switch Rollback Procedure Status: ✅ COMPLETE
+
+Control Surface: ✅ SAME as Task 13 rollback runbook
+- Environment variable: OMNIVOICE_ASR_BACKEND
+- CLI flag: --asr-backend
+- Config field: asr_backend
+
+Rollback Methods: ✅ 3 methods documented (same as Task 13)
+- Method 1: Environment variable (recommended)
+- Method 2: CLI flag (immediate)
+- Method 3: Config field (persistent)
+
+Rollback Triggers: ✅ 5 triggers defined
+- Import failure rate > 5%
+- Transcription failure rate > 10%
+- Clone success rate < 90%
+- Critical production issue
+- P0/P1 bug
+
+Verification Steps: ✅ 3 steps documented (same as Task 13)
+- Backend selection check
+- Auto-transcription test
+- Error log check
+
+Evidence Collection: ✅ 3 items documented (same as Task 13)
+- Log excerpt
+- Test transcription
+- Error rates
+
+Safety Guarantees: ✅ 5 guarantees documented (same as Task 13)
+- No code edits
+- No database migration
+- No model re-download
+- Rollback in < 5 minutes
+- Same control surface
+
+Operator Experience: ✅ PRESERVED
+- Same commands before and after default switch
+- Only direction changes (FROM faster-whisper TO transformers)
+
+Documentation: ✅ COMPLETE
+- Section 3 of docs/architecture/asr-default-switch-criteria.md
+- Explicit reference to Task 13 rollback runbook
+- Clear statement of control surface consistency
+
+================================================================================
+END OF EVIDENCE
+================================================================================

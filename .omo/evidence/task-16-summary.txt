@@ -1,0 +1,254 @@
+Task 16: Validate Supported Matrix and Document Unsupported Combinations
+==========================================================================
+
+**Date**: 2026-04-19T17:56:39Z
+**Status**: ❌ NOT COMPLETE
+
+## Task 16 Plan Acceptance Criteria
+
+From `.sisyphus/plans/torchcodec-windows-long-term-fix.md`:
+
+1. [ ] Every declared supported combination is validated - ❌ NOT MET
+2. [x] Every failed/unverified combination is documented as unsupported or pending - ✅ MET
+3. [ ] Evidence exists for each validated combination - ❌ NOT MET
+
+**Overall Verdict**: ❌ NOT COMPLETE
+
+**Reason**: Plan requires runtime validation evidence for declared supported combinations. This environment cannot provide runtime validation.
+
+---
+
+## What Was Accomplished
+
+### 1. Structural Validation (COMPLETE)
+- Task 15 command matrix exists ✅
+- Task 13 rollback runbook exists ✅
+- Task 3 compatibility matrix exists ✅
+- Backend selection surface documented ✅
+
+### 2. Support Boundary Documentation (COMPLETE)
+- 3 unsupported combinations explicitly documented ✅
+- 3 unverified combinations explicitly documented ✅
+- No ambiguous support claims ✅
+
+### 3. Validation Blueprint (COMPLETE)
+- Task 15 command matrix provides 15 validation commands ✅
+- Each command has explicit pass/fail expectations ✅
+- Commands cover library, CLI tools, server, and rollback scenarios ✅
+
+---
+
+## What Was NOT Accomplished
+
+### 1. Runtime Validation (BLOCKED)
+- Cannot execute any OmniVoice runtime commands ❌
+- All 13 runtime scenarios remain unvalidated ❌
+- No backend loading evidence ❌
+- No transcription evidence ❌
+- No clone mode evidence ❌
+
+### 2. Rollback Verification (BLOCKED)
+- Cannot execute rollback scenarios end-to-end ❌
+- No rollback execution evidence ❌
+
+### 3. Plan Acceptance Criteria (NOT MET)
+- "Every declared supported combination is validated" - NOT MET ❌
+- "Evidence exists for each validated combination" - NOT MET ❌
+
+---
+
+## Environment Constraints
+
+### Local Environment
+- **OS**: macOS (darwin)
+- **Python**: 3.9.6 (project requires 3.10+) ❌
+- **PyTorch**: 2.8.0
+- **Device**: MPS available
+- **transformers**: 4.45.2 (incompatible with OmniVoice) ❌
+- **faster-whisper**: Not installed ❌
+- **OmniVoice**: Import fails ❌
+
+### Import Failure
+```
+✗ OmniVoice import failed: cannot import name 'HiggsAudioV2TokenizerModel' 
+  from 'transformers'
+```
+
+**Impact**: Blocks all runtime validation commands.
+
+---
+
+## Deliverables Created
+
+### 1. Validation Matrix Document
+**Location**: `.sisyphus/evidence/task-16-validation-matrix.md`
+
+**Contents**:
+- Environment constraints documented
+- 4 structural validations PASSED
+- 13 runtime validations marked UNVERIFIED IN THIS ENVIRONMENT
+- 3 explicitly unsupported combinations documented
+- 3 unverified combinations (per Task 3) documented
+- Overall verdict: NOT COMPLETE (runtime validation blocked)
+
+### 2. Unsupported Combinations Document
+**Location**: `.sisyphus/evidence/task-16-unsupported-combinations.md`
+
+**Contents**:
+- 3 explicitly unsupported combinations with workarounds
+- 3 unverified combinations with risk levels
+- Policy for unverified combinations
+- Support stance (supported/best-effort/wontfix)
+- 100% documentation coverage
+
+### 3. Summary Document
+**Location**: `.sisyphus/evidence/task-16-summary.txt` (this file)
+
+---
+
+## What Remains to Complete Task 16
+
+### Required Actions
+1. **Setup proper environment**:
+   - Python 3.10+
+   - transformers >= 4.46.0 (or version with HiggsAudioV2TokenizerModel)
+   - torch >= 2.0.0, torchaudio >= 2.0.0
+   - OmniVoice installed and importable
+   - faster-whisper installed
+
+2. **Execute Task 15 command matrix**:
+   - Run all 15 validation commands
+   - Document pass/fail results
+   - Capture execution evidence
+
+3. **Validate at least one path per backend**:
+   - transformers backend: library/CLI/server
+   - faster-whisper backend: library/CLI/server
+
+4. **Execute rollback scenario**:
+   - Switch from faster-whisper to transformers
+   - Verify rollback works as documented
+
+5. **Update evidence files**:
+   - Add runtime execution results to task-16-validation-matrix.md
+   - Update acceptance criteria status
+   - Change overall verdict to COMPLETE
+
+---
+
+## Validation Matrix Summary
+
+| Category | Count | Status |
+|----------|-------|--------|
+| **Structural Validation** | 4 | ✅ COMPLETE |
+| **Runtime Validation** | 13 | ❌ BLOCKED |
+| **Unsupported Combinations** | 3 | ✅ DOCUMENTED |
+| **Unverified Combinations** | 3 | ✅ DOCUMENTED |
+
+---
+
+## Unsupported Combinations (Explicit)
+
+1. **faster-whisper + MPS** - Upstream limitation
+2. **Python < 3.10** - Project minimum
+3. **transformers + Windows + misaligned deps** - Short-term fix applied
+
+---
+
+## Unverified Combinations (Pending Validation)
+
+1. **transformers + Windows + CUDA** - Dependency alignment unclear
+2. **transformers + macOS + MPS** - Upstream OmniVoice MPS issues
+3. **faster-whisper on any platform** - Pending Wave 2-4 validation
+
+---
+
+## Task Dependencies
+
+### This Task Blocks
+- **Task 19**: Define switch-default criteria and rollback triggers
+  - Cannot proceed with default switch until runtime validation completes
+  - Support matrix validation is a required criterion
+
+### This Task Requires
+- **Task 3**: Compatibility matrix (COMPLETE) ✅
+- **Task 8**: Packaging strategy (COMPLETE) ✅
+- **Task 9**: Logging (COMPLETE) ✅
+- **Task 13**: Rollback runbook (COMPLETE) ✅
+- **Task 15**: Command matrix (COMPLETE) ✅
+
+---
+
+## Recommendations
+
+### For Task 16 Completion
+**Status**: ❌ NOT COMPLETE
+
+**Blocker**: Runtime validation requires proper environment (Python 3.10+, compatible transformers)
+
+**Next Steps**:
+1. Setup proper environment per requirements above
+2. Execute Task 15 command matrix
+3. Document runtime execution evidence
+4. Update Task 16 verdict to COMPLETE
+
+### For Task 19 (Switch-Default Criteria)
+**Cannot Proceed**: Task 19 requires Task 16 completion
+
+**Reason**: Task 3 compatibility matrix defines 7 criteria for default switch, including:
+- "All supported environments validated (Task 16)" ❌ NOT MET
+
+**Decision**: Do NOT proceed with Task 19 until Task 16 runtime validation completes.
+
+### For Orchestrator
+**Task 16 Status**: ❌ NOT COMPLETE
+
+**Structural Work**: COMPLETE (documentation, command matrix, support boundaries)
+
+**Runtime Work**: BLOCKED (environment constraints)
+
+**Recommendation**: 
+- Mark Task 16 as BLOCKED/PENDING in plan
+- Setup proper environment before retry
+- Do NOT mark Task 16 checkbox as complete
+
+---
+
+## Evidence Files
+
+- `.sisyphus/evidence/task-16-validation-matrix.md` (321 lines)
+- `.sisyphus/evidence/task-16-unsupported-combinations.md` (216 lines)
+- `.sisyphus/evidence/task-16-summary.txt` (this file, 199 lines)
+
+**Total Evidence**: 3 files, 736 lines, 25.5KB
+
+---
+
+## Notepad Updates
+
+**Learnings**: `.sisyphus/notepads/torchcodec-windows-long-term-fix/learnings.md`
+- Environment constraints can block runtime validation
+- Structural validation can proceed independently
+- Task 15 command matrix serves as validation blueprint
+- Support boundaries must be explicit
+
+**Decisions**: `.sisyphus/notepads/torchcodec-windows-long-term-fix/decisions.md`
+- Task 16 NOT COMPLETE without runtime validation evidence
+- Structural validation alone does not satisfy plan acceptance criteria
+- Runtime validation deferred to proper environment
+- Task 19 cannot proceed until Task 16 completes
+
+**Issues**: `.sisyphus/notepads/torchcodec-windows-long-term-fix/issues.md`
+- Local environment (Python 3.9.6) below project minimum
+- OmniVoice import failure blocks runtime validation
+- Runtime validation requires proper environment setup
+
+---
+
+**Task 16 Status**: ❌ NOT COMPLETE
+
+**Reason**: Plan acceptance criteria require runtime validation evidence, which is blocked by environment constraints.
+
+**Structural Work**: COMPLETE
+**Runtime Work**: BLOCKED
+**Overall**: NOT COMPLETE

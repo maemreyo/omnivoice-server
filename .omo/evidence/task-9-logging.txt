@@ -1,0 +1,97 @@
+Task 9: Backend Load/Use/Fallback Logging Evidence
+Timestamp: 2026-04-19T16:40:30Z
+
+=== VERIFICATION COMMAND ===
+grep -n "logger\." OmniVoice/omnivoice/asr/transformers_backend.py OmniVoice/omnivoice/asr/faster_whisper_backend.py OmniVoice/omnivoice/asr/factory.py
+
+=== LOGGING EVENTS VERIFIED ===
+
+factory.py:
+✅ Line 75: Backend selection with source tracking
+   logger.info("ASR backend selection: %s (source: %s)", backend, _get_selection_source())
+
+✅ Line 81: Transformers backend load attempt
+   logger.info("Loading transformers ASR backend...")
+
+✅ Line 84-86: Transformers backend load failure
+   logger.error("Failed to load transformers backend: %s. This will be implemented in Task 6.", e)
+
+✅ Line 96: Faster-whisper backend load attempt
+   logger.info("Loading faster-whisper ASR backend...")
+
+✅ Line 99-101: Faster-whisper backend load failure
+   logger.error("Failed to load faster-whisper backend: %s. This will be implemented in Task 7.", e)
+
+✅ Line 108: Invalid backend error
+   logger.error("Invalid ASR backend requested: %s", backend)
+
+transformers_backend.py:
+✅ Line 53-56: Model load start with backend/device context
+   logger.info("Loading ASR model: %s (backend: transformers, device: %s)", self.config.model_name, device_str)
+
+✅ Line 69-71: Model load success
+   logger.info("ASR model loaded successfully (backend: transformers, device: %s)", device_str)
+
+✅ Line 77-82: torchcodec failure warning with workaround
+   logger.warning("ASR backend unavailable: torchcodec initialization failed...")
+   (mentions OMNIVOICE_ASR_BACKEND=faster-whisper workaround)
+
+faster_whisper_backend.py:
+✅ Line 70-73: Model load start with backend/device/compute context
+   logger.info("Loading faster-whisper model: %s (backend: faster-whisper, device: %s, compute: %s)", ...)
+
+✅ Line 81: Model load success
+   logger.info("Faster-whisper model loaded successfully")
+
+✅ Line 83: Model load failure
+   logger.error(f"Failed to load faster-whisper model: {e}")
+
+✅ Line 128: Transcription failure
+   logger.error(f"Faster-whisper transcription failed: {e}")
+
+✅ Line 151-154: MPS fallback warning
+   logger.info("MPS device not supported by faster-whisper, falling back to CPU")
+
+✅ Line 178-181: Model name translation warning
+   logger.warning("Translating transformers model name '%s' to faster-whisper format '%s'", ...)
+
+✅ Line 191: Unknown device warning
+   logger.warning(f"Unknown device '{device_str}', using auto-detection")
+
+✅ Line 213: CPU float16 warning
+   logger.warning("float16 not recommended on CPU, using int8 instead")
+
+=== BACKEND SELECTION SOURCE TRACKING ===
+
+factory.py _get_selection_source():
+✅ Tracks environment variable: "environment variable OMNIVOICE_ASR_BACKEND={value}"
+✅ Tracks default: "default (transformers)"
+
+=== DISTINGUISHABILITY VERIFICATION ===
+
+Backend selection events:
+✅ Selection logged with source (env var vs default)
+✅ Load attempt logged per backend
+✅ Load failure logged per backend with task reference
+
+Model loading events:
+✅ Load start distinguishable (includes backend name, device, model)
+✅ Load success distinguishable (includes backend name, device)
+✅ Load failure distinguishable (includes backend name, error)
+
+Transcription events:
+✅ Transcription failure logged with backend context
+
+Fallback/degradation events:
+✅ torchcodec failure: warning (not silent)
+✅ MPS fallback: info log (explicit)
+✅ Model name translation: warning (explicit)
+
+=== NO SILENT FALLBACK VERIFICATION ===
+
+✅ torchcodec failure logs warning explicitly
+✅ MPS fallback logs info message explicitly
+✅ All device/compute adjustments logged
+✅ No silent backend switching
+
+Evidence captured: 2026-04-19T16:40:30Z

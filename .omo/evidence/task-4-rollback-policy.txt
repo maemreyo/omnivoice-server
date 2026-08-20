@@ -1,0 +1,67 @@
+Task 4: Backend Selection Surface - Rollback Policy Verification
+Execution Date: 2026-04-19T15:35:00Z
+
+=== ROLLBACK POLICY VERIFICATION ===
+
+DOCUMENTED MECHANISM:
+Environment Variable: OMNIVOICE_ASR_BACKEND
+Rollback Value: "transformers"
+Forward Value: "faster-whisper"
+
+=== VERIFICATION STEPS ===
+
+1. Backend Selection Mechanism Inspection:
+   ✓ Config surface: OMNIVOICE_ASR_BACKEND env var
+   ✓ Server config field: asr_backend in Settings class
+   ✓ Library integration: Read at OmniVoice.from_pretrained() time
+   ✓ Test integration: pytest monkeypatch.setenv() support
+
+2. Backend Value Documentation:
+   ✓ "transformers" - Current HuggingFace transformers Whisper (default)
+   ✓ "faster-whisper" - CTranslate2-based faster-whisper (opt-in)
+   ✓ Invalid values produce clear validation error
+
+3. Code Change Requirement Check:
+   ✓ NO code edits required to switch backends
+   ✓ Only env var change needed
+   ✓ Restart required for change to take effect
+   ✓ Same mechanism for forward and rollback
+
+=== ROLLBACK EXECUTION PATH ===
+
+Current State: OMNIVOICE_ASR_BACKEND=faster-whisper
+Rollback Action: Set OMNIVOICE_ASR_BACKEND=transformers
+Restart: Required (server/process restart)
+Verification: Check logs for "ASR backend: transformers"
+
+NO CODE MODIFICATIONS: ✓ CONFIRMED
+NO CONFIG FILE EDITS: ✓ CONFIRMED (env var only)
+NO DEPLOYMENT CHANGES: ✓ CONFIRMED (same binary/image)
+
+=== ROLLBACK SAFETY GUARANTEES ===
+
+✓ Rollback is operational (env var change only)
+✓ Rollback is documented (in decisions.md and evidence)
+✓ Rollback is deterministic (explicit backend selection)
+✓ Rollback is reversible (can switch back to faster-whisper)
+✓ Rollback is testable (same test mechanism)
+
+=== ONE-WAY MIGRATION CHECK ===
+
+Is migration one-way? NO ✓
+Can switch back to transformers? YES ✓
+Can switch forward again? YES ✓
+Requires code changes? NO ✓
+
+=== ACCEPTANCE CRITERIA ===
+
+✓ Backend can be switched operationally
+✓ No code edit required
+✓ Documented value for both backends exists
+✓ Rollback path is explicit and executable
+
+=== RESULT ===
+
+PASS: Rollback policy is executable and requires only env var change.
+
+Backend selection surface design COMPLETE and VERIFIED.

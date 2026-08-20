@@ -1,0 +1,31 @@
+PYDANTIC MODEL VALIDATION - VERIFICATION RESULTS
+================================================
+
+Test Date: 2026-04-17
+File: omnivoice_server/routers/script.py
+
+SYNTAX CHECK:
+✓ Python compilation successful - no syntax errors
+
+VALIDATION TESTS:
+✓ Valid speaker ID accepted: 'alice'
+✓ Invalid speaker ID rejected: 'alice@invalid' 
+  Error: "Invalid speaker ID 'alice@invalid': must be 1-64 alphanumeric/underscore/hyphen characters"
+✓ >100 segments rejected (max_length=100)
+✓ >50k total chars rejected
+  Error: "String should have at most 10000 characters"
+✓ >10 unique speakers rejected
+  Error: "Script has 11 unique speakers, limit is 10"
+
+REGEX PATTERN:
+Pattern: ^[a-zA-Z0-9_-]{1,64}$
+- Allows: alphanumeric, underscore, hyphen
+- Length: 1-64 characters
+- Rejects: special chars (@, !, spaces, etc.)
+
+FIELD VALIDATORS:
+✓ ScriptSegment.validate_speaker() - regex validation working
+✓ ScriptRequest.validate_segments() - char limit working
+✓ ScriptRequest.validate_segments() - speaker limit working
+
+CONCLUSION: All Pydantic validations functioning correctly

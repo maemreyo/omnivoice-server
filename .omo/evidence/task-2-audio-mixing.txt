@@ -1,0 +1,39 @@
+Task 2: Audio Mixing Functions - QA Evidence
+============================================
+Date: 2026-04-17T15:45:13.068Z
+
+## Changes Made
+- Added dataclass import to omnivoice_server/utils/audio.py
+- Added SegmentTimestamp dataclass (4 fields: index, speaker, offset_s, duration_s)
+- Added make_silence_tensor(duration_s, sample_rate) -> torch.Tensor
+- Added mix_to_single_track(segments, pause_s) -> tuple[torch.Tensor, list[SegmentTimestamp]]
+- Added group_by_speaker(segments) -> dict[str, torch.Tensor]
+
+## Verification Results
+
+### Test 1: make_silence_tensor
+✓ Creates tensor with shape (1, SAMPLE_RATE * duration_s)
+✓ All values are zeros
+✓ Uses module constant SAMPLE_RATE = 24_000
+
+### Test 2: SegmentTimestamp dataclass
+✓ Dataclass instantiation works
+✓ All 4 fields accessible (index, speaker, offset_s, duration_s)
+
+### Test 3: mix_to_single_track - Pause Logic
+✓ Inserts pause ONLY on speaker change (A->B)
+✓ NO pause when same speaker continues (B->B)
+✓ Correct total sample count: seg1 + pause + seg2 + seg3
+✓ Timestamps track correct offsets with pause accumulation
+
+### Test 4: group_by_speaker
+✓ Groups segments by speaker ID
+✓ Concatenates all audio for each speaker
+✓ Returns dict[speaker_id -> concatenated_tensor]
+✓ Speaker A: 1000 samples, Speaker B: 3500 samples (2000+1500)
+
+## Status
+✅ All functions implemented correctly
+✅ All type signatures match specification
+✅ Pause logic verified (only on speaker change)
+✅ No pydub imports (pure torch operations)

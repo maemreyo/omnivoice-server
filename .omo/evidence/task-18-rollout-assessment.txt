@@ -1,0 +1,265 @@
+Task 18: Rollout Assessment - faster-whisper as opt-in, transformers as default
+=================================================================================
+
+Date: 2026-04-20T02:14:00Z
+Evaluator: Sisyphus-Junior (quick category)
+Status: ASSESSING
+
+================================================================================
+PLAN ACCEPTANCE CRITERIA (Task 18)
+================================================================================
+
+From .sisyphus/plans/torchcodec-windows-long-term-fix.md (lines 1184-1243):
+
+1. [ ] transformers remains the initial default backend
+   Status: ✅ VERIFIED
+
+2. [ ] faster-whisper is exposed as an intentional, supported opt-in path
+   Status: ✅ VERIFIED
+
+3. [ ] Rollout state is documented and matches actual behavior
+   Status: ✅ VERIFIED
+
+================================================================================
+EVIDENCE: TRANSFORMERS REMAINS DEFAULT
+================================================================================
+
+**Source 1: Backend Selection Factory (OmniVoice/omnivoice/asr/factory.py)**
+- Default backend function: `get_default_backend()` returns `"transformers"`
+- No environment variable set → transformers selected
+- Verified in Task 6 evidence and Task 13 rollback tests
+
+**Source 2: Server Configuration (omnivoice_server/config.py:148-155)**
+```python
+asr_backend: Literal["transformers", "faster-whisper"] | None = Field(
+    default=None,
+    description=(
+        "ASR backend for auto-transcription. "
+        "None = use OMNIVOICE_ASR_BACKEND env var or default (transformers). "
+        "Supported: 'transformers' (default), 'faster-whisper'."
+    ),
+)
+```
+- Config field default: `None` → falls through to env var or default
+- Default documented as `transformers`
+
+**Source 3: CLI Tools Default Behavior**
+- All three CLI tools (demo.py, infer.py, infer_batch.py) have `--asr-backend` flag
+- Flag default: `None` → uses `OMNIVOICE_ASR_BACKEND` env var or default
+- Default documented as `transformers` in help text (lines 147, 124, 198)
+
+**Source 4: Documentation**
+- OmniVoice/README.md: "transformers (default)"
+- docs/readme/sections/05-cli-usage.md: "transformers is the default"
+- docs/readme/sections/06-configuration.md: "transformers remains the default"
+- docs/readme/sections/14-troubleshooting.md: "transformers is the current default"
+
+**Verification**: ✅ PASS
+- Default backend is `transformers` across all surfaces
+- No code path silently switches to faster-whisper
+- Documentation consistently states transformers as default
+
+================================================================================
+EVIDENCE: FASTER-WHISPER IS OPT-IN
+================================================================================
+
+**Opt-In Mechanism 1: Environment Variable**
+- `export OMNIVOICE_ASR_BACKEND=faster-whisper`
+- Works for: library, server, all CLI tools
+- Documented in: README, CLI usage, configuration, troubleshooting
+
+**Opt-In Mechanism 2: CLI Flag (OmniVoice CLI Tools Only)**
+- `--asr-backend faster-whisper`
+- Works for: omnivoice-demo, omnivoice-infer, omnivoice-infer-batch
+- NOT available for: omnivoice-server (env var only)
+- Documented in: README, CLI usage, Task 15 command matrix
+
+**Opt-In Mechanism 3: Config Field (Server Programmatic Only)**
+- `asr_backend="faster-whisper"` in Settings class
+- Works for: omnivoice-server programmatic use
+- Documented in: configuration docs, config.py docstring
+
+**Selection Precedence**:
+- OmniVoice CLI tools: CLI flag > Env var > Default (transformers)
+- omnivoice-server: Env var > Config field > Default (transformers)
+- Library: Env var > Default (transformers)
+
+**Verification**: ✅ PASS
+- faster-whisper requires explicit selection (not automatic)
+- Multiple opt-in paths available
+- Precedence documented and tested (Task 13 rollback tests)
+
+================================================================================
+EVIDENCE: ROLLOUT STATE DOCUMENTED
+================================================================================
+
+**Documentation Coverage**:
+
+1. **OmniVoice/README.md** (upstream library):
+   - Section: "ASR Backend Selection"
+   - States: "transformers (default)", "faster-whisper is opt-in"
+   - Current rollout stage: "transformers remains the default"
+   - Opt-in instructions: env var and CLI flag examples
+
+2. **docs/readme/sections/05-cli-usage.md** (server CLI usage):
+   - Section: "ASR Backend Selection"
+   - States: "transformers is the default", "faster-whisper is opt-in"
+   - Current rollout stage: explicit
+   - Server-specific note: no --asr-backend CLI flag, use env var
+
+3. **docs/readme/sections/06-configuration.md** (server configuration):
+   - Section: "ASR Backend"
+   - States: "transformers remains the default", "faster-whisper is opt-in"
+   - Current rollout stage: explicit
+   - Selection precedence documented
+
+4. **docs/readme/sections/14-troubleshooting.md** (troubleshooting):
+   - Section: "Windows torchcodec Issue"
+   - Short-term workaround: provide ref_text explicitly
+   - Long-term solution: faster-whisper backend (opt-in)
+   - Rollback instructions: switch back to transformers
+
+5. **docs/ASR_ROLLBACK_RUNBOOK.md** (operational runbook):
+   - Detailed rollback procedures
+   - Selection precedence by entry point
+   - Verification steps
+   - Current rollout stage: transformers default, faster-whisper opt-in
+
+**Verification**: ✅ PASS
+- Rollout state documented across all user-facing docs
+- Current stage (opt-in) consistently stated
+- Opt-in instructions clear and actionable
+- Rollback path documented
+
+================================================================================
+EVIDENCE: ACTUAL BEHAVIOR MATCHES DOCUMENTATION
+================================================================================
+
+**Runtime Verification (from Task 15 command matrix)**:
+
+1. **Default behavior (no selection)**:
+   - Command: `omnivoice-infer --text "test" --ref_audio test.wav --output out.wav`
+   - Expected: transformers backend used
+   - Evidence: Task 15 command matrix scenario 3
+
+2. **Explicit opt-in (env var)**:
+   - Command: `export OMNIVOICE_ASR_BACKEND=faster-whisper; omnivoice-infer ...`
+   - Expected: faster-whisper backend used
+   - Evidence: Task 15 command matrix scenario 4
+
+3. **Explicit opt-in (CLI flag)**:
+   - Command: `omnivoice-infer --asr-backend faster-whisper ...`
+   - Expected: faster-whisper backend used
+   - Evidence: Task 15 command matrix scenario 4
+
+4. **Server default**:
+   - Command: `omnivoice-server`
+   - Expected: transformers backend used
+   - Evidence: Task 15 command matrix scenario 9
+
+5. **Server opt-in**:
+   - Command: `export OMNIVOICE_ASR_BACKEND=faster-whisper; omnivoice-server`
+   - Expected: faster-whisper backend used
+   - Evidence: Task 15 command matrix scenario 10
+
+**Test Coverage (from Task 13 rollback tests)**:
+- 10/10 rollback tests pass
+- Default backend selection verified
+- Env var selection verified
+- CLI flag precedence verified (OmniVoice CLI tools)
+
+**Verification**: ✅ PASS
+- Runtime behavior matches documented rollout state
+- Default is transformers (no explicit selection required)
+- Opt-in requires explicit selection (env var or CLI flag)
+- Tests confirm behavior
+
+================================================================================
+DEPENDENCY CHECK: TASK 17 STATUS
+================================================================================
+
+**Task 17 Current Status**: NOT COMPLETE (blocked by environment constraints)
+
+**From .sisyphus/evidence/task-17-corrected-verdict.txt**:
+- Structural work: COMPLETE (contract validation, integration tests)
+- Runtime work: BLOCKED (fixture comparison required by plan)
+- Overall: NOT COMPLETE
+
+**Impact on Task 18**:
+- Task 18 depends on Task 17 per plan dependency matrix (line 1206)
+- Task 17 acceptance criteria NOT MET (fixture comparison not executed)
+- Plan requires Task 17 completion before Task 18 can be marked complete
+
+**Question**: Can Task 18 be marked complete while Task 17 is blocked?
+
+**Analysis**:
+- Task 18 acceptance criteria focus on rollout state, not equivalence validation
+- Task 18 criteria: default remains transformers, opt-in exposed, documented
+- Task 17 criteria: fixture comparison, equivalence rule, rollout findings
+
+**Interpretation**:
+- Task 18 rollout state is IMPLEMENTED and DOCUMENTED
+- Task 17 equivalence validation is BLOCKED but not required for rollout state
+- However, plan dependency matrix shows Task 17 → Task 18 dependency
+
+**Conservative Assessment**:
+- Task 18 implementation is complete
+- Task 18 acceptance criteria are met
+- BUT: Task 17 dependency is not satisfied
+- Therefore: Task 18 is IMPLEMENTED-BUT-BLOCKED by Task 17 incompletion
+
+================================================================================
+FINAL VERDICT
+================================================================================
+
+**Task 18 Status**: IMPLEMENTED-BUT-BLOCKED
+
+**Rationale**:
+1. ✅ All Task 18 acceptance criteria are met:
+   - transformers remains default
+   - faster-whisper is opt-in
+   - Rollout state documented and matches behavior
+
+2. ✅ Implementation is complete:
+   - Backend selection works across all surfaces
+   - Documentation is accurate and comprehensive
+   - Tests verify behavior
+
+3. ❌ Dependency blocker:
+   - Task 17 is NOT COMPLETE (per corrected verdict)
+   - Plan dependency matrix: Task 17 → Task 18
+   - Cannot mark Task 18 complete while Task 17 blocked
+
+**What Remains**:
+- Task 17 must complete (fixture comparison in proper environment)
+- Once Task 17 completes, Task 18 can be marked COMPLETE
+- No additional Task 18 work required
+
+**Evidence Summary**:
+- Rollout state: VERIFIED ✅
+- Documentation: VERIFIED ✅
+- Runtime behavior: VERIFIED ✅
+- Dependency: BLOCKED ❌
+
+================================================================================
+TASK 18 ACCEPTANCE CRITERIA CHECKLIST
+================================================================================
+
+From plan (lines 1215-1217):
+
+[✅] transformers remains the initial default backend
+     Evidence: factory.py, config.py, CLI defaults, docs
+
+[✅] faster-whisper is exposed as an intentional, supported opt-in path
+     Evidence: env var, CLI flag, config field, docs, tests
+
+[✅] Rollout state is documented and matches actual behavior
+     Evidence: 5 doc files, command matrix, rollback tests
+
+Overall: 3/3 acceptance criteria met
+
+BUT: Task 17 dependency not satisfied → IMPLEMENTED-BUT-BLOCKED
+
+================================================================================
+END OF ASSESSMENT
+================================================================================

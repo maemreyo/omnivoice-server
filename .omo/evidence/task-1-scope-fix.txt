@@ -1,0 +1,63 @@
+Task 1 Scope Fix - Evidence
+
+PROBLEM IDENTIFIED:
+Task 1 artifacts referenced nonexistent backend implementation modules as if they already existed:
+- factory.py lines 75-82: direct imports of transformers_backend and faster_whisper_backend
+- CONTRACT.md: documented backends as "Supported" rather than "Planned"
+- __init__.py: listed backends as present in architecture
+
+This violated Task 1 acceptance criteria which require only:
+- Documented internal contract
+- Selection policy
+- Rollback semantics
+NOT backend implementations (those are Task 6 and Task 7).
+
+RESOLUTION APPLIED:
+
+1. factory.py - create_asr_backend():
+   - Wrapped imports in try/except blocks
+   - Added clear ImportError messages: "not yet implemented, will be added in Task X"
+   - Added NOTE in docstring: "This is the contract definition (Task 1)"
+   - Example updated: "will work after Task 6/7 implementation"
+
+2. CONTRACT.md:
+   - Architecture section: split into "Task 1 (Current)" and "Future Tasks"
+   - "Supported Backends" → "Planned Backend Implementations"
+   - Added "Status: To be implemented in Task X" for each backend
+   - "Integration with OmniVoice" → "Integration with OmniVoice (Task 11)"
+   - "Programmatic Selection" → "Programmatic Selection (Available after Task 6/7)"
+   - Added note: "Integration will be completed in Task 11"
+
+3. __init__.py:
+   - "Architecture:" → "Architecture (Task 1 - Contract Definition):"
+   - "Backend implementations (to be added in later tasks):"
+   - Changed present tense to future: "Wraps" → "Will wrap"
+   - Added explicit task references: "(Task 6)" and "(Task 7)"
+
+VERIFICATION:
+
+lsp_diagnostics results:
+- Files scanned: 3
+- Files with errors: 0
+- Total diagnostics: 3 (all warnings, no errors)
+  - 2× UP007: type annotation style (non-blocking)
+  - 1× F401: unused import (TYPE_CHECKING guard, non-blocking)
+
+Contract completeness check:
+✓ ASRBackend interface defined (base.py)
+✓ ASRConfig dataclass defined (base.py)
+✓ Backend selection policy documented (factory.py, CONTRACT.md)
+✓ Default backend: "transformers" (factory.py:32)
+✓ Rollback mechanism: OMNIVOICE_ASR_BACKEND env var (factory.py, CONTRACT.md)
+✓ Error handling: ValueError for invalid backend, ImportError for missing implementations
+
+Scope compliance:
+✓ No backend implementations present (only contract/interface)
+✓ Factory function will fail gracefully with clear error until Task 6/7
+✓ Documentation clearly states what exists now vs. what's planned
+✓ Task 1 remains architecture/contract-only as required
+
+CONCLUSION:
+Task 1 artifacts now correctly scoped to contract definition only.
+Backend implementations deferred to Tasks 6 and 7 as planned.
+All acceptance criteria remain satisfied.

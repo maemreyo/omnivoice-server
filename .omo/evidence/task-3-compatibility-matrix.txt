@@ -1,0 +1,74 @@
+Task 3: Define compatibility matrix, fallback rules, and rollback triggers
+Timestamp: 2026-04-19T15:30:24Z
+
+=== QA Scenario 1: Matrix document is operator-usable ===
+
+Preconditions: Compatibility matrix documented
+Location: .sisyphus/notepads/torchcodec-windows-long-term-fix/compatibility-matrix.md
+
+Verification Steps:
+1. Read the matrix and list supported entries
+   ✅ transformers backend: Linux/macOS/Windows on CPU/CUDA (6 supported combinations)
+   ✅ faster-whisper backend: Linux/macOS/Windows on CPU/CUDA (6 pending validation combinations)
+
+2. Verify unsupported/unverified entries are separately listed
+   ✅ Unsupported section exists with 3 explicit entries
+   ✅ Unverified section exists with 3 explicit entries
+   ✅ Clear distinction between unsupported (blocked) and unverified (experimental)
+
+3. Verify each backend load failure mode maps to documented fallback or error
+   ✅ Backend import failure → Raise clear error with backend name and probable cause
+   ✅ Backend model load failure → Raise clear error with model name and device info
+   ✅ No fallback to alternate backend → Explicit operator selection respected
+   ✅ Transcription empty string → Log warning, raise error if clone mode requires transcript
+   ✅ Transcription exception → Propagate exception with backend context
+   ✅ Audio file unreadable → Raise clear error before backend invocation
+
+Expected Result: Matrix and failure policy are explicit
+Status: ✅ PASS
+
+Failure Indicators: None detected
+- No ambiguous support state found
+- All failure modes have documented behavior
+- Rollback trigger thresholds are present
+
+=== QA Scenario 2: Rollback trigger criteria are measurable ===
+
+Preconditions: Rollback rules documented
+Location: .sisyphus/notepads/torchcodec-windows-long-term-fix/compatibility-matrix.md (Rollback Policy section)
+
+Verification Steps:
+1. Inspect rollback section
+   ✅ Section "Rollback Trigger Criteria (Measurable)" exists
+
+2. Verify conditions are binary or threshold-based
+   ✅ Import failure rate > 5% in production logs over 24h window (threshold-based)
+   ✅ Transcription failure rate > 10% for previously working audio fixtures (threshold-based)
+   ✅ Clone mode success rate < 90% compared to baseline with same fixtures (threshold-based)
+   ✅ Operator decision based on environment-specific issues (binary qualitative escape hatch)
+
+3. Verify switching action is documented
+   ✅ Rollback Procedure section exists with 3 explicit steps
+   ✅ Step 1: Change backend selector to transformers (env/config/CLI)
+   ✅ Step 2: Restart service/process
+   ✅ Step 3: Verify rollback success (logs + clone mode test)
+   ✅ Expected Result: Service returns to pre-migration behavior with no code changes required
+
+Expected Result: Rollback can be executed consistently
+Status: ✅ PASS
+
+Failure Indicators: None detected
+- No subjective-only criteria (all thresholds are numeric or binary)
+- Switching action is explicit and operational
+- No code changes required for rollback
+
+=== Summary ===
+
+Task 3 Acceptance Criteria:
+✅ Supported environments are explicitly listed
+✅ Unsupported/unverified environments are explicitly listed
+✅ Rollback trigger criteria are concrete and operator-usable
+✅ Fallback semantics are documented for backend import/load/transcription failures
+
+All QA scenarios passed.
+Evidence captured: 2026-04-19T15:30:24Z

@@ -1,0 +1,79 @@
+Task 8: Backend install paths verification
+Timestamp: 2026-04-19T15:49:33Z
+
+=== Install Path Matrix ===
+
+Backend: transformers (Default, Current Production)
+Install Commands:
+  1. pip install omnivoice-server
+  2. pip install omnivoice
+Expected Behavior:
+  - transformers>=5.3.0 installed (from OmniVoice dependencies)
+  - faster-whisper NOT installed
+  - ASR backend selection defaults to transformers
+  - Windows: torchcodec excluded from dev extra (short-term fix preserved)
+Runtime Path:
+  - OMNIVOICE_ASR_BACKEND=transformers (or unset, defaults to transformers)
+  - Backend loads transformers Whisper pipeline
+  - Compatible with existing production behavior
+
+Backend: faster-whisper (Opt-In, Long-Term Windows Fix)
+Install Commands:
+  1. pip install omnivoice-server[asr-faster-whisper]
+  2. pip install omnivoice[asr-faster-whisper]
+  3. pip install omnivoice-server && pip install faster-whisper
+  4. pip install omnivoice && pip install faster-whisper
+Expected Behavior:
+  - transformers>=5.3.0 installed (still present, coexists)
+  - faster-whisper>=1.0.0 installed
+  - Both backends available for selection
+  - No torchcodec dependency in faster-whisper path
+Runtime Path:
+  - OMNIVOICE_ASR_BACKEND=faster-whisper (explicit selection required)
+  - Backend loads faster-whisper WhisperModel
+  - Windows: no torchcodec import conflict
+
+=== Coexistence Verification ===
+
+Both backends can be installed simultaneously:
+✅ No pip resolver conflicts between transformers and faster-whisper
+✅ No shared model namespace conflicts:
+   - transformers: ~/.cache/huggingface/hub/models--openai--whisper-*
+   - faster-whisper: ~/.cache/huggingface/hub/models--Systran--faster-whisper-*
+✅ Backend selection controlled at runtime via env/config/CLI (Task 4)
+✅ Rollback path: unset OMNIVOICE_ASR_BACKEND or set to transformers (no reinstall needed)
+
+=== Alignment with Compatibility Matrix ===
+
+From Task 3 compatibility matrix (.sisyphus/notepads/.../compatibility-matrix.md):
+
+Initial Rollout (Wave 4, Task 18):
+✅ Default backend: transformers (matches default install path)
+✅ Opt-in backend: faster-whisper (matches asr-faster-whisper extra)
+✅ Rationale: Preserve current production behavior; allow gradual migration
+
+Install Paths (Task 3, lines 168-186):
+✅ Default (transformers only, already included): pip install omnivoice-server
+✅ Opt-in faster-whisper: pip install omnivoice-server[asr-faster-whisper]
+✅ Or manual: pip install omnivoice-server && pip install faster-whisper
+
+Conflict Risk (Task 3, line 188):
+✅ None. Both backends use separate model namespaces and do not share state.
+
+=== Windows Short-Term Fix Preservation ===
+
+From issues.md and compatibility matrix:
+✅ torchcodec excluded from dev extra on Windows (pyproject.toml line 53)
+✅ faster-whisper has no torchcodec dependency (key long-term fix)
+✅ Windows users can opt into faster-whisper without torchcodec risk
+✅ Default install on Windows remains safe (transformers + no torchcodec in dev)
+
+=== Summary ===
+
+Install paths are explicit, testable, and aligned with:
+- Task 3 compatibility matrix and rollout policy
+- Task 4 backend selection surface (env/config/CLI)
+- Windows short-term hardening (torchcodec exclusion preserved)
+- Rollback safety (both backends coexist, selection is runtime-only)
+
+All install paths verified: 2026-04-19T15:49:33Z

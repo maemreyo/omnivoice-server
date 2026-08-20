@@ -1,0 +1,215 @@
+TASK 16: UNSUPPORTED COMBINATIONS MATRIX
+Documented: 2026-04-20T00:51:53.546Z
+Source: Task 3 compatibility matrix + runtime validation
+
+================================================================================
+EXPLICITLY UNSUPPORTED COMBINATIONS
+================================================================================
+
+These combinations are KNOWN to be unsupported and documented in the compatibility matrix.
+
+--------------------------------------------------------------------------------
+1. faster-whisper + MPS Device
+--------------------------------------------------------------------------------
+Platform: macOS
+Python: 3.10+
+Backend: faster-whisper
+Device: MPS
+Status: ❌ UNSUPPORTED
+
+Reason: faster-whisper upstream does not support MPS device for inference
+Evidence: Task 3 compatibility matrix line 32
+Documented: Yes
+Mitigation: Use CPU or CUDA device instead
+
+User Impact:
+- macOS users with Apple Silicon must use CPU device with faster-whisper
+- transformers backend supports MPS and is recommended for macOS users
+
+Validation Evidence:
+- Command I confirmed graceful handling (no crash) but MPS not used for inference
+- Device config accepted but backend falls back to CPU internally
+
+--------------------------------------------------------------------------------
+2. Python < 3.10
+--------------------------------------------------------------------------------
+Platform: All
+Python: < 3.10
+Backend: All
+Status: ❌ UNSUPPORTED
+
+Reason: Project minimum is Python 3.10
+Evidence: Task 3 compatibility matrix line 52
+Documented: Yes
+Mitigation: Upgrade to Python 3.10 or later
+
+User Impact:
+- Users on Python 3.9 or earlier cannot use OmniVoice
+- Previous validation attempt (Python 3.9.6) failed due to this constraint
+
+Validation Evidence:
+- Initial validation attempt with Python 3.9.6 failed with import errors
+- Successful validation with Python 3.11.15 confirms 3.10+ requirement
+
+--------------------------------------------------------------------------------
+3. transformers + Windows + Misaligned torch/torchaudio/torchcodec
+--------------------------------------------------------------------------------
+Platform: Windows
+Python: 3.10+
+Backend: transformers
+Dependency Issue: torch/torchaudio/torchcodec version misalignment
+Status: ❌ UNSUPPORTED (short-term fix applied)
+
+Reason: Causes import crash on Windows
+Evidence: Task 3 compatibility matrix line 53
+Documented: Yes
+Mitigation: torchcodec excluded on Windows via platform-specific dependencies
+
+User Impact:
+- Windows users cannot use torchcodec features
+- Core TTS functionality works with short-term fix
+- Long-term fix requires upstream dependency alignment
+
+Validation Evidence:
+- Task 1-2 implemented platform-specific dependency exclusion
+- Windows users can install and run with transformers backend
+- torchcodec features unavailable on Windows
+
+--------------------------------------------------------------------------------
+4. faster-whisper + Python 3.9 or Earlier
+--------------------------------------------------------------------------------
+Platform: All
+Python: < 3.10
+Backend: faster-whisper
+Status: ❌ UNSUPPORTED
+
+Reason: Combination of Python version constraint + faster-whisper requirements
+Evidence: Derived from Python 3.10+ requirement
+Documented: Yes (via Python version constraint)
+Mitigation: Upgrade to Python 3.10+
+
+User Impact:
+- Users on older Python versions cannot use faster-whisper backend
+- Must upgrade Python to access faster-whisper features
+
+================================================================================
+UNVERIFIED COMBINATIONS (Pending Validation)
+================================================================================
+
+These combinations lack validation evidence and are marked as unverified.
+
+--------------------------------------------------------------------------------
+5. transformers + Windows + CUDA
+--------------------------------------------------------------------------------
+Platform: Windows
+Python: 3.10+
+Backend: transformers
+Device: CUDA
+Status: ⚠️ UNVERIFIED
+
+Reason: Dependency alignment unclear
+Evidence: Task 3 compatibility matrix line 59
+Documented: Yes
+Next Steps: Requires Windows + CUDA environment for validation
+
+User Impact:
+- Windows users with NVIDIA GPUs may experience issues
+- Recommend CPU device until validated
+- Community validation needed
+
+--------------------------------------------------------------------------------
+6. transformers + macOS + MPS (Upstream Issues)
+--------------------------------------------------------------------------------
+Platform: macOS
+Python: 3.10+
+Backend: transformers
+Device: MPS
+Status: ⚠️ UNVERIFIED (Known Upstream Issues)
+
+Reason: Upstream OmniVoice MPS issues documented
+Evidence: Task 3 compatibility matrix line 60
+Documented: Yes
+Next Steps: Monitor upstream OmniVoice for MPS fixes
+
+User Impact:
+- macOS users may experience issues with MPS device
+- Recommend CPU device for stability
+- MPS support depends on upstream fixes
+
+Validation Evidence:
+- Runtime validation confirmed MPS device available on macOS
+- Graceful handling implemented but full MPS inference not validated
+
+--------------------------------------------------------------------------------
+7. faster-whisper on Any Platform (Wave 2-4 Validation Pending)
+--------------------------------------------------------------------------------
+Platform: All
+Python: 3.10+
+Backend: faster-whisper
+Status: ⚠️ UNVERIFIED (Pending Wave 2-4 Validation)
+
+Reason: New backend, validation pending
+Evidence: Task 3 compatibility matrix line 61
+Documented: Yes
+Next Steps: Wave 2-4 validation will cover production scenarios
+
+User Impact:
+- faster-whisper backend is functional but not production-validated
+- Recommend transformers backend for production use until Wave 2-4 complete
+- Contract compliance validated (Task 16) but end-to-end scenarios pending
+
+Validation Evidence:
+- Task 16 validated abstraction layer, selection, instantiation, rollback
+- 39 automated tests passed
+- Full production validation (Wave 2-4) pending
+
+================================================================================
+ENVIRONMENT-LIMITED COMBINATIONS
+================================================================================
+
+These combinations cannot be validated in current environment but may be supported.
+
+--------------------------------------------------------------------------------
+8. Full End-to-End Transcription with Model Weights
+--------------------------------------------------------------------------------
+Platform: All
+Python: 3.10+
+Backend: All
+Scenario: Full transcription with downloaded model weights
+Status: ⚠️ ENVIRONMENT-LIMITED
+
+Reason: Model weights require 10+ GB download
+Evidence: Task 16 validation notes
+Documented: Yes
+Next Steps: Validation in environment with model weights
+
+User Impact:
+- Abstraction layer, selection, and rollback fully validated
+- End-to-end transcription requires model weights download
+- Contract compliance ensures compatibility when weights available
+
+Validation Evidence:
+- Lazy loading validated (backends instantiate without weights)
+- Contract tests validate interface compliance
+- Full transcription pending model weights availability
+
+================================================================================
+SUMMARY
+================================================================================
+
+Explicitly Unsupported: 4 combinations
+- faster-whisper + MPS: Upstream limitation
+- Python < 3.10: Project requirement
+- Windows + torchcodec: Dependency issue (mitigated)
+- faster-whisper + Python < 3.10: Combined constraint
+
+Unverified (Pending Validation): 3 combinations
+- Windows + CUDA: Needs validation environment
+- macOS + MPS: Upstream issues documented
+- faster-whisper production: Wave 2-4 validation pending
+
+Environment-Limited: 1 scenario
+- End-to-end transcription: Requires model weights (10+ GB)
+
+All unsupported combinations are documented with clear reasons and mitigation strategies.
+All unverified combinations are marked as pending with next steps identified.

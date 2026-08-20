@@ -1,0 +1,257 @@
+# Task 15: Environment-Specific Validation Commands - Summary
+
+**Date**: 2026-04-19
+**Task**: Add environment-specific validation commands/scripts
+**Status**: COMPLETE
+
+## Overview
+
+Task 15 created a comprehensive validation command matrix covering all supported environment/backend paths, including clone mode with `ref_text=None`, backend selection, and rollback scenarios.
+
+---
+
+## Deliverables
+
+### 1. Command Matrix Document
+
+**File**: `.sisyphus/evidence/task-15-command-matrix.txt`
+**Size**: 13.5 KB
+**Content**:
+- 15 validation commands covering all supported paths
+- 11 runtime validation scenarios
+- 2 automated test suite commands
+- 2 rollback validation scenarios
+
+**Coverage**:
+- ✅ Library: transformers (default) and faster-whisper (env var)
+- ✅ CLI infer: transformers (default) and faster-whisper (CLI flag)
+- ✅ CLI demo: transformers (default) and faster-whisper (CLI flag)
+- ✅ CLI batch: transformers (default) and faster-whisper (CLI flag)
+- ✅ Server: transformers (default), faster-whisper (env var), faster-whisper (config field)
+- ✅ Rollback: env var method (all entry points) and CLI flag override (OmniVoice CLI tools only)
+
+---
+
+### 2. Command Expectations Verification
+
+**File**: `.sisyphus/evidence/task-15-command-expectations.txt`
+**Size**: 7.8 KB
+**Content**:
+- Audit of all 15 commands for expected results
+- Verification of pass/fail criteria for each command
+- 100% coverage: all commands have explicit expectations
+
+**Audit Result**: ✅ PASS
+- 15/15 commands have expected results documented
+- 15/15 commands have binary pass/fail criteria
+- 0 commands require subjective judgment
+
+---
+
+## Selection Surface Clarification
+
+### OmniVoice CLI Tools (omnivoice-infer, omnivoice-demo, omnivoice-infer-batch)
+
+**Control Surfaces**:
+- CLI flag: `--asr-backend transformers|faster-whisper` ✅
+- Environment variable: `OMNIVOICE_ASR_BACKEND` ✅
+- Default: `transformers` ✅
+
+**Precedence**: CLI flag > Environment variable > Default
+
+---
+
+### omnivoice-server
+
+**Control Surfaces**:
+- Environment variable: `OMNIVOICE_ASR_BACKEND` ✅
+- Config field: `asr_backend` (programmatic only) ✅
+- Default: `transformers` ✅
+
+**Precedence**: Environment variable > Config field > Default
+
+**Important**: Server does NOT expose `--asr-backend` CLI flag
+
+---
+
+## Alignment Verification
+
+### Task 3 Compatibility Matrix
+
+**Supported Environments Covered**:
+- ✅ transformers: Linux/macOS/Windows, CPU/CUDA
+- ✅ faster-whisper: Linux/macOS/Windows, CPU/CUDA (not MPS)
+- ✅ Unsupported: faster-whisper + MPS (documented as unsupported)
+
+**Alignment**: ✅ COMPLETE
+
+---
+
+### Task 4 Selection Surface
+
+**Control Surfaces Covered**:
+- ✅ Environment variable: `OMNIVOICE_ASR_BACKEND` (all entry points)
+- ✅ CLI flag: `--asr-backend` (OmniVoice CLI tools only)
+- ✅ Config field: `asr_backend` (server only, programmatic)
+- ✅ Default: `transformers` (all entry points)
+
+**Precedence Verified**:
+- ✅ OmniVoice CLI tools: CLI flag > Environment variable > Default
+- ✅ Server: Environment variable > Config field > Default
+
+**Alignment**: ✅ COMPLETE
+
+---
+
+### Task 12 CLI/Demo/Server Plumbing
+
+**Entry Points Covered**:
+- ✅ omnivoice-infer: `--asr-backend` flag verified
+- ✅ omnivoice-demo: `--asr-backend` flag verified
+- ✅ omnivoice-infer-batch: `--asr-backend` flag verified
+- ✅ omnivoice-server: `OMNIVOICE_ASR_BACKEND` env var and config field verified
+- ✅ omnivoice-server: NO `--asr-backend` CLI flag (correctly documented)
+
+**Alignment**: ✅ COMPLETE
+
+---
+
+### Task 13 Rollback Runbook
+
+**Rollback Scenarios Covered**:
+- ✅ Environment variable method (Command 12, all entry points)
+- ✅ CLI flag override method (Command 13, OmniVoice CLI tools only)
+- ✅ Automated rollback tests (Command 15)
+
+**Alignment**: ✅ COMPLETE
+
+---
+
+### Task 14 Documentation
+
+**Alignment with Accepted Docs**:
+- ✅ Server CLI has no `--asr-backend` flag (per Task 14 correction)
+- ✅ OmniVoice CLI tools DO have `--asr-backend` flag
+- ✅ Selection precedence correctly scoped per entry point
+- ✅ Rollback methods correctly distinguished by entry point
+
+**Alignment**: ✅ COMPLETE
+
+---
+
+## Acceptance Criteria
+
+### QA Scenario 1: Validation command set covers all supported paths
+
+**Steps**:
+1. Read command matrix ✅
+2. Verify every supported environment/backend path from Task 3 has at least one command ✅
+3. Verify rollback scenario command is included ✅
+
+**Result**: ✅ PASS
+- All supported paths have validation commands
+- Rollback scenarios covered (env var for all, CLI flag for OmniVoice CLI tools)
+- No supported path missing from matrix
+
+**Evidence**: `.sisyphus/evidence/task-15-command-matrix.txt`
+
+---
+
+### QA Scenario 2: Commands include pass/fail expectations
+
+**Steps**:
+1. Inspect each command entry ✅
+2. Verify expected result/output is documented ✅
+
+**Result**: ✅ PASS
+- 15/15 commands have expected results
+- 15/15 commands have pass/fail criteria
+- All criteria are binary and objective
+
+**Evidence**: `.sisyphus/evidence/task-15-command-expectations.txt`
+
+---
+
+## Task 15 Acceptance Criteria
+
+- [✓] Each supported environment/backend path has a concrete validation command or test invocation
+- [✓] Commands have explicit pass/fail expectations
+- [✓] Commands cover rollback-relevant scenarios
+
+**Status**: ✅ ALL CRITERIA MET
+
+---
+
+## Dependencies Satisfied
+
+**Blocked By**:
+- [✓] Task 2: Inventory complete (used to identify entry points)
+
+**Blocks**:
+- Task 16: Validate supported matrix (will use these commands)
+- Task 17: Compare transcript equivalence (will use these commands)
+
+---
+
+## Evidence Summary
+
+**Files Created**:
+1. `task-15-command-matrix.txt` (13.5 KB)
+2. `task-15-command-expectations.txt` (7.8 KB)
+3. `task-15-summary.txt` (this file)
+
+**Total Evidence**: 25.8 KB
+
+---
+
+## Corrections Applied
+
+### Issue: Server CLI Flag Over-Generalization
+
+**Problem**: Initial version incorrectly implied `omnivoice-server --asr-backend` CLI flag existed.
+
+**Root Cause**: Failed to distinguish between OmniVoice CLI tools (which DO have the flag) and omnivoice-server (which does NOT).
+
+**Ground Truth Verified**:
+- `omnivoice_server/cli.py`: No `--asr-backend` argument defined
+- `OmniVoice/omnivoice/cli/infer.py`: `--asr-backend` flag exists
+- `OmniVoice/omnivoice/cli/demo.py`: `--asr-backend` flag exists
+- `OmniVoice/omnivoice/cli/infer_batch.py`: `--asr-backend` flag exists
+
+**Fix Applied**:
+- Corrected all command matrix entries to distinguish server vs CLI tools
+- Updated rollback command 13 to clarify CLI flag override only works for OmniVoice CLI tools
+- Added explicit notes throughout document clarifying server has no CLI flag
+- Updated precedence descriptions to be scoped per entry point
+
+**Alignment**: Now consistent with Task 14 accepted documentation
+
+---
+
+## Next Steps
+
+Task 15 is complete. The validation command matrix is ready for use in:
+- Task 16: Execute validation matrix across supported environments
+- Task 17: Run transcript equivalence tests using these commands
+- CI/CD integration: Commands can be automated in pipelines
+- Manual QA: Operators can use commands for issue triage
+
+---
+
+## Notes
+
+**Command Matrix Design**:
+- All commands are copy-paste ready
+- Expected results are observable (exit codes, files, logs)
+- Pass/fail criteria are binary (no subjective judgment)
+- Commands correctly distinguish control surfaces by entry point
+- Rollback scenarios validate reversibility per entry point
+
+**Alignment**:
+- Commands reflect actual implementation (Task 12)
+- Commands match compatibility matrix (Task 3)
+- Commands use documented selection surfaces (Task 4)
+- Commands align with rollback runbook (Task 13)
+- Commands consistent with accepted docs (Task 14)
+
+**Status**: COMPLETE ✅

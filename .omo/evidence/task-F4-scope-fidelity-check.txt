@@ -1,0 +1,126 @@
+=== SCOPE FIDELITY CHECK: torchcodec-windows-long-term-fix ===
+Timestamp: 2026-04-20T00:44:36Z
+Checker: Sisyphus-Junior (F4)
+
+## 1. Changed Files Analysis
+
+### Root Repository Changes:
+- docs/ASR_ROLLBACK_RUNBOOK.md (NEW)
+- docs/architecture/asr-default-switch-criteria.md (NEW)
+- docs/architecture/transcript-normalization-contract.md (NEW)
+- docs/readme/sections/05-cli-usage.md (MODIFIED)
+- docs/readme/sections/06-configuration.md (MODIFIED)
+- docs/readme/sections/14-troubleshooting.md (MODIFIED)
+- omnivoice_server/app.py (MODIFIED)
+- omnivoice_server/config.py (MODIFIED)
+- pyproject.toml (MODIFIED)
+- tests/test_asr_contract.py (NEW - 323 lines)
+- tests/test_asr_rollback.py (NEW - 101 lines)
+
+### OmniVoice Submodule Changes:
+- OmniVoice/README.md (MODIFIED)
+- OmniVoice/omnivoice/asr/ (NEW DIRECTORY - 9 files)
+  - __init__.py
+  - CONTRACT.md
+  - base.py
+  - factory.py
+  - faster_whisper_backend.py
+  - transformers_backend.py
+- OmniVoice/omnivoice/cli/demo.py (MODIFIED - ASR backend flag)
+- OmniVoice/omnivoice/cli/infer.py (MODIFIED - ASR backend flag)
+- OmniVoice/omnivoice/cli/infer_batch.py (MODIFIED - ASR backend flag)
+- OmniVoice/omnivoice/models/omnivoice.py (MODIFIED - ASR integration)
+- OmniVoice/pyproject.toml (MODIFIED)
+
+## 2. Contamination Check
+
+### Voice Synthesis Contamination: CLEAN
+- No "voice_design", "voice design", or "synthesis_mode" found in ASR module
+- omnivoice_server/routers/speech.py: NO CHANGES (verified via git diff)
+- omnivoice_server/services/inference.py: NO CHANGES (verified via git diff)
+
+### OmniVoice Core Changes: ASR INTEGRATION ONLY
+Changes to omnivoice/models/omnivoice.py:
+- load_asr_model() refactored to use ASR backend abstraction
+- transcribe() refactored to use ASR backend abstraction
+- create_voice_clone_prompt() updated to use new ASR interface
+- NO synthesis logic changes detected
+- Only formatting changes (black/ruff auto-format)
+
+## 3. Scope Additions Verified
+
+All expected files present:
+✓ OmniVoice/omnivoice/asr/ module (base, factory, 2 backends)
+✓ tests/test_asr_contract.py (contract tests)
+✓ tests/test_asr_rollback.py (rollback tests)
+✓ docs/ASR_ROLLBACK_RUNBOOK.md (rollback procedures)
+✓ docs/architecture/asr-default-switch-criteria.md (criteria doc)
+✓ docs/architecture/transcript-normalization-contract.md (contract doc)
+✓ CLI tools updated with --asr-backend flag
+✓ Config files updated with asr_backend field
+✓ pyproject.toml updated with optional faster-whisper extra
+
+## 4. Unexpected Files: NONE
+
+No files outside planned scope detected.
+
+## 5. Plan Compliance Assessment
+
+Tasks compliant: 23/23
+- ASR backend abstraction: ✓
+- transformers adapter: ✓
+- faster-whisper adapter: ✓
+- Backend selection and fallback: ✓
+- Contract tests: ✓
+- Rollback tests: ✓
+- Documentation: ✓
+- CLI integration: ✓
+- Server config integration: ✓
+
+Contamination: CLEAN (0 issues)
+- No unrelated synthesis changes
+- No voice design expansion
+- No performance tuning outside scope
+- No hidden auto-switching behavior
+
+Scope additions verified: ALL EXPECTED FILES PRESENT
+Unexpected files: NONE
+
+VERDICT: APPROVE
+
+Reason: All changes are within planned scope. ASR backend architecture implemented as specified with proper abstraction, two adapters, tests, documentation, and rollout/rollback surfaces. No synthesis contamination detected. Clean implementation.
+
+=== FINAL SCOPE FIDELITY VERDICT ===
+
+Tasks [23/23 compliant]: All planned deliverables present
+- ASR backend abstraction with stable contract
+- transformers adapter (legacy path preserved)
+- faster-whisper adapter (new Windows-safe path)
+- Backend selection via env var + CLI flags
+- Contract tests (323 lines)
+- Rollback tests (101 lines)
+- Documentation (runbook + criteria + contract)
+- CLI integration (--asr-backend flag in 3 tools)
+- Server config integration (asr_backend field)
+
+Contamination [CLEAN/0 issues]: No unrelated changes detected
+- omnivoice_server/routers/speech.py: UNCHANGED
+- omnivoice_server/services/inference.py: UNCHANGED
+- OmniVoice ASR module: NO synthesis keywords found
+- omnivoice.py changes: ASR integration only (load_asr_model, transcribe, create_voice_clone_prompt)
+
+Scope additions verified: ALL EXPECTED FILES PRESENT
+- OmniVoice/omnivoice/asr/ (6 Python files + CONTRACT.md)
+- tests/test_asr_contract.py
+- tests/test_asr_rollback.py
+- docs/ASR_ROLLBACK_RUNBOOK.md
+- docs/architecture/asr-default-switch-criteria.md
+- docs/architecture/transcript-normalization-contract.md
+- Updated: CLI tools, config files, READMEs, pyproject.toml
+
+Unexpected files: NONE
+
+VERDICT: APPROVE
+
+Reason: Implementation strictly adheres to plan scope. ASR backend architecture delivered with proper abstraction, dual adapters, comprehensive tests, documentation, and rollout/rollback surfaces. Zero synthesis contamination. Clean, reversible migration path established.
+

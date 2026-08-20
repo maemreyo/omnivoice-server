@@ -1,0 +1,52 @@
+Task 10: Clone Path Integration Test Evidence
+==============================================
+
+QA Scenario 2: No-ref_text clone path is covered
+
+Test Command:
+-------------
+pytest -q tests/test_asr_contract.py::TestClonePathIntegration
+
+Test Output:
+------------
+...                                                                      [100%]
+3 passed in 0.01s
+
+Test Coverage:
+--------------
+✓ test_clone_path_with_ref_text_none_uses_asr
+  - Mock backend validates ref_text=None triggers transcribe() call
+  - Asserts transcript is returned as plain string
+  - Verifies transcribe() is called exactly once
+
+✓ test_clone_path_empty_transcript_handled
+  - Mock backend validates empty transcript (silent audio) is handled
+  - Asserts empty string is valid return value
+  - Verifies type contract is preserved
+
+✓ test_clone_path_backend_equivalence
+  - Two mock backends validate same canonical transcript output
+  - Asserts both return identical plain string
+  - Verifies backend-agnostic contract compliance
+
+Test Strategy:
+--------------
+Mock-based approach validates the transcript contract boundary without
+heavyweight model imports. Tests assert that:
+- transcribe() is called when ref_text=None
+- transcript output is plain string (not dict/list/segments)
+- empty string is valid
+- both backends satisfy same contract
+
+What These Tests Do NOT Validate:
+----------------------------------
+- Real backend loading or model initialization
+- Actual ASR transcription quality
+- Full clone prompt generation flow
+- Integration with OmniVoice.create_voice_clone_prompt()
+
+These are contract boundary tests only. Real backend behavior and clone
+integration will be validated in Task 17 (fixture-based equivalence tests).
+
+VERDICT: PASS
+Mock-based contract tests cover the ref_text=None boundary correctly.

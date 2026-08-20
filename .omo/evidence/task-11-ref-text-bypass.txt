@@ -1,0 +1,68 @@
+Task 11: Explicit ref_text Bypass Evidence
+===========================================
+
+QA Scenario 2: User-provided ref_text bypass remains intact
+
+Code Analysis:
+--------------
+File: OmniVoice/omnivoice/models/omnivoice.py
+Lines: 688-693 (create_voice_clone_prompt method)
+
+Bypass Logic (Preserved):
+--------------------------
+if ref_text is None:
+    if self._asr_backend is None:
+        logger.info("ASR model not loaded yet, loading on-the-fly ...")
+        self.load_asr_model()
+    ref_text = self.transcribe((ref_wav, self.sampling_rate))
+    logger.debug("Auto-transcribed ref_text: %s", ref_text)
+
+Behavior:
+---------
+✓ When ref_text is provided by user (not None):
+  - ASR backend is NOT loaded
+  - transcribe() is NOT called
+  - User-provided ref_text is used directly
+
+✓ When ref_text is None:
+  - ASR backend is loaded on-demand if not already loaded
+  - transcribe() is called to generate ref_text
+  - Auto-transcribed ref_text is used
+
+Integration Verification:
+-------------------------
+The bypass logic remains unchanged from original implementation:
+- Same conditional check: `if ref_text is None:`
+- Same lazy loading: `if self._asr_backend is None:`
+- Same transcription call: `self.transcribe((ref_wav, self.sampling_rate))`
+
+Only the backend implementation changed (abstraction layer), not the
+trigger semantics or bypass behavior.
+
+Verification Commands:
+----------------------
+1. Syntax check:
+   python3 -m py_compile OmniVoice/omnivoice/models/omnivoice.py
+   Result: ✓ Passed
+
+2. Contract tests:
+   pytest -q tests/test_asr_contract.py
+   Result: 29 passed in 0.06s
+
+What This Validates:
+---------------------
+- Explicit ref_text path bypasses ASR backend loading
+- No unnecessary backend initialization when ref_text provided
+- Original user-facing behavior preserved
+
+What This Does NOT Validate:
+-----------------------------
+- Full end-to-end clone workflow with real ref_text
+- Actual clone prompt generation output
+- Real OmniVoice.generate() call with explicit ref_text
+
+These will be validated in Task 17 (fixture-based equivalence tests).
+
+VERDICT: PASS
+User-provided ref_text bypass logic remains intact. No ASR backend load/transcribe
+path is triggered when ref_text is explicitly provided.

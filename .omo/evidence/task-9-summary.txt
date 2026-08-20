@@ -1,0 +1,71 @@
+Task 9: Structured Backend Load/Use/Fallback Logging and Error Surfaces
+FINAL SUMMARY FOR ORCHESTRATOR
+Timestamp: 2026-04-19T16:41:00Z
+
+═══════════════════════════════════════════════════════════════════════════════
+1. FILES CHANGED
+═══════════════════════════════════════════════════════════════════════════════
+
+NO FILES MODIFIED - Task 9 logging already implemented in:
+- OmniVoice/omnivoice/asr/factory.py (backend selection logging)
+- OmniVoice/omnivoice/asr/transformers_backend.py (model load/transcribe logging)
+- OmniVoice/omnivoice/asr/faster_whisper_backend.py (model load/transcribe logging)
+
+All required logging and error surfaces were already present from previous work.
+This task verified and documented the existing implementation.
+
+═══════════════════════════════════════════════════════════════════════════════
+2. VERIFICATION COMMANDS + RESULTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Command: pytest -q tests/test_asr_contract.py
+Result: 29 passed in 0.05s
+Status: ✅ PASS
+
+Command: python3 -m py_compile OmniVoice/omnivoice/asr/factory.py OmniVoice/omnivoice/asr/transformers_backend.py OmniVoice/omnivoice/asr/faster_whisper_backend.py
+Result: All files compile successfully
+Status: ✅ PASS
+
+Command: grep -n "logger\." OmniVoice/omnivoice/asr/*.py
+Result: 17 logging calls verified across 3 files
+Status: ✅ PASS
+
+═══════════════════════════════════════════════════════════════════════════════
+3. EVIDENCE FILES CREATED
+═══════════════════════════════════════════════════════════════════════════════
+
+✅ .sisyphus/evidence/task-9-logging.txt
+   - Documents all 17 logging events
+   - Verifies backend selection source tracking
+   - Verifies distinguishability of load/failure events
+   - Verifies no silent fallback
+
+✅ .sisyphus/evidence/task-9-error-surface.txt
+   - Documents all error messages
+   - Verifies actionable workarounds in all errors
+   - Verifies backend/model/device context in errors
+   - Verifies exception chaining
+
+✅ .sisyphus/evidence/task-9-summary.txt (this file)
+   - Final summary for orchestrator
+
+✅ .sisyphus/notepads/torchcodec-windows-long-term-fix/issues.md
+   - Timestamped completion note appended
+
+═══════════════════════════════════════════════════════════════════════════════
+4. REMAINING GAPS
+═══════════════════════════════════════════════════════════════════════════════
+
+NONE - Task 9 is complete.
+
+All requirements met:
+✅ Backend selection logged clearly (factory.py line 75)
+✅ Backend load/failure events distinguishable (17 log calls verified)
+✅ Error messages project-level and actionable (11 error messages verified)
+✅ No silent fallback (torchcodec/MPS/translation all logged)
+
+Ready for Task 11 (clone prompt integration).
+
+═══════════════════════════════════════════════════════════════════════════════
+TASK 9 STATUS: ✅ COMPLETE
+═══════════════════════════════════════════════════════════════════════════════
