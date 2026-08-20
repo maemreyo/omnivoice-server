@@ -50,6 +50,20 @@ def _apply_cuda_allocator_config(cfg: Settings) -> None:
     logger.info("Set PYTORCH_CUDA_ALLOC_CONF=%s", cfg.cuda_alloc_conf)
 
 
+def _apply_cuda_runtime_config(cfg: Settings) -> None:
+    if cfg.device != "cuda":
+        return
+    import torch
+
+    if not torch.cuda.is_available():
+        return
+    torch.backends.cuda.matmul.allow_tf32 = cfg.cuda_tf32
+    torch.backends.cudnn.allow_tf32 = cfg.cuda_tf32
+    if cfg.cuda_tf32:
+        torch.set_float32_matmul_precision("high")
+    logger.info("CUDA TF32 matmul fast paths: %s", "enabled" if cfg.cuda_tf32 else "disabled")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cfg: Settings = app.state.cfg
@@ -63,6 +77,7 @@ async def lifespan(app: FastAPI):
 
     cfg.profile_dir.mkdir(parents=True, exist_ok=True)
     _apply_cuda_allocator_config(cfg)
+    _apply_cuda_runtime_config(cfg)
 
     model_svc = ModelService(cfg)
     await model_svc.load()

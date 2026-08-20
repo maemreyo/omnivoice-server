@@ -206,6 +206,44 @@ def main() -> None:
         help="Enable FlashInfer CUDA graphs (env: OMNIVOICE_FLASHINFER_CUDA_GRAPH)",
     )
     parser.add_argument(
+        "--split-cfg-batch",
+        action="store_true",
+        default=None,
+        dest="split_cfg_batch",
+        help="Reduce standard-path peak VRAM by splitting CFG forwards",
+    )
+    parser.add_argument(
+        "--no-split-cfg-batch",
+        action="store_false",
+        dest="split_cfg_batch",
+        help="Keep the standard combined CFG forward",
+    )
+    parser.add_argument(
+        "--tf32",
+        action="store_true",
+        default=None,
+        dest="cuda_tf32",
+        help="Enable CUDA TF32 matmul fast paths",
+    )
+    parser.add_argument(
+        "--no-tf32",
+        action="store_false",
+        dest="cuda_tf32",
+        help="Disable CUDA TF32 matmul fast paths",
+    )
+    parser.add_argument(
+        "--transcriber",
+        choices=["whisper", "faster-whisper"],
+        default=None,
+        help="Automatic reference transcription backend",
+    )
+    parser.add_argument("--asr-model", default=None, dest="asr_model_name")
+    parser.add_argument(
+        "--asr-device", choices=["auto", "cuda", "cpu"], default=None, dest="asr_device"
+    )
+    parser.add_argument("--asr-language", default=None, dest="asr_language")
+    parser.add_argument("--asr-beam-size", type=int, default=None, dest="asr_beam_size")
+    parser.add_argument(
         "--shutdown-timeout",
         type=int,
         default=None,

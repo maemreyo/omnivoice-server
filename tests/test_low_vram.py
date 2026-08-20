@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+import sys
+import types
 
 import torch
 
 from omnivoice_server.config import Settings
 from omnivoice_server.low_vram import _is_encoder_key
+from omnivoice_server.optimizations import apply_split_cfg_batch
 from omnivoice_server.services.model import ModelService
 
 
@@ -20,6 +23,43 @@ def test_low_vram_is_explicit_and_environment_configurable():
             os.environ.pop("OMNIVOICE_LOW_VRAM_MODE", None)
         else:
             os.environ["OMNIVOICE_LOW_VRAM_MODE"] = previous
+
+
+def test_new_optimization_defaults_preserve_existing_behavior():
+    cfg = Settings()
+    assert cfg.split_cfg_batch is False
+    assert cfg.cuda_tf32 is True
+    assert cfg.transcriber == "whisper"
+
+
+def test_split_cfg_patch_is_explicit():
+    model = types.SimpleNamespace()
+    apply_split_cfg_batch(model)
+    assert model._omnivoice_server_split_cfg_batch is True
+    assert callable(model._generate_iterative)
+
+
+def test_faster_whisper_backend_is_lazy_and_cpu_by_default(tmp_path, monkeypatch):
+    calls = []
+
+    class Segment:
+        text = " hello "
+
+    class FakeWhisperModel:
+        def __init__(self, name, **kwargs):
+            calls.append((name, kwargs))
+
+        def transcribe(self, path, **kwargs):
+            return iter([Segment()]), object()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "faster_whisper",
+        types.SimpleNamespace(WhisperModel=FakeWhisperModel),
+    )
+    service = ModelService(Settings(transcriber="faster-whisper", profile_dir=tmp_path))
+    assert service.transcribe_reference("reference.wav") == "hello"
+    assert calls == [("large-v3-turbo", {"device": "cpu", "compute_type": "int8"})]
 
 
 def test_selective_loader_key_filter_matches_encoder_boundaries():

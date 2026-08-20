@@ -57,7 +57,7 @@ class SynthesisResult:
     tensors: list  # list[torch.Tensor], each (1, T)
     duration_s: float
     latency_s: float
-    breakdown: "SynthesisTimingBreakdown | None" = None
+    breakdown: SynthesisTimingBreakdown | None = None
 
 
 @dataclass
@@ -96,7 +96,7 @@ class SynthesisTimingBreakdown:
         cleanup_ms: float,
         cuda_before: dict[str, float],
         cuda_after: dict[str, float],
-    ) -> "SynthesisTimingBreakdown":
+    ) -> SynthesisTimingBreakdown:
         return cls(
             clone_prompt_ms=model_timing.clone_prompt_ms,
             clone_prompt_calls=model_timing.clone_prompt_calls,
@@ -308,6 +308,15 @@ class InferenceService:
                     req,
                     voice_clone_prompt=prompt,
                 )
+            elif (
+                req.mode == "clone"
+                and req.ref_audio_path
+                and req.ref_text is None
+                and self._cfg.transcriber == "faster-whisper"
+            ):
+                transcript = self._model_svc.transcribe_reference(req.ref_audio_path)
+                if transcript:
+                    prepared_req = replace(req, ref_text=transcript)
             tensors = self._adapter.call(prepared_req, model)
             cuda_after = _capture_cuda_memory(self._cfg.device)
         finally:

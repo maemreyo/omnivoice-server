@@ -75,6 +75,9 @@ class ModelService:
         self._low_vram_active = False
         self._low_vram_tokenizer_path: str | None = None
         self._low_vram_dtype: torch.dtype | None = None
+        self._faster_whisper_model = None
+        self._asr_lock = threading.Lock()
+        self._flashinfer_active = False
 
     async def load(self) -> None:
         """Load model in a thread (blocking op, must not block event loop)."""
@@ -144,8 +147,9 @@ class ModelService:
                                 gc.collect()
                                 model = None
                             else:
-                                self._instrument_model(model)
                                 self._apply_flashinfer(model)
+                                self._apply_split_cfg(model)
+                                self._instrument_model(model)
                                 self._remember_audio_tokenizer_device(model)
                                 self._model = model
                                 self._memory_summary = self._compute_model_memory_summary(model)
@@ -191,8 +195,9 @@ class ModelService:
                     del model
                     gc.collect()
                     continue
-                self._instrument_model(model)
                 self._apply_flashinfer(model)
+                self._apply_split_cfg(model)
+                self._instrument_model(model)
                 self._remember_audio_tokenizer_device(model)
                 self._offload_voice_encoder(model)
                 self._model = model
@@ -217,9 +222,10 @@ class ModelService:
         )
         self._loaded = True
 
-    def _apply_flashinfer(self, model) -> None:
+    def _apply_flashinfer(self, model) -> bool:
         if not self.cfg.flashinfer_mode or self.cfg.device != "cuda":
-            return
+            self._flashinfer_active = False
+            return False
         try:
             from ..vendor.omnivoice_flashinfer_012 import apply_flashinfer
 
@@ -228,11 +234,60 @@ class ModelService:
                 "FlashInfer acceleration enabled%s",
                 " with CUDA graphs" if self.cfg.flashinfer_cuda_graph else "",
             )
+            self._flashinfer_active = True
+            return True
         except Exception as exc:
             logger.warning("FlashInfer unavailable or incompatible; using standard path: %s", exc)
+            self._flashinfer_active = False
+            return False
+
+    def _apply_split_cfg(self, model) -> None:
+        if not self.cfg.split_cfg_batch or self._flashinfer_active:
+            return
+        try:
+            from ..optimizations import apply_split_cfg_batch
+
+            apply_split_cfg_batch(model)
+            logger.info("Split-CFG standard inference enabled")
+        except Exception as exc:
+            logger.warning("Split-CFG optimization unavailable; using standard path: %s", exc)
+
+    def transcribe_reference(self, ref_audio_path: str) -> str | None:
+        """Transcribe a reference with optional Faster-Whisper, if selected."""
+        if self.cfg.transcriber != "faster-whisper":
+            return None
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            logger.warning(
+                "Faster-Whisper selected but not installed; falling back to OmniVoice Whisper"
+            )
+            return None
+
+        with self._asr_lock:
+            if self._faster_whisper_model is None:
+                device = self.cfg.asr_device
+                if device == "auto":
+                    device = "cuda" if self.cfg.device == "cuda" else "cpu"
+                compute_type = "float16" if device == "cuda" else "int8"
+                self._faster_whisper_model = WhisperModel(
+                    self.cfg.asr_model_name,
+                    device=device,
+                    compute_type=compute_type,
+                )
+            kwargs = {"beam_size": self.cfg.asr_beam_size}
+            if self.cfg.asr_language:
+                kwargs["language"] = self.cfg.asr_language
+            segments, _ = self._faster_whisper_model.transcribe(ref_audio_path, **kwargs)
+            transcript = " ".join(segment.text.strip() for segment in segments).strip()
+        return transcript or None
 
     def _dtype_candidates(self) -> list:
         if self.cfg.device in ("cuda", "mps"):
+            if self.cfg.device == "cuda" and torch.cuda.is_available():
+                capability = torch.cuda.get_device_capability()
+                if capability[0] >= 8 and torch.cuda.is_bf16_supported():
+                    return [torch.bfloat16, torch.float16, torch.float32]
             return [torch.float16, torch.bfloat16, torch.float32]
         return [torch.float32]
 
@@ -306,12 +361,15 @@ class ModelService:
         if disk_prompt is not None:
             prompt = disk_prompt
         else:
+            prompt_ref_text = ref_text
+            if prompt_ref_text is None:
+                prompt_ref_text = self.transcribe_reference(ref_audio_path)
             with self._voice_encoder_lock:
                 self._restore_voice_encoder()
                 try:
                     prompt = self.model.create_voice_clone_prompt(
                         ref_audio=ref_audio_path,
-                        ref_text=ref_text,
+                        ref_text=prompt_ref_text,
                     )
                 finally:
                     self._offload_voice_encoder()

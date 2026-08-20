@@ -81,6 +81,23 @@ FlashInfer mode automatically serializes synthesis requests because its packed
 attention context and CUDA-graph state are model-global; standard mode still
 uses the configured `max_concurrent` value.
 
+For the standard (non-FlashInfer) path, `--split-cfg-batch` is an additional
+opt-in memory fallback. It runs the conditional and unconditional CFG branches
+as separate right-sized forwards, avoiding the padded combined `2B` tensors at
+the cost of extra forward-launch overhead. FlashInfer takes precedence when
+both flags are set.
+
+On CUDA, the server prefers BF16 on Ampere-or-newer GPUs when PyTorch reports
+support, then falls back to FP16 and FP32. CUDA TF32 matmul fast paths are
+enabled by default and can be disabled with `--no-tf32` or
+`OMNIVOICE_CUDA_TF32=false`.
+
+When one-shot cloning omits `ref_text`, `--transcriber faster-whisper` enables
+the optional CTranslate2 backend. Install it with `uv pip install
+'omnivoice-server[asr]'`. The default remains the existing Transformers Whisper
+path. For an 8 GB GPU, keep Faster-Whisper on CPU with `--asr-device cpu` to
+avoid competing with synthesis VRAM.
+
 The RTX 3070 is Ampere SM 8.6 and is within FlashInfer's supported architecture
 range. Upstream's reported 2–2.9x result was measured on an H100, so this
 project must benchmark TTFA, end-to-end latency, peak allocated/reserved VRAM,

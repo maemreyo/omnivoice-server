@@ -133,6 +133,34 @@ class Settings(BaseSettings):
         default=False,
         description="Use FlashInfer CUDA graphs for fixed-shape, single-request decoding.",
     )
+    split_cfg_batch: bool = Field(
+        default=False,
+        description=(
+            "Run conditional and unconditional CFG branches separately to reduce "
+            "peak VRAM when FlashInfer is unavailable."
+        ),
+    )
+    cuda_tf32: bool = Field(
+        default=True,
+        description="Enable CUDA TF32 matmul fast paths where supported.",
+    )
+    transcriber: Literal["whisper", "faster-whisper"] = Field(
+        default="whisper",
+        description="Reference-audio transcription backend when ref_text is omitted.",
+    )
+    asr_model_name: str = Field(
+        default="large-v3-turbo",
+        description="Whisper or Faster-Whisper model name for automatic reference transcription.",
+    )
+    asr_device: Literal["auto", "cuda", "cpu"] = Field(
+        default="cpu",
+        description="Device for optional automatic reference transcription.",
+    )
+    asr_language: str | None = Field(
+        default=None,
+        description="Optional language code for automatic reference transcription.",
+    )
+    asr_beam_size: int = Field(default=5, ge=1, le=20)
     shutdown_timeout: int = Field(
         default=10,
         ge=1,
