@@ -5,9 +5,11 @@ Priority: CLI flags > env vars > defaults.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+import platformdirs
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
 
     # Server
     host: str = Field(default="127.0.0.1", description="Bind host")
-    port: int = Field(default=8880, ge=1, le=65535)
+    port: int = Field(default=8880, ge=0, le=65535)
     log_level: Literal["debug", "info", "warning", "error"] = "info"
 
     # Model
@@ -32,7 +34,11 @@ class Settings(BaseSettings):
         default="k2-fsa/OmniVoice",
         description="HuggingFace repo ID or local path",
     )
-    device: Literal["auto", "cuda", "mps", "cpu"] = "cpu"  # MPS broken - use CPU
+    model_cache_dir: Path | None = Field(
+        default=None,
+        description="Override HuggingFace model cache directory",
+    )
+    device: Literal["auto", "cuda", "mps", "cpu"] = "cpu"
     num_step: int = Field(default=32, ge=1, le=64)  # Upstream default
 
     # Advanced generation params (passed through to OmniVoice.generate())
@@ -67,8 +73,7 @@ class Settings(BaseSettings):
         ge=0.0,
         le=2.0,
         description=(
-            "Temperature for token sampling at each step. "
-            "0=greedy, higher=more randomness."
+            "Temperature for token sampling at each step. 0=greedy, higher=more randomness."
         ),
     )
 
@@ -96,10 +101,16 @@ class Settings(BaseSettings):
             "Use empty/off/disabled to skip the override."
         ),
     )
+    shutdown_timeout: int = Field(
+        default=10,
+        ge=1,
+        le=300,
+        description="Seconds to wait for in-flight requests on shutdown",
+    )
 
     # Voice profiles
     profile_dir: Path = Field(
-        default=Path.home() / ".omnivoice" / "profiles",
+        default=Path(platformdirs.user_data_dir("omnivoice")) / "profiles",
         description="Directory for saved voice cloning profiles",
     )
 
@@ -109,7 +120,32 @@ class Settings(BaseSettings):
         description="Optional Bearer token. Empty = no auth.",
     )
 
+    # CORS
+    cors_allow_origins: list[str] = Field(
+        default=[
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5001",
+            "http://127.0.0.1:5001",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ],
+        description="Allowed CORS origins for browser clients.",
+    )
+    cors_allow_credentials: bool = Field(
+        default=False,
+        description="Allow credentialed CORS requests. Requires explicit origins.",
+    )
+
     # Streaming
+    stream: bool = Field(
+        default=False,
+        description="Force-enable sentence-level streaming for all requests.",
+    )
+    stream_overlap: bool = Field(
+        default=False,
+        description="Enable overlapped producer-consumer sentence streaming.",
+    )
     stream_chunk_max_chars: int = Field(
         default=400,
         description="Max chars per sentence chunk when streaming",
@@ -122,7 +158,14 @@ class Settings(BaseSettings):
         description="Max upload size for ref_audio files in megabytes.",
     )
 
-    # FIX: was defined twice — removed duplicate. Single source of truth here.
+    default_voice: str = Field(
+        default="female, british accent",
+        description=(
+            "Default voice description used when no voice is specified for a speaker. "
+            "Deployers can customise this for non-English use cases."
+        ),
+    )
+
     @property
     def max_ref_audio_bytes(self) -> int:
         """Return max upload size in bytes."""
@@ -143,6 +186,33 @@ class Settings(BaseSettings):
         except ImportError:
             pass
         return "cpu"
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def parse_cors_allow_origins(cls, value: object) -> object:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if not isinstance(parsed, list):
+                    raise ValueError("cors_allow_origins must be a list of strings")
+                return parsed
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        return value
+
+    @field_validator("cors_allow_credentials")
+    @classmethod
+    def validate_cors_credentials(cls, value: bool, info):
+        origins = info.data.get("cors_allow_origins", [])
+        if value and "*" in origins:
+            raise ValueError(
+                "cors_allow_credentials cannot be true when cors_allow_origins includes '*'"
+            )
+        return value
 
     @field_validator("cuda_alloc_conf")
     @classmethod

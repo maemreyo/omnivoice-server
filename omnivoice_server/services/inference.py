@@ -44,6 +44,12 @@ class SynthesisRequest:
     position_temperature: float | None = None
     class_temperature: float | None = None
     duration: float | None = None  # Fixed output duration in seconds
+    language: str | None = None  # Optional language code for multilingual pronunciation
+    layer_penalty_factor: float | None = None
+    preprocess_prompt: bool | None = None
+    postprocess_output: bool | None = None
+    audio_chunk_duration: float | None = None
+    audio_chunk_threshold: float | None = None
 
 
 @dataclass
@@ -135,6 +141,13 @@ class OmniVoiceAdapter:
 
     def build_kwargs(self, req: SynthesisRequest, model) -> dict:
         """Return kwargs dict ready to pass to model.generate()."""
+        logger.debug(
+            f"[TRACE] OmniVoiceAdapter.build_kwargs called: mode={req.mode!r}, "
+            f"text={req.text[:50]!r}..., instruct={req.instruct!r}, "
+            f"ref_audio_path={req.ref_audio_path!r}, ref_text={req.ref_text!r}, "
+            f"speed={req.speed}, num_step={req.num_step}, guidance_scale={req.guidance_scale}, "
+            f"denoise={req.denoise}, language={req.language}"
+        )
         num_step = req.num_step or self._cfg.num_step
         guidance_scale = (
             req.guidance_scale if req.guidance_scale is not None else self._cfg.guidance_scale
@@ -167,6 +180,20 @@ class OmniVoiceAdapter:
         if req.duration is not None:
             kwargs["duration"] = req.duration
 
+        if req.language is not None:
+            kwargs["language"] = req.language
+
+        if req.layer_penalty_factor is not None:
+            kwargs["layer_penalty_factor"] = req.layer_penalty_factor
+        if req.preprocess_prompt is not None:
+            kwargs["preprocess_prompt"] = req.preprocess_prompt
+        if req.postprocess_output is not None:
+            kwargs["postprocess_output"] = req.postprocess_output
+        if req.audio_chunk_duration is not None:
+            kwargs["audio_chunk_duration"] = req.audio_chunk_duration
+        if req.audio_chunk_threshold is not None:
+            kwargs["audio_chunk_threshold"] = req.audio_chunk_threshold
+
         if req.mode == "design" and req.instruct:
             kwargs["instruct"] = req.instruct
         elif req.mode == "clone":
@@ -177,6 +204,7 @@ class OmniVoiceAdapter:
                 if req.ref_text:
                     kwargs["ref_text"] = req.ref_text
 
+        logger.debug(f"[TRACE] Final kwargs keys: {list(kwargs.keys())}")
         return kwargs
 
     def call(self, req: SynthesisRequest, model) -> list[torch.Tensor]:
@@ -221,13 +249,19 @@ class InferenceService:
         self._cleanup_counter = 0
         self._cleanup_lock = threading.Lock()
 
-    async def synthesize(self, req: SynthesisRequest) -> SynthesisResult:
+    async def synthesize(
+        self,
+        req: SynthesisRequest,
+        timeout_override: int | None = None,
+    ) -> SynthesisResult:
         """
         Run synthesis in thread pool.
         Blocks at semaphore if MAX_CONCURRENT already running.
         Raises asyncio.TimeoutError if exceeds request_timeout_s.
         """
         loop = asyncio.get_running_loop()
+
+        timeout_s = timeout_override or self._cfg.request_timeout_s
 
         async with self._semaphore:
             result = await asyncio.wait_for(
@@ -236,7 +270,7 @@ class InferenceService:
                     self._run_sync,
                     req,
                 ),
-                timeout=self._cfg.request_timeout_s,
+                timeout=timeout_s,
             )
 
         return result

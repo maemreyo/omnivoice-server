@@ -1,0 +1,80 @@
+name: Build and Push Docker Images
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Docker tag (e.g., v0.2.0, latest)'
+        required: false
+        default: ''
+
+jobs:
+  push-docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: maemreyo/omnivoice-server
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=
+            latest
+
+      - name: Build and push CPU image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            maemreyo/omnivoice-server:latest
+            maemreyo/omnivoice-server:cpu-latest
+            ${{ github.event.inputs.tag != '' && format('maemreyo/omnivoice-server:{0}', github.event.inputs.tag) || '' }}
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push CUDA image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.cuda
+          push: true
+          tags: |
+            maemreyo/omnivoice-server:cuda-latest
+            ${{ github.event.inputs.tag != '' && format('maemreyo/omnivoice-server:cuda-{0}', github.event.inputs.tag) || '' }}
+            ${{ format('maemreyo/omnivoice-server:{0}-cuda', github.event.inputs.tag != '' && github.event.inputs.tag || 'latest') }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Show pushed images
+        run: |
+          echo "✅ Pushed Docker images:"
+          echo "  - maemreyo/omnivoice-server:latest"
+          echo "  - maemreyo/omnivoice-server:cpu-latest"
+          echo "  - maemreyo/omnivoice-server:cuda-latest"
+          ${{ github.event.inputs.tag != '' && format('echo "  - maemreyo/omnivoice-server:{0}"', github.event.inputs.tag) || '' }}

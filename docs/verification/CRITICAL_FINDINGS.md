@@ -136,7 +136,7 @@ Use CPU device until MPS support is fixed in PyTorch.
 ## Answer to Your Original Questions
 
 **"Does the system work in practice?"**
-✅ **CÓ** - System works on CPU, produces clear audio
+✅ **YES** - System works on CPU, produces clear audio
 
 **"Is the benchmark accurate?"**
 ⚠️ **Partially** - Benchmark ran on MPS (broken), need to re-run on CPU

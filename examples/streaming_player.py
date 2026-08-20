@@ -9,6 +9,7 @@ Requirements:
 Usage:
     python streaming_player.py "Your text to synthesize"
 """
+
 import sys
 
 import httpx
@@ -26,8 +27,9 @@ CHUNK_SIZE = 4096
 
 def stream_and_play(
     text: str,
-    voice: str = "auto",
+    instructions: str | None = None,
     speed: float = 1.0,
+    position_temperature: float = 0.0,
     api_key: str | None = None,
 ):
     """Stream audio from server and play in real-time."""
@@ -43,7 +45,10 @@ def stream_and_play(
     )
 
     print(f"Streaming: {text[:50]}...")
-    print(f"Voice: {voice}, Speed: {speed}x")
+    print(f"Instructions: {instructions or '[default design prompt]'}, Speed: {speed}x")
+    print(
+        f"Position temperature: {position_temperature} (0.0=deterministic, higher=more variation)"
+    )
     print("Playing audio...")
 
     try:
@@ -58,8 +63,9 @@ def stream_and_play(
             json={
                 "model": "omnivoice",
                 "input": text,
-                "voice": voice,
+                "instructions": instructions,
                 "speed": speed,
+                "position_temperature": position_temperature,
                 "stream": True,
             },
             timeout=60.0,
@@ -96,19 +102,25 @@ def stream_and_play(
 def main():
     """CLI entry point."""
     if len(sys.argv) < 2:
-        print("Usage: python streaming_player.py <text> [voice] [speed]")
+        print(
+            "Usage: python streaming_player.py <text> [instructions] [speed] [position_temperature]"
+        )
         print()
         print("Examples:")
         print('  python streaming_player.py "Hello world"')
-        print('  python streaming_player.py "Hello world" "design:female,british accent"')
-        print('  python streaming_player.py "Hello world" "clone:my_voice" 1.2')
+        print('  python streaming_player.py "Hello world" "female,british accent"')
+        print('  python streaming_player.py "Hello world" "male,low pitch" 1.2')
+        print('  python streaming_player.py "Hello world" "female,american accent" 1.0 0.0')
+        print()
+        print("Note: position_temperature=0.0 (default) ensures consistent voice across chunks")
         sys.exit(1)
 
     text = sys.argv[1]
-    voice = sys.argv[2] if len(sys.argv) > 2 else "auto"
+    instructions = sys.argv[2] if len(sys.argv) > 2 else None
     speed = float(sys.argv[3]) if len(sys.argv) > 3 else 1.0
+    position_temperature = float(sys.argv[4]) if len(sys.argv) > 4 else 0.0
 
-    stream_and_play(text, voice, speed, API_KEY)
+    stream_and_play(text, instructions, speed, position_temperature, API_KEY)
 
 
 if __name__ == "__main__":

@@ -1,16 +1,16 @@
 # Architecture Documentation
 
-Kiến trúc hệ thống, diagrams và component relationships.
+System architecture, diagrams, and component relationships.
 
 ## Files
 
-| File                         | Nội dung                                                          |
+| File                         | Description                                                       |
 | ---------------------------- | ----------------------------------------------------------------- |
 | [overview.md](./overview.md) | Layer diagram, concurrency model, component map, startup sequence |
 
-## Diagrams có trong tài liệu này
+## Diagrams in this documentation
 
-| Diagram                           | Section | Loại       |
+| Diagram                           | Section | Type       |
 | --------------------------------- | ------- | ---------- |
 | Ecosystem map (L0→L4)             | §1      | Context    |
 | Layer architecture                | §2      | Structural |
@@ -24,6 +24,6 @@ Kiến trúc hệ thống, diagrams và component relationships.
 | Service dependency graph          | §10     | Graph      |
 | Error taxonomy                    | §11     | Flowchart  |
 
-## Quay về
+## Back
 
-[Xem tất cả docs](../README.md)
+[View all docs](../README.md)

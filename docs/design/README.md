@@ -1,13 +1,13 @@
 # Design Documentation
 
-Data flow, API design và implementation details.
+Data flow, API design, and implementation details.
 
 ## Files
 
-| File                         | Nội dung                                                                  |
+| File                         | Description                                                               |
 | ---------------------------- | ------------------------------------------------------------------------- |
 | [dataflow.md](./dataflow.md) | Data transformation per-endpoint, audio format reference, client examples |
 
-## Quay về
+## Back
 
-[Xem tất cả docs](../README.md)
+[View all docs](../README.md)

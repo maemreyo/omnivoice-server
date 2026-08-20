@@ -7,24 +7,37 @@ import time
 import psutil
 import torch
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
 
 @router.get("/health")
 async def health(request: Request):
-    """Liveness check. Returns 200 when model is loaded and ready."""
+    """Readiness check. Returns 503 while model is loading, 200 when ready."""
     cfg = request.app.state.cfg
     model_svc = request.app.state.model_svc
-    uptime_s = time.monotonic() - request.app.state.start_time
+    ram_mb = round(psutil.Process().memory_info().rss / 1024 / 1024, 1)
 
+    if not model_svc.is_loaded:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "starting",
+                "ready": False,
+                "model_loaded": False,
+                "memory_rss_mb": ram_mb,
+            },
+        )
+
+    uptime_s = round(time.monotonic() - request.app.state.start_time, 1)
     return {
-        "status": "ok" if model_svc.is_loaded else "loading",
-        "model": cfg.model_id,
-        "device": cfg.device,
-        "num_step": cfg.num_step,
-        "max_concurrent": cfg.max_concurrent,
-        "uptime_s": round(uptime_s, 1),
+        "status": "healthy",
+        "ready": True,
+        "model_loaded": True,
+        "uptime_s": uptime_s,
+        "model_id": cfg.model_id,
+        "memory_rss_mb": ram_mb,
     }
 
 
@@ -39,6 +52,12 @@ async def metrics(request: Request):
     snapshot["cuda_alloc_conf"] = cfg.cuda_alloc_conf
     snapshot.update(model_svc.debug_snapshot())
     snapshot.update(_cuda_snapshot(cfg.device))
+
+    # Include script metrics if orchestrator is available
+    script_orchestrator = getattr(request.app.state, "script_orchestrator", None)
+    if script_orchestrator is not None:
+        snapshot.update(script_orchestrator.script_metrics.snapshot())
+
     return snapshot
 
 
@@ -60,13 +79,14 @@ def _cuda_snapshot(device: str) -> dict[str, float]:
     allocated_mb = torch.cuda.memory_allocated() / 1024 / 1024
     reserved_mb = torch.cuda.memory_reserved() / 1024 / 1024
     used_mb_estimate = (total_bytes - free_bytes) / 1024 / 1024
-
-    snapshot["cuda_allocated_mb"] = round(allocated_mb, 1)
-    snapshot["cuda_reserved_mb"] = round(reserved_mb, 1)
-    snapshot["cuda_max_allocated_mb"] = round(torch.cuda.max_memory_allocated() / 1024 / 1024, 1)
-    snapshot["cuda_max_reserved_mb"] = round(torch.cuda.max_memory_reserved() / 1024 / 1024, 1)
-    snapshot["cuda_free_mb"] = round(free_bytes / 1024 / 1024, 1)
-    snapshot["cuda_total_mb"] = round(total_bytes / 1024 / 1024, 1)
-    snapshot["cuda_used_mb_estimate"] = round(used_mb_estimate, 1)
-    snapshot["cuda_non_torch_mb_estimate"] = round(max(0.0, used_mb_estimate - reserved_mb), 1)
+    snapshot.update(
+        cuda_allocated_mb=round(allocated_mb, 1),
+        cuda_reserved_mb=round(reserved_mb, 1),
+        cuda_max_allocated_mb=round(torch.cuda.max_memory_allocated() / 1024 / 1024, 1),
+        cuda_max_reserved_mb=round(torch.cuda.max_memory_reserved() / 1024 / 1024, 1),
+        cuda_free_mb=round(free_bytes / 1024 / 1024, 1),
+        cuda_total_mb=round(total_bytes / 1024 / 1024, 1),
+        cuda_used_mb_estimate=round(used_mb_estimate, 1),
+        cuda_non_torch_mb_estimate=round(max(0.0, used_mb_estimate - reserved_mb), 1),
+    )
     return snapshot

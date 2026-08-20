@@ -46,15 +46,22 @@ class ProfileService:
 
     def get_ref_audio_path(self, profile_id: str) -> Path:
         """Return path to ref audio file. Raises ProfileNotFoundError if missing."""
+        logger.debug(f"[TRACE] get_ref_audio_path called: profile_id={profile_id!r}")
         path = self._profile_path(profile_id) / PROFILE_AUDIO_FILE
+        logger.debug(f"[TRACE] Looking for audio at: {path}")
         if not path.exists():
+            logger.warning(f"[TRACE] Profile audio NOT FOUND: {profile_id!r} at path {path}")
             raise ProfileNotFoundError(f"Profile '{profile_id}' not found")
+        logger.info(f"[TRACE] Profile audio found: {profile_id!r} at {path}")
         return path
 
     def get_ref_text(self, profile_id: str) -> str | None:
         """Return ref_text from profile metadata, or None."""
+        logger.debug(f"[TRACE] get_ref_text called: profile_id={profile_id!r}")
         meta = self._read_meta(self._profile_path(profile_id))
-        return meta.get("ref_text") if meta else None
+        result = meta.get("ref_text") if meta else None
+        logger.debug(f"[TRACE] ref_text for {profile_id!r}: {result!r}")
+        return result
 
     def save_profile(
         self,

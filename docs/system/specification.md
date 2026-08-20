@@ -12,22 +12,22 @@
 
 ---
 
-## Mục lục
+## Table of Contents
 
 - [omnivoice-server — System Specification](#omnivoice-server--system-specification)
-  - [Mục lục](#mục-lục)
+  - [Table of Contents](#table-of-contents)
   - [0. Plan corrections](#0-plan-corrections)
-    - [Sửa 1: Phase 3 macOS packaging — descope](#sửa-1-phase-3-macos-packaging--descope)
-    - [Sửa 2: Upstream contribution pathway — add concrete action](#sửa-2-upstream-contribution-pathway--add-concrete-action)
-  - [1. Tổng quan](#1-tổng-quan)
-    - [1.1 OmniVoice Python API — những gì ta cần biết](#11-omnivoice-python-api--những-gì-ta-cần-biết)
+    - [Correction 1: Phase 3 macOS packaging — descoped](#correction-1-phase-3-macos-packaging--descoped)
+    - [Correction 2: Upstream contribution pathway — add concrete action](#correction-2-upstream-contribution-pathway--add-concrete-action)
+  - [1. Overview](#1-overview)
+    - [1.1 OmniVoice Python API — what we need to know](#11-omnivoice-python-api--what-we-need-to-know)
     - [1.2 Tensor → WAV bytes](#12-tensor--wav-bytes)
-    - [1.3 Tensor → raw PCM bytes (cho streaming)](#13-tensor--raw-pcm-bytes-cho-streaming)
+    - [1.3 Tensor → raw PCM bytes (for streaming)](#13-tensor--raw-pcm-bytes-for-streaming)
     - [1.4 Concurrency model](#14-concurrency-model)
   - [2. Repository layout](#2-repository-layout)
   - [3. pyproject.toml](#3-pyprojecttoml)
   - [4. Config layer](#4-config-layer)
-  - [5. App factory \& lifespan](#5-app-factory--lifespan)
+  - [5. App factory & lifespan](#5-app-factory--lifespan)
   - [6. Services](#6-services)
     - [6.1 ModelService](#61-modelservice)
     - [6.2 InferenceService](#62-inferenceservice)
@@ -50,33 +50,33 @@
 
 ## 0. Plan corrections
 
-Sau khi validate quyết định **separate repo**, plan cũ có 2 chỗ cần sửa:
+After validating the decision for a **separate repo**, the original plan has 2 points that need correction:
 
-### Sửa 1: Phase 3 macOS packaging — descope
+### Correction 1: Phase 3 macOS packaging — descoped
 
-Plan cũ đặt macOS packaging với python-build-standalone là Phase 3, đứng ngang hàng với HTTP server. Điều này sai về priority. Packaging chỉ có ý nghĩa khi server đã stable. Và code signing/notarization cần Apple Developer account ($99/year) — không nên block Phase 2 vào điều này.
+The original plan placed macOS packaging with python-build-standalone in Phase 3, alongside the HTTP server. This was wrong in terms of priority. Packaging only makes sense once the server is stable. Also, code signing/notarization requires an Apple Developer account ($99/year) — this should not block Phase 2.
 
 **Revised priority:**
 ```
-Phase 1 — Benchmark           (gate: RTF data trước khi commit)
+Phase 1 — Benchmark           (gate: RTF data before commit)
 Phase 2 — HTTP Server         (core deliverable)
 Phase 5 — Streaming           (high value, close to Phase 2)
-Phase 3 — macOS Packaging     (nice-to-have, sau khi Phase 2+5 stable)
+Phase 3 — macOS Packaging     (nice-to-have, after Phase 2+5 stable)
 ```
 
-Phase 3 vẫn trong spec nhưng là optional/future section, không phải blocking.
+Phase 3 remains in the spec but as an optional/future section, not a blocking one.
 
-### Sửa 2: Upstream contribution pathway — add concrete action
+### Correction 2: Upstream contribution pathway — add concrete action
 
-Plan cũ có section "Engage upstream via Discussion post ngay" nhưng không spec rõ nội dung Discussion post đó là gì. Thêm template cụ thể vào spec (xem Section 9 Benchmark, subsection "Upstream post template").
+The original plan had a section "Engage upstream via Discussion post immediately" but did not specify the content of that post. A specific template has been added to the spec (see Section 9 Benchmark, subsection "Upstream post template").
 
-Tất cả sections khác của plan cũ giữ nguyên — không có gì sai về scope, API design, concurrency model, hay memory leak mitigation.
+All other sections of the original plan remain unchanged — no corrections needed for scope, API design, concurrency model, or memory leak mitigation.
 
 ---
 
-## 1. Tổng quan
+## 1. Overview
 
-### 1.1 OmniVoice Python API — những gì ta cần biết
+### 1.1 OmniVoice Python API — what we need to know
 
 ```python
 from omnivoice import OmniVoice
@@ -115,10 +115,10 @@ audio = model.generate(text="Hello", speed=1.2)
 audio = model.generate(text="Hello", num_step=32)  # default 32 (upstream default)
 ```
 
-**Quan trọng:**
-- `ref_audio` nhận **string path**, không nhận bytes hay BytesIO. Ta phải ghi ref audio ra tempfile trước khi gọi.
-- `model.generate()` là **blocking** → phải chạy trong ThreadPoolExecutor.
-- Return là **list** chứa tensors (thường list 1 phần tử khi input là single string).
+**Important:**
+- `ref_audio` takes a **string path**, not bytes or BytesIO. We must write ref audio to a tempfile before calling.
+- `model.generate()` is **blocking** → must run in a ThreadPoolExecutor.
+- Return value is a **list** containing tensors (usually a 1-element list when input is a single string).
 - Tensor dtype: float32, range [-1.0, 1.0], shape (1, T).
 
 ### 1.2 Tensor → WAV bytes
@@ -138,7 +138,7 @@ def tensor_to_wav_bytes(tensor: torch.Tensor, sample_rate: int = 24000) -> bytes
 
 `torchaudio.save()` hỗ trợ `io.BytesIO` khi pass `format="wav"`. Encode thành PCM 16-bit signed int để tương thích rộng (float32 WAV ít client support hơn).
 
-### 1.3 Tensor → raw PCM bytes (cho streaming)
+### 1.3 Tensor → raw PCM bytes (for streaming)
 
 ```python
 def tensor_to_pcm16_bytes(tensor: torch.Tensor) -> bytes:
@@ -165,7 +165,7 @@ FastAPI (asyncio event loop, 1 uvicorn worker)
         → không có request nào vượt quá ngưỡng đồng thời
 ```
 
-**Tại sao 1 uvicorn worker?** GPU/MPS inference không benefit từ multi-process — mỗi process phải load model riêng, nhân RAM/VRAM. Dùng 1 worker + ThreadPoolExecutor là đúng pattern.
+**Why 1 uvicorn worker?** GPU/MPS inference does not benefit from multi-process — each process must load its own model, multiplying RAM/VRAM usage. Using 1 worker + ThreadPoolExecutor is the correct pattern.
 
 ---
 
@@ -2716,7 +2716,7 @@ if __name__ == "__main__":
 
 ## 13. Implementation order
 
-Implement nếu có thể trong một session, theo thứ tự này để luôn có app chạy được:
+Implement in a single session if possible, following this order to ensure a runnable app at each stage:
 
 ```
 Step 1:  pyproject.toml + omnivoice_server/__init__.py
@@ -2737,10 +2737,10 @@ Step 15: benchmarks/run_benchmark.py
 Step 16: Polish README + examples/
 ```
 
-**Checkpoint after Step 11:** `omnivoice-server --help` phải chạy không lỗi.
-**Checkpoint after Step 13:** All unit tests pass (với mock model).
+**Checkpoint after Step 11:** `omnivoice-server --help` must run without errors.
+**Checkpoint after Step 13:** All unit tests pass (with mock model).
 **Checkpoint after Step 14:** Real synthesis works on MPS.
 
 ---
 
-*Spec hoàn chỉnh. Không có ambiguity còn lại — mọi function signature, error case, và data flow đã được define.*
+*Spec complete. No ambiguity remains — every function signature, error case, and data flow has been defined.*

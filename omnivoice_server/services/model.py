@@ -10,10 +10,14 @@ import gc
 import logging
 import threading
 import time
+import types
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import numpy as np
 
 import psutil
 import torch
@@ -83,10 +87,15 @@ class ModelService:
 
         for dtype in self._dtype_candidates():
             try:
+                from_pretrained_kwargs = {
+                    "device_map": self.cfg.torch_device_map,
+                    "dtype": dtype,
+                }
+                if self.cfg.model_cache_dir is not None:
+                    from_pretrained_kwargs["cache_dir"] = str(self.cfg.model_cache_dir)
                 model = OmniVoice.from_pretrained(
                     self.cfg.model_id,
-                    device_map=self.cfg.torch_device_map,
-                    dtype=dtype,
+                    **from_pretrained_kwargs,
                 )
                 test = model.generate(text="test", num_step=4)
                 if self._has_nan(test):
@@ -118,15 +127,31 @@ class ModelService:
         self._loaded = True
 
     def _dtype_candidates(self) -> list:
-        if self.cfg.device == "cuda":
-            return [torch.float16, torch.bfloat16, torch.float32]
-        if self.cfg.device == "mps":
+        if self.cfg.device in ("cuda", "mps"):
             return [torch.float16, torch.bfloat16, torch.float32]
         return [torch.float32]
 
     @staticmethod
-    def _has_nan(tensors: list) -> bool:
-        return any(torch.isnan(t).any() for t in tensors)
+    def _has_nan(tensors: torch.Tensor | np.ndarray | list | None) -> bool:
+        np: types.ModuleType | None
+        try:
+            import numpy as np
+        except Exception:
+            np = None
+
+        def contains_nan(x) -> bool:
+            if x is None:
+                return False
+            # Check numpy arrays first to avoid calling torch.isnan on ndarray outputs (issue #17).
+            if np is not None and isinstance(x, np.ndarray):
+                return bool(np.isnan(x).any())
+            if torch.is_tensor(x):
+                return bool(torch.isnan(x).any().item())
+            if isinstance(x, (list, tuple)):
+                return any(contains_nan(i) for i in x)
+            return False
+
+        return contains_nan(tensors)
 
     @property
     def model(self) -> OmniVoice:

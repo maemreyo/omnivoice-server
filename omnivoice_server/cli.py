@@ -87,6 +87,32 @@ def main() -> None:
 
     # Inference
     parser.add_argument(
+        "--stream",
+        action="store_true",
+        default=None,
+        dest="stream",
+        help="Force-enable streaming for all requests (env: OMNIVOICE_STREAM)",
+    )
+    parser.add_argument(
+        "--no-stream",
+        action="store_false",
+        dest="stream",
+        help="Disable forced streaming",
+    )
+    parser.add_argument(
+        "--stream-overlap",
+        action="store_true",
+        default=None,
+        dest="stream_overlap",
+        help="Enable overlapped sentence streaming (env: OMNIVOICE_STREAM_OVERLAP)",
+    )
+    parser.add_argument(
+        "--no-stream-overlap",
+        action="store_false",
+        dest="stream_overlap",
+        help="Disable overlapped sentence streaming",
+    )
+    parser.add_argument(
         "--max-concurrent",
         type=int,
         default=None,
@@ -117,6 +143,13 @@ def main() -> None:
             "(env: OMNIVOICE_CUDA_ALLOC_CONF)"
         ),
     )
+    parser.add_argument(
+        "--shutdown-timeout",
+        type=int,
+        default=None,
+        dest="shutdown_timeout",
+        help="Seconds to wait for in-flight requests on shutdown (env: OMNIVOICE_SHUTDOWN_TIMEOUT)",
+    )
 
     # Storage
     parser.add_argument(
@@ -133,21 +166,41 @@ def main() -> None:
         dest="api_key",
         help="Bearer token for auth. Empty = no auth (env: OMNIVOICE_API_KEY)",
     )
+    parser.add_argument(
+        "--cors-origins",
+        default=None,
+        dest="cors_allow_origins",
+        help=("Comma-separated allowed CORS origins (env: OMNIVOICE_CORS_ALLOW_ORIGINS)"),
+    )
+    parser.add_argument(
+        "--cors-allow-credentials",
+        action="store_true",
+        default=None,
+        dest="cors_allow_credentials",
+        help="Allow credentialed CORS requests (env: OMNIVOICE_CORS_ALLOW_CREDENTIALS)",
+    )
+    parser.add_argument(
+        "--no-cors-allow-credentials",
+        action="store_false",
+        dest="cors_allow_credentials",
+        help="Disable credentialed CORS requests",
+    )
 
     args = parser.parse_args()
 
-    # Build override dict
     overrides = {k: v for k, v in vars(args).items() if v is not None}
 
     from .config import Settings
 
     cfg = Settings(**overrides)
 
-    # Configure logging
+    import sys
+
     logging.basicConfig(
         level=cfg.log_level.upper(),
-        format="%(asctime)s %(levelname)s %(name)s  %(message)s",
-        datefmt="%H:%M:%S",
+        format="%(asctime)s [%(levelname)-5s] [%(name)s] %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%SZ",
+        stream=sys.stderr,
     )
 
     import uvicorn
@@ -163,6 +216,7 @@ def main() -> None:
         log_level=cfg.log_level,
         workers=1,
         loop="asyncio",
+        timeout_graceful_shutdown=cfg.shutdown_timeout,
     )
 
 

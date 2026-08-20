@@ -12,7 +12,11 @@ def test_streaming_returns_pcm_headers(client):
     """Streaming response must set the PCM metadata headers."""
     resp = client.post(
         "/v1/audio/speech",
-        json={"input": "Hello world. This is sentence two.", "stream": True},
+        json={
+            "input": "Hello world. This is sentence two.",
+            "stream": True,
+            "response_format": "pcm",
+        },
     )
     assert resp.status_code == 200
     assert resp.headers.get("X-Audio-Sample-Rate") == "24000"
@@ -25,7 +29,7 @@ def test_streaming_returns_pcm_headers(client):
 def test_streaming_content_type_is_pcm(client):
     resp = client.post(
         "/v1/audio/speech",
-        json={"input": "Hello.", "stream": True},
+        json={"input": "Hello.", "stream": True, "response_format": "pcm"},
     )
     assert resp.status_code == 200
     assert "audio/pcm" in resp.headers["content-type"]
@@ -35,7 +39,7 @@ def test_streaming_returns_bytes(client):
     """Should yield at least some PCM bytes for non-empty input."""
     resp = client.post(
         "/v1/audio/speech",
-        json={"input": "Hello world.", "stream": True},
+        json={"input": "Hello world.", "stream": True, "response_format": "pcm"},
     )
     assert resp.status_code == 200
     assert len(resp.content) > 0
@@ -51,27 +55,78 @@ def test_streaming_multi_sentence(client):
     text = "First sentence. Second sentence. Third sentence."
     resp = client.post(
         "/v1/audio/speech",
-        json={"input": text, "stream": True},
+        json={"input": text, "stream": True, "response_format": "pcm"},
     )
     assert resp.status_code == 200
     assert len(resp.content) >= 96000
 
 
-def test_streaming_with_clone_voice(client, sample_audio_bytes):
-    """Streaming should work with clone: prefix too."""
-    import io
-
-    # Create profile first
-    client.post(
-        "/v1/voices/profiles",
-        data={"profile_id": "stream-test"},
-        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
-    )
+def test_streaming_clone_prefix_nonexistent_profile_returns_404(client):
     resp = client.post(
         "/v1/audio/speech",
-        json={"input": "Hello.", "voice": "clone:stream-test", "stream": True},
+        json={
+            "input": "Hello.",
+            "voice": "clone:stream-test",
+            "stream": True,
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 404
+
+
+def test_streaming_clone_metrics_are_recorded(client, sample_audio_bytes):
+    """Streaming clone requests should populate TTFA metrics and latest stream snapshot."""
+    import io
+
+    client.post(
+        "/v1/voices/profiles",
+        data={"profile_id": "sky"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello. Streaming metrics.", "voice": "clone:sky", "stream": True},
     )
     assert resp.status_code == 200
+
+    metrics = client.get("/metrics")
+    assert metrics.status_code == 200
+    data = metrics.json()
+    assert data["requests_total"] == 1
+    assert data["requests_success"] == 1
+    assert data["streaming_requests_total"] == 1
+    assert data["streaming_requests_success"] == 1
+    assert data["streaming_clone_requests"] == 1
+    assert data["streaming_ttfa_ms_mean"] >= 0.0
+    latest = data["streaming_latest"]
+    assert latest is not None
+    assert latest["mode"] == "clone"
+    assert latest["profile_id"] == "sky"
+    assert latest["status"] == "success"
+    assert latest["ttfa_ms"] is not None
+    assert latest["planned_synthesis_calls"] == 2
+    assert latest["first_chunk_chars"] == len("Hello.")
+    assert latest["first_clone_prompt_ms"] == 12.0
+    assert latest["first_decode_postprocess_ms"] == 8.0
+    assert latest["first_postprocess_ms"] == 3.0
+    assert latest["first_decode_only_ms"] == 5.0
+    assert latest["first_cleanup_ms"] == 0.0
+    assert latest["first_prepare_inference_calls"] == 1
+    assert latest["first_batch_size"] == 1
+    assert latest["first_max_condition_len"] == 64
+    assert latest["first_max_target_tokens"] == 25
+    assert latest["first_max_ref_audio_tokens"] == 12
+    assert latest["first_attention_mask_mb_estimate"] == 0.0
+    assert latest["first_batch_logits_mb_estimate"] == 1.5
+    assert latest["first_tokens_mb_estimate"] == 0.0
+    assert latest["first_cuda_allocated_before_mb"] == 100.0
+    assert latest["first_cuda_allocated_after_mb"] == 120.0
+    assert latest["first_cuda_reserved_before_mb"] == 128.0
+    assert latest["first_cuda_reserved_after_mb"] == 256.0
+    assert latest["first_cuda_free_before_mb"] == 8000.0
+    assert latest["first_cuda_free_after_mb"] == 7900.0
+    assert latest["first_cuda_total_mb"] == 16384.0
 
 
 def test_streaming_clone_metrics_are_recorded(client, sample_audio_bytes):
@@ -130,7 +185,6 @@ def test_streaming_clone_metrics_are_recorded(client, sample_audio_bytes):
 
 
 def test_streaming_empty_text_rejected(client):
-    """Empty text should be rejected by Pydantic validation, not silently pass."""
     resp = client.post(
         "/v1/audio/speech",
         json={"input": "", "stream": True},
@@ -138,13 +192,18 @@ def test_streaming_empty_text_rejected(client):
     assert resp.status_code == 422
 
 
-def test_streaming_nonexistent_profile_rejected(client):
-    """clone: prefix with unknown profile should return 404 even in streaming mode."""
+def test_streaming_bare_unknown_voice_returns_422(client):
     resp = client.post(
         "/v1/audio/speech",
-        json={"input": "Hello.", "voice": "clone:does-not-exist", "stream": True},
+        json={
+            "input": "Hello.",
+            "voice": "unknownvoicename",
+            "stream": True,
+            "response_format": "pcm",
+        },
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 422
+    assert "Unsupported voice value" in resp.text
 
 
 def test_streaming_does_not_return_wav_header(client):
@@ -154,7 +213,7 @@ def test_streaming_does_not_return_wav_header(client):
     """
     resp = client.post(
         "/v1/audio/speech",
-        json={"input": "Hello.", "stream": True},
+        json={"input": "Hello.", "stream": True, "response_format": "pcm"},
     )
     assert resp.status_code == 200
     if len(resp.content) >= 4:
@@ -162,3 +221,195 @@ def test_streaming_does_not_return_wav_header(client):
             "Streaming returned WAV header in PCM stream — "
             "check that streaming uses tensor_to_pcm16_bytes, not tensors_to_wav_bytes"
         )
+
+
+def test_force_streaming_cfg_overrides_request(client, monkeypatch):
+    """When cfg.stream=True, request without stream=True should still stream."""
+    monkeypatch.setattr(client.app.state.cfg, "stream", True)
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello world.", "response_format": "pcm"},
+    )
+    assert resp.status_code == 200
+    assert "audio/pcm" in resp.headers["content-type"]
+    assert resp.headers.get("X-Audio-Sample-Rate") == "24000"
+
+
+def test_force_streaming_cfg_rejects_non_pcm(client, monkeypatch):
+    """When cfg.stream=True, non-PCM response_format should return 400."""
+    monkeypatch.setattr(client.app.state.cfg, "stream", True)
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello.", "response_format": "wav"},
+    )
+    assert resp.status_code == 400
+    error_msg = resp.json().get("detail") or resp.json().get("error", {}).get("message", "")
+    assert "response_format='pcm'" in error_msg
+
+
+def test_streaming_overlap_default_off_uses_sequential_path(client, monkeypatch):
+    from omnivoice_server.routers import speech
+
+    calls = {"sequential": 0, "overlapped": 0}
+
+    async def sequential(*_args, **_kwargs):
+        calls["sequential"] += 1
+        yield b"pcm"
+
+    async def overlapped(*_args, **_kwargs):
+        calls["overlapped"] += 1
+        yield b"pcm"
+
+    monkeypatch.setattr(speech, "_stream_sentences", sequential)
+    monkeypatch.setattr(speech, "_stream_sentences_overlapped", overlapped)
+    monkeypatch.setattr(client.app.state.cfg, "stream_overlap", False)
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello.", "stream": True, "response_format": "pcm"},
+    )
+
+    assert resp.status_code == 200
+    assert calls["sequential"] == 1
+    assert calls["overlapped"] == 0
+
+
+def test_streaming_overlap_opt_in_uses_overlapped_path(client, monkeypatch):
+    from omnivoice_server.routers import speech
+
+    calls = {"sequential": 0, "overlapped": 0}
+
+    async def sequential(*_args, **_kwargs):
+        calls["sequential"] += 1
+        yield b"pcm"
+
+    async def overlapped(*_args, **_kwargs):
+        calls["overlapped"] += 1
+        yield b"pcm"
+
+    monkeypatch.setattr(speech, "_stream_sentences", sequential)
+    monkeypatch.setattr(speech, "_stream_sentences_overlapped", overlapped)
+    monkeypatch.setattr(client.app.state.cfg, "stream_overlap", True)
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hello.", "stream": True, "response_format": "pcm"},
+    )
+
+    assert resp.status_code == 200
+    assert calls["overlapped"] == 1
+    assert calls["sequential"] == 0
+
+
+def test_streaming_overlap_returns_bytes_for_multiple_chunks(client, monkeypatch):
+    monkeypatch.setattr(client.app.state.cfg, "stream_overlap", True)
+    monkeypatch.setattr(client.app.state.cfg, "stream_chunk_max_chars", 20)
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "First sentence is long enough. Second sentence is long enough.",
+            "stream": True,
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 200
+    assert len(resp.content) >= 96000
+
+
+def test_streaming_overlap_error_mid_stream_delivers_partial(client, monkeypatch):
+    """Error on 2nd synthesize call: first chunk is delivered and stream ends cleanly."""
+    from unittest.mock import AsyncMock
+
+    import torch
+
+    from omnivoice_server.services.inference import SynthesisResult
+
+    monkeypatch.setattr(client.app.state.cfg, "stream_overlap", True)
+    monkeypatch.setattr(client.app.state.cfg, "stream_chunk_max_chars", 20)
+
+    call_count = [0]
+
+    async def synthesize_fail_second(req, **_kwargs):
+        call_count[0] += 1
+        if call_count[0] >= 2:
+            raise RuntimeError("Model error on chunk 2")
+        tensor = torch.zeros(1, 24_000)
+        return SynthesisResult(tensors=[tensor], duration_s=1.0, latency_s=0.05)
+
+    client.app.state.inference_svc.synthesize = AsyncMock(side_effect=synthesize_fail_second)
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "First sentence long enough. Second sentence also.",
+            "stream": True,
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 200
+    assert 0 < len(resp.content) < 96000  # partial: only first chunk delivered
+
+
+def test_streaming_overlap_timeout_mid_stream_delivers_partial(client, monkeypatch):
+    """Timeout on 2nd synthesize call: first chunk is delivered and stream ends cleanly."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    import torch
+
+    from omnivoice_server.services.inference import SynthesisResult
+
+    monkeypatch.setattr(client.app.state.cfg, "stream_overlap", True)
+    monkeypatch.setattr(client.app.state.cfg, "stream_chunk_max_chars", 20)
+
+    call_count = [0]
+
+    async def synthesize_timeout_second(req, **_kwargs):
+        call_count[0] += 1
+        if call_count[0] >= 2:
+            raise asyncio.TimeoutError()
+        tensor = torch.zeros(1, 24_000)
+        return SynthesisResult(tensors=[tensor], duration_s=1.0, latency_s=0.05)
+
+    client.app.state.inference_svc.synthesize = AsyncMock(side_effect=synthesize_timeout_second)
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "First sentence long enough. Second sentence also.",
+            "stream": True,
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 200
+    assert 0 < len(resp.content) < 96000
+
+
+def test_streaming_overlap_outer_guard_no_hang(client, monkeypatch):
+    """Unexpected error outside inner try puts sentinel so consumer never hangs."""
+    from omnivoice_server.routers import speech
+
+    monkeypatch.setattr(client.app.state.cfg, "stream_overlap", True)
+    monkeypatch.setattr(client.app.state.cfg, "stream_chunk_max_chars", 20)
+
+    original = speech._chunk_request
+    call_count = [0]
+
+    def fail_on_second(sentence, base_req):
+        call_count[0] += 1
+        if call_count[0] == 2:
+            raise RuntimeError("Unexpected error outside inner try-except")
+        return original(sentence, base_req)
+
+    monkeypatch.setattr(speech, "_chunk_request", fail_on_second)
+
+    resp = client.post(
+        "/v1/audio/speech",
+        json={
+            "input": "First sentence long. Second sentence also.",
+            "stream": True,
+            "response_format": "pcm",
+        },
+    )
+    assert resp.status_code == 200
+    assert len(resp.content) > 0  # first chunk delivered before outer guard fired

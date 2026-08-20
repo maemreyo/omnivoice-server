@@ -7,8 +7,8 @@ from __future__ import annotations
 import io
 
 import pytest
+import soundfile as sf
 import torch
-import torchaudio
 
 from omnivoice_server.utils.audio import (
     read_upload_bounded,
@@ -30,9 +30,9 @@ def test_tensor_to_wav_bytes():
 
     # Verify it's parseable
     buf = io.BytesIO(wav_bytes)
-    waveform, sample_rate = torchaudio.load(buf)
+    data, sample_rate = sf.read(buf, dtype="float32")
     assert sample_rate == 24000
-    assert waveform.shape[0] == 1
+    assert data.ndim == 1
 
 
 def test_tensors_to_wav_bytes_single():
@@ -50,8 +50,19 @@ def test_tensors_to_wav_bytes_multiple():
     wav_bytes = tensors_to_wav_bytes([t1, t2])
 
     buf = io.BytesIO(wav_bytes)
-    waveform, sample_rate = torchaudio.load(buf)
-    assert waveform.shape[1] == 24000  # 12000 + 12000
+    data, _ = sf.read(buf, dtype="float32")
+    assert data.shape[0] == 24000  # 12000 + 12000
+
+
+def test_tensor_to_wav_bytes_stereo():
+    tensor = torch.randn(2, 12000)  # (C, T)
+    wav_bytes = tensor_to_wav_bytes(tensor)
+
+    buf = io.BytesIO(wav_bytes)
+    data, sample_rate = sf.read(buf, dtype="float32")
+    assert sample_rate == 24000
+    assert data.ndim == 2
+    assert data.shape == (12000, 2)
 
 
 def test_tensor_to_pcm16_bytes():
@@ -91,7 +102,7 @@ def test_validate_audio_bytes_valid_wav():
     # Create a minimal valid WAV
     tensor = torch.randn(1, 1000)
     buf = io.BytesIO()
-    torchaudio.save(buf, tensor, 24000, format="wav")
+    sf.write(buf, tensor.squeeze(0).numpy(), 24000, format="WAV", subtype="PCM_16")
     buf.seek(0)
     audio_bytes = buf.read()
 
@@ -114,15 +125,15 @@ def test_validate_audio_bytes_empty_audio():
     buf = io.BytesIO()
 
     try:
-        torchaudio.save(buf, tensor, 24000, format="wav")
-    except RuntimeError:
-        # Some torchaudio versions don't support saving empty tensors
-        pytest.skip("torchaudio version doesn't support empty tensor save")
+        sf.write(buf, tensor.squeeze(0).numpy(), 24000, format="WAV", subtype="PCM_16")
+    except (RuntimeError, OSError):
+        pytest.skip("soundfile backend cannot write 0-frame WAV")
 
     buf.seek(0)
     audio_bytes = buf.read()
 
-    with pytest.raises(ValueError, match="has 0 frames"):
+    # Different PyTorch versions return different error messages
+    with pytest.raises(ValueError, match="has 0 frames|could not parse"):
         validate_audio_bytes(audio_bytes)
 
 
@@ -131,7 +142,7 @@ def test_validate_audio_bytes_low_sample_rate():
     # Create audio at 4000Hz (too low)
     tensor = torch.randn(1, 1000)
     buf = io.BytesIO()
-    torchaudio.save(buf, tensor, 4000, format="wav")
+    sf.write(buf, tensor.squeeze(0).numpy(), 4000, format="WAV", subtype="PCM_16")
     buf.seek(0)
     audio_bytes = buf.read()
 

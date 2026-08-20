@@ -1,13 +1,13 @@
 # Documentation
 
-Tài liệu kỹ thuật cho dự án `omnivoice-server`.
+Technical documentation for the `omnivoice-server` project.
 
 ## Naming Convention
 
-- **kebab-case** cho tất cả filenames (e.g., `system-spec.md`, `dataflow.md`)
-- **Tổ chức theo folder** để scale: `system/`, `architecture/`, `design/`, `plan/`, `roadmap/`
+- **kebab-case** for all filenames (e.g., `system-spec.md`, `dataflow.md`)
+- **Folder organization** for scaling: `system/`, `architecture/`, `design/`, `plan/`, `roadmap/`
 
-## Cấu trúc folder
+## Folder Structure
 
 ```
 docs/
@@ -18,13 +18,13 @@ docs/
 └── roadmap/         # Long-term vision, milestones
 ```
 
-## Thứ tự đọc
+## Reading Order
 
-1. **[system/ecosystem.md](./system/ecosystem.md)** — Vị trí repo trong TTS landscape
-2. **[system/specification.md](./system/specification.md)** — System specification chi tiết
-3. **[architecture/overview.md](./architecture/overview.md)** — Kiến trúc và diagrams
-4. **[design/dataflow.md](./design/dataflow.md)** — Data flow per-endpoint
+1. **[system/ecosystem.md](./system/ecosystem.md)** — Position within the TTS landscape
+2. **[system/specification.md](./system/specification.md)** — Detailed system specification
+3. **[architecture/overview.md](./architecture/overview.md)** — Architecture and diagrams
+4. **[design/dataflow.md](./design/dataflow.md)** — Per-endpoint data flow
 
-## Quay về
+## Links
 
-[Xem root README](../README.md)
+[Back to root README](../README.md)
