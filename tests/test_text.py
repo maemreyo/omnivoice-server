@@ -74,6 +74,14 @@ def test_split_sentences_single_short_sentence():
     assert result[0] == "Hello world."
 
 
+def test_split_sentences_merges_short_adjacent_sentences_when_possible():
+    """Short sentences stay together instead of becoming separate model calls."""
+    text = "One short sentence. Another short sentence. A much longer sentence follows here."
+    result = split_sentences(text, max_chars=55, min_chunk_chars=30)
+    assert result[0] == "One short sentence. Another short sentence."
+    assert all(len(chunk) <= 55 for chunk in result)
+
+
 def test_split_sentences_eager_first_chunk_preserves_first_sentence():
     """Streaming mode should emit the first natural sentence immediately."""
     text = "Hello world. This is sentence two. This is sentence three."

@@ -678,6 +678,8 @@ def _chunk_request(sentence: str, base_req: SynthesisRequest) -> SynthesisReques
         instruct=base_req.instruct,
         ref_audio_path=base_req.ref_audio_path,
         ref_text=base_req.ref_text,
+        profile_id=base_req.profile_id,
+        voice_clone_prompt=base_req.voice_clone_prompt,
         speed=base_req.speed,
         num_step=base_req.num_step,
         guidance_scale=base_req.guidance_scale,
@@ -709,12 +711,26 @@ async def _stream_sentences(
     sentences = split_sentences(
         text,
         max_chars=cfg.stream_chunk_max_chars,
-        eager_first_chunk=True,
+        min_chunk_chars=cfg.stream_chunk_min_chars,
+        # Keep short clone requests as one model call.  This preserves
+        # OmniVoice's target-text conditioning and avoids adding a sentence
+        # boundary solely to improve time-to-first-audio.
+        eager_first_chunk=False,
     )
     sentence_split_ms = (time.monotonic() - stream_started) * 1000
 
     if not sentences:
         return
+
+    base_req = await inference_svc.prepare_clone_request(base_req)
+
+    # OmniVoice's native long-form path is the only architecture-preserving
+    # path for design/auto voices: later chunks use chunk 0 as their voice
+    # reference. Fixed duration also applies to the whole request, not each
+    # sentence. Clone streams retain sentence-level HTTP chunks because their
+    # reusable prompt is explicit and stable.
+    if base_req.mode != "clone" or base_req.duration is not None:
+        sentences = [text.strip()]
 
     first_chunk_chars = len(sentences[0])
     completed_synthesis_calls = 0
@@ -996,7 +1012,25 @@ async def _stream_sentences_overlapped(
     metrics_svc: MetricsService,
     cfg,
 ) -> AsyncIterator[bytes]:
-    sentences = split_sentences(text, max_chars=cfg.stream_chunk_max_chars)
+    if base_req.mode != "clone" or base_req.duration is not None:
+        async for chunk in _stream_sentences(
+            text,
+            base_req,
+            inference_svc,
+            metrics_svc,
+            cfg,
+            uuid.uuid4().hex[:12],
+            base_req.profile_id,
+        ):
+            yield chunk
+        return
+
+    base_req = await inference_svc.prepare_clone_request(base_req)
+    sentences = split_sentences(
+        text,
+        max_chars=cfg.stream_chunk_max_chars,
+        min_chunk_chars=cfg.stream_chunk_min_chars,
+    )
 
     if not sentences:
         return

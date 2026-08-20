@@ -4,9 +4,10 @@ In-memory request metrics. Thread-safe with a lock.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import threading
 from collections import deque
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -72,7 +73,7 @@ class MetricsService:
         self._stream_first_cleanup_ms: deque[float] = deque(maxlen=latency_window)
         self._stream_first_pcm_encode_ms: deque[float] = deque(maxlen=latency_window)
         self._stream_total_ms: deque[float] = deque(maxlen=latency_window)
-        self._latest_stream: dict | None = None
+        self._latest_stream: dict[str, Any] | None = None
 
     def record_success(self, latency_s: float) -> None:
         with self._lock:
@@ -181,7 +182,7 @@ class MetricsService:
                 "total_ms": _round_ms(observation.total_ms),
             }
 
-    def snapshot(self) -> dict:
+    def snapshot(self) -> dict[str, Any]:
         with self._lock:
             lats = list(self._latencies)
             stream_ttfa = list(self._stream_ttfa_ms)
@@ -198,7 +199,7 @@ class MetricsService:
         mean_ms = sum(lats) / len(lats) if lats else 0.0
         sorted_lats = sorted(lats)
         p95_ms = sorted_lats[int(len(sorted_lats) * 0.95)] if sorted_lats else 0.0
-        snapshot = {
+        snapshot: dict[str, Any] = {
             "requests_total": self.total,
             "requests_success": self.success,
             "requests_error": self.error,

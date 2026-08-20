@@ -31,10 +31,9 @@ def _resolve_model_path(model_id: str, cache_dir: Path | None) -> str:
         return model_id
     from huggingface_hub import snapshot_download
 
-    kwargs = {"repo_id": model_id}
     if cache_dir is not None:
-        kwargs["cache_dir"] = str(cache_dir)
-    return snapshot_download(**kwargs)
+        return snapshot_download(repo_id=model_id, cache_dir=cache_dir)
+    return snapshot_download(repo_id=model_id)
 
 
 def _tokenizer_path(model_path: str) -> str:
@@ -62,7 +61,7 @@ def _make_tokenizer(tokenizer_path: str, device: str, dtype: torch.dtype):
     from transformers import AutoFeatureExtractor, HiggsAudioV2TokenizerModel
 
     config = HiggsAudioV2TokenizerModel.config_class.from_pretrained(tokenizer_path)
-    tokenizer = HiggsAudioV2TokenizerModel(config)
+    tokenizer: Any = HiggsAudioV2TokenizerModel(config)
     state = _load_safetensors(tokenizer_path, include_encoder=False)
     missing, unexpected = tokenizer.load_state_dict(state, strict=False)
     unexpected = list(unexpected)

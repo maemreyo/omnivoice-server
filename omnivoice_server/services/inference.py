@@ -281,6 +281,35 @@ class InferenceService:
 
         return result
 
+    async def prepare_clone_request(self, req: SynthesisRequest) -> SynthesisRequest:
+        """Prepare clone conditioning once for a multi-chunk stream."""
+        if (
+            req.mode != "clone"
+            or not req.ref_audio_path
+            or req.voice_clone_prompt is not None
+        ):
+            return req
+
+        loop = asyncio.get_running_loop()
+        async with self._semaphore:
+            if req.profile_id:
+                prompt = await loop.run_in_executor(
+                    self._executor,
+                    self._model_svc.get_or_create_voice_clone_prompt,
+                    req.profile_id,
+                    req.ref_audio_path,
+                    req.ref_text,
+                )
+            else:
+                prompt = await loop.run_in_executor(
+                    self._executor,
+                    self._model_svc.create_voice_clone_prompt,
+                    req.ref_audio_path,
+                    req.ref_text,
+                    req.preprocess_prompt,
+                )
+        return replace(req, voice_clone_prompt=prompt)
+
     def _run_sync(self, req: SynthesisRequest) -> SynthesisResult:
         """Blocking inference. Runs in thread pool thread."""
         t0 = time.monotonic()
@@ -304,10 +333,7 @@ class InferenceService:
                     ref_audio_path=req.ref_audio_path,
                     ref_text=req.ref_text,
                 )
-                prepared_req = replace(
-                    req,
-                    voice_clone_prompt=prompt,
-                )
+                prepared_req = replace(req, voice_clone_prompt=prompt)
             elif (
                 req.mode == "clone"
                 and req.ref_audio_path

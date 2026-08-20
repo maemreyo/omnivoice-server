@@ -38,6 +38,12 @@ sidecar is invalidated when the source mtime/size or requested reference text
 changes; legacy sidecars are accepted only when newer than the source audio.
 Malformed, incomplete, or incompatible sidecars are ignored and regenerated.
 
+Built-in design voices do not require the omitted reference-encoder modules.
+OmniVoice's native long-form path uses generated audio-token tensors from its
+first chunk as the reference for later chunks, so built-in voices remain
+available in low-VRAM mode. Only uploaded-reference cloning needs the temporary
+encoder-restore lifecycle described above.
+
 This mode reduces steady-state VRAM by the size of the omitted tokenizer
 encoder weights. A cold reference temporarily pays the encoder allocation and
 may therefore peak above startup; the exact savings and peak depend on the

@@ -210,6 +210,14 @@ class Settings(BaseSettings):
         default=400,
         description="Max chars per sentence chunk when streaming",
     )
+    stream_chunk_min_chars: int = Field(
+        default=80,
+        ge=0,
+        description=(
+            "Preferred minimum chars for clone streaming chunks; adjacent "
+            "sentences are merged when they fit"
+        ),
+    )
 
     max_ref_audio_mb: int = Field(
         default=25,

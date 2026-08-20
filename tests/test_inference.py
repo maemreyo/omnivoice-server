@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 
 import torch
 from omnivoice.models.omnivoice import VoiceClonePrompt
@@ -70,6 +72,32 @@ def test_inference_uses_cached_voice_clone_prompt_for_profiles(tmp_path):
     assert "ref_audio" not in fake_model.generate_calls[1]
     assert first.duration_s == 1.0
     assert second.duration_s == 1.0
+
+
+def test_prepare_clone_request_reuses_one_shot_prompt_for_streaming(tmp_path):
+    cfg, model_svc = _make_model_service(tmp_path)
+    ref_audio_path = tmp_path / "one-shot.wav"
+    ref_audio_path.write_bytes(b"fake wav bytes")
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        inference_svc = InferenceService(model_svc=model_svc, executor=executor, cfg=cfg)
+        req = SynthesisRequest(
+            text="First sentence.",
+            mode="clone",
+            ref_audio_path=str(ref_audio_path),
+            ref_text="Reference transcript",
+        )
+        prepared = asyncio.run(inference_svc.prepare_clone_request(req))
+        second = replace(prepared, text="Second sentence.")
+        inference_svc._run_sync(prepared)
+        inference_svc._run_sync(second)
+    finally:
+        executor.shutdown(wait=False)
+
+    fake_model = model_svc.model
+    assert fake_model.prompt_calls == 1
+    assert all("voice_clone_prompt" in call for call in fake_model.generate_calls)
 
 
 def test_voice_clone_prompt_persists_as_cpu_token_cache(tmp_path):

@@ -31,6 +31,7 @@ def split_sentences(
     text: str,
     max_chars: int = 400,
     eager_first_chunk: bool = False,
+    min_chunk_chars: int = 0,
 ) -> list[str]:
     """
     Split text into sentence-level chunks suitable for streaming.
@@ -40,6 +41,8 @@ def split_sentences(
         return []
 
     text = text.strip()
+    max_chars = max(max_chars, 1)
+    min_chunk_chars = min(max(min_chunk_chars, 0), max_chars)
 
     if len(text) <= max_chars and not eager_first_chunk:
         return [text]
@@ -89,14 +92,20 @@ def split_sentences(
             first_chunks = split_first[:1]
             remaining_sentences = split_first[1:] + merged[1:]
 
-        result = first_chunks + _chunk_sentences(remaining_sentences, max_chars)
+        result = first_chunks + _chunk_sentences(
+            remaining_sentences, max_chars, min_chunk_chars
+        )
         return [c for c in result if c.strip()]
 
-    return [c for c in _chunk_sentences(merged, max_chars) if c.strip()]
+    return [
+        c for c in _chunk_sentences(merged, max_chars, min_chunk_chars) if c.strip()
+    ]
 
 
-def _chunk_sentences(sentences: list[str], max_chars: int) -> list[str]:
-    """Merge sentence strings into max_chars chunks, then word-split if needed."""
+def _chunk_sentences(
+    sentences: list[str], max_chars: int, min_chunk_chars: int = 0
+) -> list[str]:
+    """Merge short adjacent sentences, bounded by ``max_chars``."""
     chunks: list[str] = []
     current = ""
 
@@ -119,7 +128,23 @@ def _chunk_sentences(sentences: list[str], max_chars: int) -> list[str]:
         else:
             result.extend(_split_at_words(chunk, max_chars))
 
-    return result
+    if min_chunk_chars <= 0:
+        return result
+
+    # A short trailing chunk can occur after a punctuation/word boundary.
+    # Merge it backward when the maximum-size constraint permits it. This is
+    # deliberately best-effort: max_chars always wins over the minimum.
+    merged_result: list[str] = []
+    for chunk in result:
+        if (
+            merged_result
+            and len(chunk) < min_chunk_chars
+            and len(merged_result[-1]) + 1 + len(chunk) <= max_chars
+        ):
+            merged_result[-1] += " " + chunk
+        else:
+            merged_result.append(chunk)
+    return merged_result
 
 
 def _split_at_words(text: str, max_chars: int) -> list[str]:

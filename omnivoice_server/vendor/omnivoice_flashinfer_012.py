@@ -219,6 +219,14 @@ class PackedAttnRunner:
         self._planned_key = key
 
 
+def _model_compute_dtype(model) -> torch.dtype:
+    """Return the dtype used by the patched Qwen3 attention projections."""
+    for parameter in model.llm.parameters():
+        if parameter.is_floating_point():
+            return parameter.dtype
+    return torch.float16
+
+
 def _generate_iterative_packed(
     self, task: GenerationTask, gen_config: OmniVoiceGenerationConfig
 ) -> List[torch.Tensor]:
@@ -378,7 +386,7 @@ def _generate_iterative_packed(
         graph_entry["audio_mask"].copy_(packed_audio_mask)
         graph_entry["position_ids"].copy_(position_ids)
     else:
-        self._fi_runner.plan(doc_lens, torch.float16)
+        self._fi_runner.plan(doc_lens, _model_compute_dtype(self))
         _CTX["wrapper"] = self._fi_runner.wrapper
         _CTX["pos_ids"] = position_ids[0].to(torch.int32)
         _CTX["doc_slots"] = None
@@ -482,7 +490,7 @@ def _get_or_capture_graph(model, doc_lens_key, tgt_index):
         device,
         workspace_size=64 * 1024 * 1024,
     )
-    runner.plan(list(doc_lens_key), torch.float16)
+    runner.plan(list(doc_lens_key), _model_compute_dtype(model))
     _CTX["wrapper"] = runner.wrapper
 
     # positions are fully determined by doc_lens (the cache key), so both the

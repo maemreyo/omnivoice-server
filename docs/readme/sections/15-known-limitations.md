@@ -2,11 +2,21 @@
 
 ### Streaming Voice Consistency
 
-When using `stream=True` (server-only HTTP streaming transport), each sentence is synthesized independently from the same instructions or default design prompt. With non-zero temperature settings, timbre can still drift across chunks because there is no shared state between sentence-level synthesis calls.
+The server preserves OmniVoice's native long-form conditioning for auto/design
+requests: the complete input is sent to one model generation call and the
+result is delivered through the HTTP streaming response. This keeps chunk-0
+voice conditioning and whole-output postprocessing intact, but the first audio
+bytes are not available until that model call completes.
+
+Long clone requests retain sentence-level HTTP chunks. Their reference prompt
+is prepared once and reused for every chunk, so stored profiles and one-shot
+references do not re-encode the reference for each sentence. The chunks are
+still separate OmniVoice generations and can vary slightly with non-zero
+temperature settings.
 
 **Workarounds:**
 
-1. **Set position_temperature=0 for deterministic voice rendering (recommended):**
+1. **Set position_temperature=0 for deterministic clone chunk rendering (recommended):**
    ```python
    with httpx.stream(
        "POST",
@@ -20,7 +30,7 @@ When using `stream=True` (server-only HTTP streaming transport), each sentence i
        for chunk in response.iter_bytes():
            play_audio(chunk)
    ```
-   This minimizes chunk-to-chunk variation and provides more consistent streaming output.
+   This minimizes variation between clone chunks.
 
 2. **Use one-shot voice cloning for consistent results:**
    ```python
@@ -42,4 +52,7 @@ When using `stream=True` (server-only HTTP streaming transport), each sentence i
    }
    ```
 
-This limitation is inherent to the sentence-by-sentence streaming architecture and does not affect non-streaming synthesis.
+The server's design/auto streaming path is intentionally buffered until the
+complete OmniVoice generation returns. This limitation affects time-to-first
+byte, not the generated voice continuity. Non-streaming synthesis uses the
+same complete-request model path.

@@ -110,9 +110,13 @@ def client(settings):
             "omnivoice_server.services.model.ModelService.is_loaded",
             new_callable=lambda: property(lambda self: True),
         ):
-            with TestClient(app) as c:
-                c.app.state.inference_svc.synthesize = AsyncMock(side_effect=_mock_synthesize)
-                yield c
+            with patch(
+                "omnivoice_server.services.inference.InferenceService.prepare_clone_request",
+                new=AsyncMock(side_effect=lambda req: req),
+            ):
+                with TestClient(app) as c:
+                    c.app.state.inference_svc.synthesize = AsyncMock(side_effect=_mock_synthesize)
+                    yield c
 
 
 @pytest.fixture

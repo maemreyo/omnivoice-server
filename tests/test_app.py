@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import os
-from types import SimpleNamespace
 import sys
+from types import SimpleNamespace
 
 from omnivoice_server.app import _apply_cuda_allocator_config
 from omnivoice_server.config import Settings

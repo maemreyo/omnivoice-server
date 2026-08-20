@@ -91,11 +91,16 @@ thread cancellation is excluded.
 - `stream_overlap` is a bounded one-chunk-ahead producer queue. It does overlap
   synthesis of the next sentence with network consumption of the prior
   sentence, but it does **not** run two GPU generations concurrently.
-- The standard sentence path waits for a complete `model.generate()` call for
-  each sentence before yielding bytes.
-- `_chunk_request()` currently does not carry `profile_id` or a prepared
-  `voice_clone_prompt`, so stored and one-shot clone streaming can repeat prompt
-  preparation for every sentence.
+- The standard auto/design path waits for one complete `model.generate()` call
+  for the full request before yielding bytes. This preserves OmniVoice's
+  chunk-0 conditioning and whole-output postprocessing.
+- Long clone requests retain sentence-level HTTP chunks after preparing one
+  reusable prompt for the request.
+- Short adjacent clone sentences are merged up to the configured maximum
+  chunk size (`stream_chunk_min_chars` defaults to 80 characters), reducing
+  unnecessary outer model calls without changing OmniVoice's native chunking.
+- `_chunk_request()` carries `profile_id` and a prepared `voice_clone_prompt`.
+  Clone streaming prepares the prompt once before the first chunk.
 - A fixed request `duration` is copied to every sentence chunk. Treating the
   whole-request duration as a per-sentence duration changes output length.
 - Auto/design sentence calls do not use OmniVoice's chunk-0-as-reference rule,
@@ -127,17 +132,18 @@ These correctness issues take priority over lower-level streaming work.
 Before changing model internals:
 
 1. Prepare a clone prompt once per streaming request and reuse the CPU-resident
-   prompt across all sentence calls. Stored profiles should use the existing
-   fingerprinted sidecar/cache path; one-shot references need a request-scoped
+   prompt across all clone sentence calls. Stored profiles use the existing
+   fingerprinted sidecar/cache path; one-shot references use a request-scoped
    prompt.
-2. Preserve `profile_id` and `voice_clone_prompt` when deriving chunk requests.
+2. Preserve `profile_id` and `voice_clone_prompt` when deriving clone chunk
+   requests. **Implemented.**
 3. Do not copy a whole-request fixed `duration` to every sentence. The safe
    initial behavior is to disable sentence splitting for fixed-duration
    requests. Proportional allocation may be investigated separately, but it is
    not output-equivalent.
-4. Treat auto/design sentence streaming as best-effort, non-equivalent output.
-   Do not promise speaker continuity until the model-native long-form path can
-   expose completed chunks while retaining chunk-0 conditioning.
+4. Route auto/design streaming through one complete model call until a
+   model-native iterator can expose completed chunks while retaining chunk-0
+   conditioning. **Implemented as the safe default.**
 5. Add tests proving prompt preparation occurs once and fixed duration is not
    multiplied by the number of sentences.
 
