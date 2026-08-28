@@ -95,13 +95,13 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--no-retry-degenerate",
+        "--no-detect-no-speech",
         action="store_false",
         default=None,
-        dest="retry_degenerate",
+        dest="detect_no_speech",
         help=(
-            "Do not re-roll generations that come back near-silent. "
-            "(env: OMNIVOICE_RETRY_DEGENERATE)"
+            "Do not check whether generated audio contains speech "
+            "(env: OMNIVOICE_DETECT_NO_SPEECH)"
         ),
     )
 

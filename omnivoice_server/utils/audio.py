@@ -358,19 +358,42 @@ def group_by_speaker(segments: list[dict]) -> dict[str, torch.Tensor]:
 
 # ── Degenerate output detection ──────────────────────────────────────────────
 #
-# OmniVoice occasionally returns audio that is technically valid — finite, right
-# shape, right length — but perceptually empty: mostly breath and ambient noise
-# with little or no speech. It is a sampling failure, most visible when several
-# non-verbal tags share one utterance and position_temperature is high
-# (issue #37; see docs/verification/QA_SAMPLE_RESULTS.md, case D01).
+# OmniVoice sometimes returns audio that is technically valid — finite, right
+# shape, right length — but contains no speech: a steady low-frequency drone
+# (issue #37). It shows up when several non-verbal tags share one short
+# utterance.
 #
-# Overall RMS is a poor detector because the failure leaves occasional loud
-# bursts, and because a legitimately quiet render (the `whisper` design style)
-# would trip any threshold set high enough to catch it. What actually separates
-# the two is *distribution*: the failure mode is near-silent for most of its
-# duration. Whispered speech is quiet but continuous.
+# Detecting it by loudness does not work, and an earlier version of this code
+# that tried was ineffective. Measured against the real model, the reported
+# failure runs at RMS 2500-12000 with only 2.7% of frames quiet — it is loud and
+# steady, not silent. What distinguishes it is *frequency content*: speech at
+# 24kHz crosses zero at roughly 0.05-0.25 of samples, while the drone sits near
+# zero because it has almost no energy above a few tens of Hz.
+#
+# Zero-crossing rate separates them cleanly. Measured on k2-fsa/OmniVoice,
+# scoring the fraction of audible windows that look like speech:
+#
+#   plain text, any length              0.50 - 1.00
+#   one tag, 13 words                   0.80 - 0.94
+#   one tag, 7 words                    0.25 - 0.73
+#   one tag, 3 words                    0.00 - 0.14
+#   three tags, 8 words (the report)    0.00 across 12 samples
+#
+# The governing variable is ordinary text per tag, not tag count or tag
+# identity, and no generation parameter avoids it — num_step 8/16/32 and
+# position_temperature=0 all failed on the reported input. Callers are warned
+# rather than silently retried: there is nothing to retry to.
 
-DEGENERATE_FRAME_MS = 100
+DEGENERATE_FRAME_MS = 250
+
+# Below this, a window has too little high-frequency content to be speech.
+# Whispering raises ZCR (it is noisier than voiced speech), so this threshold
+# does not endanger the `whisper` design style.
+SPEECH_ZCR_THRESHOLD = 0.04
+
+# A window this quiet is scored as neither speech nor drone — it is a pause, and
+# pauses should not count against an otherwise healthy generation.
+SILENCE_RMS = 0.005
 
 
 def _to_numpy_1d(tensor: torch.Tensor | np.ndarray) -> np.ndarray:
@@ -382,49 +405,61 @@ def _to_numpy_1d(tensor: torch.Tensor | np.ndarray) -> np.ndarray:
     return arr.reshape(-1)
 
 
-def silent_frame_fraction(
+def _concat(tensors: list[torch.Tensor | np.ndarray]) -> np.ndarray:
+    flat = [_to_numpy_1d(t) for t in tensors]
+    if not flat:
+        return np.zeros(0, dtype=np.float32)
+    signal = np.concatenate(flat) if len(flat) > 1 else flat[0]
+    # NaN would poison every comparison below; treat non-finite samples as zero.
+    return np.nan_to_num(signal, nan=0.0, posinf=0.0, neginf=0.0)
+
+
+def speech_window_ratio(
     tensors: list[torch.Tensor | np.ndarray],
-    silence_rms: float,
     frame_ms: int = DEGENERATE_FRAME_MS,
     sample_rate: int = SAMPLE_RATE,
+    zcr_threshold: float = SPEECH_ZCR_THRESHOLD,
+    silence_rms: float = SILENCE_RMS,
 ) -> float:
     """
-    Fraction of fixed-length frames whose RMS falls below `silence_rms`.
+    Fraction of audible windows whose zero-crossing rate looks like speech.
 
-    Returns 0.0 for empty or sub-frame-length input, so callers never treat
-    "too short to judge" as a failure.
+    Near-silent windows are excluded from both numerator and denominator, so
+    leading silence and inter-sentence pauses neither help nor hurt the score.
+    Returns 1.0 when there is nothing audible to judge, so callers never treat
+    "no signal to measure" as a failure.
     """
-    if not tensors:
-        return 0.0
-
-    flat = [_to_numpy_1d(t) for t in tensors]
-    signal = np.concatenate(flat) if len(flat) > 1 else flat[0]
-
+    signal = _concat(tensors)
     frame_len = max(1, int(sample_rate * frame_ms / 1000))
     n_frames = signal.shape[0] // frame_len
     if n_frames == 0:
-        return 0.0
+        return 1.0
 
     frames = signal[: n_frames * frame_len].reshape(n_frames, frame_len)
-    # NaN would poison the mean; treat non-finite samples as silence.
-    frames = np.nan_to_num(frames, nan=0.0, posinf=0.0, neginf=0.0)
     frame_rms = np.sqrt(np.mean(np.square(frames, dtype=np.float64), axis=1))
+    audible = frames[frame_rms >= silence_rms]
+    if audible.shape[0] == 0:
+        return 1.0
 
-    return float(np.count_nonzero(frame_rms < silence_rms) / n_frames)
+    # Zero crossings per window, as a fraction of samples in the window.
+    signs = np.sign(audible)
+    crossings = np.count_nonzero(np.diff(signs, axis=1) != 0, axis=1)
+    zcr = crossings / audible.shape[1]
+
+    return float(np.count_nonzero(zcr >= zcr_threshold) / audible.shape[0])
 
 
 def is_degenerate_audio(
     tensors: list[torch.Tensor | np.ndarray],
-    silence_rms: float,
-    max_silent_fraction: float,
+    min_speech_ratio: float,
     min_duration_s: float = 1.0,
     sample_rate: int = SAMPLE_RATE,
 ) -> bool:
     """
-    Report whether a generation looks like a sampling failure rather than speech.
+    Report whether a generation contains speech, or only a low-frequency drone.
 
-    Short outputs are never flagged: a one-word render is legitimately mostly
-    silence, and re-rolling it would cost more than it saves.
+    Short outputs are never flagged: there are too few windows to judge, and a
+    one-word render is legitimately dominated by onset and decay.
     """
     if not tensors:
         return False
@@ -433,7 +468,4 @@ def is_degenerate_audio(
     if total_samples < min_duration_s * sample_rate:
         return False
 
-    return (
-        silent_frame_fraction(tensors, silence_rms=silence_rms, sample_rate=sample_rate)
-        > max_silent_fraction
-    )
+    return speech_window_ratio(tensors, sample_rate=sample_rate) < min_speech_ratio

@@ -40,8 +40,8 @@ Omit it for fresh randomness on every call. See
 **Response headers:**
 - `X-Audio-Duration-S` — length of the returned audio
 - `X-Synthesis-Latency-S` — time spent generating
-- `X-Synthesis-Retried` — present as `degenerate-output` when the first attempt
-  came back near-silent and was re-rolled
+- `X-No-Speech-Detected` — present as `true` when the generated audio contains
+  no detectable speech (see [Advanced Features](08-advanced-features.md#reliability))
 - `X-Unknown-Nonverbal-Tags` — comma-separated bracketed tags that are not
   recognised non-verbal symbols and were synthesized as literal text
 

@@ -1,16 +1,19 @@
 ## Known Limitations
 
-### Non-Verbal Tags in Dense Utterances
+### Non-Verbal Tags Need Surrounding Text
 
-Several non-verbal tags in one short utterance can make OmniVoice return audio
-that is valid but perceptually empty — near-silent for most of its duration,
-with occasional bursts. It is an upstream sampling failure and it is
-intermittent; the identical request often succeeds on the next attempt.
+A non-verbal tag in a short utterance makes OmniVoice return a steady
+low-frequency drone with no speech in it. It is loud and continuous rather than
+quiet, so it reads as a corrupt file rather than a failed generation.
 
-The server detects near-silent output and re-runs it once with
-`position_temperature=0`, so most occurrences are invisible to callers. Set
-`position_temperature: 0` yourself to skip the wasted first attempt, or spread
-tags across sentences rather than packing them into one.
+Measured: `Hello [laughter] hi.` (3 words) fails 3/3; the same tag in a 13-word
+sentence fails 0/3. **Allow roughly 8–10 words of ordinary text per tag.**
+
+It is not specific to any tag, short text alone is fine, and no generation
+parameter avoids it — `num_step` 8/16/32 and `position_temperature=0` were each
+measured three times on a failing input and all twelve failed.
+
+Affected responses carry `X-No-Speech-Detected: true`.
 
 See [Advanced Features](08-advanced-features.md) and issue #37.
 

@@ -79,7 +79,9 @@ When re-testing D01 immediately after with the same input text and server, resul
 
 **Diagnosis**: Per-second RMS analysis shows 0–6.5s is nearly silent (~100-250 RMS), with only a burst at 6.5s. The model is producing mostly breath/ambient sounds instead of speech — a failure mode of the upstream model when multiple non-verbal tags appear in a long utterance.
 
-**Workaround**: Set `position_temperature=0` for deterministic output. Non-verbal tags with short text (1-2 tags) work well and consistently.
+**Workaround**: Allow roughly 8-10 words of ordinary text per tag. `position_temperature=0` does **not** help — later measurement against the real model found the three-tag case fails at every parameter setting tried (`num_step` 8/16/32 and `position_temperature=0`, three samples each, all twelve failed). See issue #37 and `docs/readme/sections/15-known-limitations.md`.
+
+**Correction (2026-08-28)**: the diagnosis above — "low audio amplitude", "nearly silent" — is wrong. The failure is a *loud*, steady low-frequency drone (RMS 2500-12000, only 2.7% of frames quiet). The `position_temperature=0` workaround recorded here was never verified and does not work. The governing variable is the amount of ordinary text per tag: a single `[laughter]` fails 3/3 in a 3-word sentence and 0/3 in a 13-word one.
 
 **Verdict**: Not a server bug. Upstream model limitation.
 

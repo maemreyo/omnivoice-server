@@ -485,8 +485,8 @@ def _synthesis_headers(result, unknown_tags: list[str]) -> dict[str, str]:
         "X-Audio-Duration-S": str(round(result.duration_s, 3)),
         "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
     }
-    if getattr(result, "retried", False):
-        headers["X-Synthesis-Retried"] = "degenerate-output"
+    if getattr(result, "no_speech_detected", False):
+        headers["X-No-Speech-Detected"] = "true"
     if unknown_tags:
         headers["X-Unknown-Nonverbal-Tags"] = ",".join(unknown_tags)
     return headers

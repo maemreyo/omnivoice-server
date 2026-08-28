@@ -16,7 +16,7 @@
 | `--log-level` | `OMNIVOICE_LOG_LEVEL` | `info` | Logging level |
 | `--no-web-ui` | `OMNIVOICE_WEB_UI` | UI on | Stop serving the browser UI at `/ui` |
 | `--seed` | `OMNIVOICE_SEED` | _(none)_ | Default RNG seed; requests may override. Needs `--max-concurrent 1` for bit-exact repeats |
-| `--no-retry-degenerate` | `OMNIVOICE_RETRY_DEGENERATE` | retry on | Stop re-rolling generations that return near-silent |
+| `--no-detect-no-speech` | `OMNIVOICE_DETECT_NO_SPEECH` | on | Stop checking whether generated audio contains speech |
 
 ### CORS Notes
 

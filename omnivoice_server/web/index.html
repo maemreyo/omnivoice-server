@@ -202,9 +202,9 @@
           </div>
         </div>
         <div class="hint">
-          Set seed to any number to get the same audio every time. Set position
-          temperature to 0 for deterministic output — useful when non-verbal
-          tags produce noise.
+          Set seed to any number to get the same audio every time. Position
+          temperature 0 makes sampling deterministic; note it does not fix the
+          non-verbal tag failure — nothing does, so spread tags out instead.
         </div>
       </details>
 
@@ -357,7 +357,9 @@
   ];
 
   function checkTags() {
-    var found = ($("text").value.match(/\[([a-zA-Z][a-zA-Z0-9_-]*)\]/g) || []);
+    var raw = $("text").value;
+    var found = (raw.match(/\[([a-zA-Z][a-zA-Z0-9_-]*)\]/g) || []);
+    var words = raw.replace(/\[[^\]]*\]/g, " ").split(/\s+/).filter(Boolean).length;
     var unknown = [];
     var known = 0;
     found.forEach(function (raw) {
@@ -373,9 +375,10 @@
     if (unknown.length) {
       hint.textContent = "Not a non-verbal tag: [" + unknown.join("], [") +
         "] — this will be spoken as literal text.";
-    } else if (known >= 3) {
-      hint.textContent = known + " non-verbal tags in one utterance can produce " +
-        "noise. Set position temperature to 0 if it does.";
+    } else if (known > 0 && words / known < 8) {
+      hint.textContent = "Only " + Math.round(words / known) + " words per tag. " +
+        "Non-verbal tags in short text make the model emit a drone with no " +
+        "speech — allow roughly 8-10 words per tag.";
     } else {
       hint.textContent = "Supports non-verbal tags such as [laughter], [breath], [sigh].";
     }
@@ -567,7 +570,7 @@
       var headers = {
         duration: res.headers.get("X-Audio-Duration-S"),
         latency: res.headers.get("X-Synthesis-Latency-S"),
-        retried: res.headers.get("X-Synthesis-Retried"),
+        noSpeech: res.headers.get("X-No-Speech-Detected"),
         unknownTags: res.headers.get("X-Unknown-Nonverbal-Tags")
       };
       return res.blob().then(function (blob) { return { blob: blob, headers: headers }; });
@@ -586,9 +589,10 @@
       if (h.latency) bits.push("generated in " + h.latency + "s");
       bits.push(Math.round((Date.now() - started) / 100) / 10 + "s round trip");
       var meta = bits.join(" · ");
-      if (h.retried) {
-        meta += " — first attempt came back near-silent and was retried " +
-          "automatically (position_temperature=0)";
+      if (h.noSpeech) {
+        meta += " — WARNING: no speech detected in this audio. Several " +
+          "non-verbal tags in one short utterance make the model emit a " +
+          "low-frequency drone. Spread them across sentences.";
       }
       if (h.unknownTags) {
         meta += " — unrecognised tags spoken literally: " + h.unknownTags;
