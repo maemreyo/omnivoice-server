@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -16,17 +18,27 @@ def _mock_synthesize(req, **_kwargs):
     return SynthesisResult(tensors=[tensor], duration_s=1.0, latency_s=0.05)
 
 
-def _make_client(settings: Settings) -> TestClient:
+@contextmanager
+def _make_client(settings: Settings) -> Iterator[TestClient]:
+    """
+    A client whose model is mocked for the whole test, not just during setup.
+
+    This used to call `client.__enter__()` and return the client, so every call
+    site's `with _make_client(...)` entered the lifespan a *second* time — by
+    which point the patches had exited. On any machine with `omnivoice`
+    installed that downloaded and loaded the real 2.1GB model, once per test.
+    """
     app = create_app(settings)
-    with patch("omnivoice_server.services.model.ModelService.load", new_callable=AsyncMock):
-        with patch(
+    with (
+        patch("omnivoice_server.services.model.ModelService.load", new_callable=AsyncMock),
+        patch(
             "omnivoice_server.services.model.ModelService.is_loaded",
             new_callable=lambda: property(lambda self: True),
-        ):
-            client = TestClient(app)
-            client.__enter__()
-            client.app.state.inference_svc.synthesize = AsyncMock(side_effect=_mock_synthesize)
-            return client
+        ),
+        TestClient(app) as client,
+    ):
+        client.app.state.inference_svc.synthesize = AsyncMock(side_effect=_mock_synthesize)
+        yield client
 
 
 def _base_settings(tmp_path, **overrides) -> Settings:
