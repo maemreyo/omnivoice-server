@@ -127,6 +127,34 @@ class ModelService:
     def is_loaded(self) -> bool:
         return self._loaded
 
+    def supported_languages(self) -> dict[str, list[str]]:
+        """
+        Language IDs and names the model accepts, from upstream.
+
+        Read through the model's public properties rather than importing
+        omnivoice's LANG_IDS constant, so a change to how upstream stores this
+        does not silently give us an empty list.
+        """
+        model = self.model
+        return {
+            "ids": sorted(model.supported_language_ids),
+            "names": sorted(model.supported_language_names),
+        }
+
+    def accepts_language(self, language: str) -> bool:
+        """
+        Whether upstream will recognise `language`, by ID or by full name.
+
+        Upstream falls back to language-agnostic mode with only a log warning
+        when it does not recognise a value, so the caller otherwise gets a
+        silently different voice and no way to know why.
+        """
+        if not self.is_loaded:
+            return True  # Nothing to validate against yet; do not reject.
+        key = language.strip().lower()
+        model = self.model
+        return key in model.supported_language_ids or key in model.supported_language_names
+
 
 def _get_ram_mb() -> float:
     return psutil.Process().memory_info().rss / 1024 / 1024

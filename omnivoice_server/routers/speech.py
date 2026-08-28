@@ -96,6 +96,10 @@ def _get_voice_files(request: Request) -> VoiceFileService:
     return request.app.state.voice_file_svc
 
 
+def _get_model(request: Request):
+    return request.app.state.model_svc
+
+
 def _get_profiles(request: Request) -> ProfileService:
     return request.app.state.profile_svc
 
@@ -357,9 +361,11 @@ async def create_speech(
     profile_svc: ProfileService = Depends(_get_profiles),
     metrics_svc: MetricsService = Depends(_get_metrics),
     voice_file_svc: VoiceFileService = Depends(_get_voice_files),
+    model_svc=Depends(_get_model),
     cfg=Depends(_get_cfg),
 ):
     """Generate speech from text."""
+    _validate_language(model_svc, body.language)
     resolved = _resolve_synthesis_mode(body, profile_svc, voice_file_svc)
 
     req = SynthesisRequest(
@@ -452,6 +458,31 @@ async def create_speech(
         content=audio_bytes,
         media_type=media_type,
         headers=_synthesis_headers(result, unknown_tags),
+    )
+
+
+def _validate_language(model_svc, language: str | None) -> None:
+    """
+    Reject a language the model will not recognise.
+
+    Upstream does not treat an unknown language as an error — it logs and falls
+    back to language-agnostic synthesis. The caller then gets audio that is
+    subtly wrong with nothing in the response to explain it, which is worse
+    than a 422 naming the mistake.
+    """
+    if language is None:
+        return
+
+    if model_svc.accepts_language(language):
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail=(
+            f"Unsupported language '{language}'. Use an ID such as 'en' or a "
+            "full name such as 'english'; see GET /v1/languages for the full "
+            "list. Omit `language` for language-agnostic synthesis."
+        ),
     )
 
 
@@ -624,10 +655,12 @@ async def create_speech_clone(
     request_timeout_s: int | None = Form(default=None, ge=1, le=600),
     seed: int | None = Form(default=None, ge=0, le=2**32 - 1),
     inference_svc: InferenceService = Depends(_get_inference),
+    model_svc=Depends(_get_model),
     metrics_svc: MetricsService = Depends(_get_metrics),
     cfg=Depends(_get_cfg),
 ):
     """One-shot voice cloning. Upload reference audio + text to synthesize."""
+    _validate_language(model_svc, language)
     # Fail-fast: reject oversized uploads before reading body
     content_length = request.headers.get("content-length")
     if content_length is not None:
