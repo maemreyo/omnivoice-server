@@ -137,6 +137,13 @@ class Settings(BaseSettings):
         default=Path(platformdirs.user_data_dir("omnivoice")) / "profiles",
         description="Directory for saved voice cloning profiles",
     )
+    voice_dir: Path = Field(
+        default=Path(platformdirs.user_data_dir("omnivoice")) / "voices",
+        description=(
+            "Directory of .txt voice files. Each file names a voice design that "
+            "OpenAI-compatible clients can select by filename."
+        ),
+    )
 
     # Auth
     api_key: str = Field(

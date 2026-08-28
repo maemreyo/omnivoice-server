@@ -60,6 +60,62 @@ To avoid the re-roll cost entirely, set it yourself:
 One or two tags in a longer sentence is the reliable pattern. Four tags in
 eight words is not.
 
+### Named Voices from a Directory
+
+OpenAI-compatible clients send a bare `voice` string and have no field for
+`instructions`, so a voice design cannot be expressed through them. Dropping a
+`.txt` file into the voice directory gives a design a name, and the name is all
+such a client needs to send.
+
+```bash
+mkdir -p ~/.local/share/omnivoice/voices
+cat > ~/.local/share/omnivoice/voices/canadian-lady.txt <<'EOF'
+# Anything after # is a comment.
+description: For my podcast app
+female, young adult, canadian accent
+seed: 4242
+EOF
+```
+
+The voice is now selectable by filename, from any client:
+
+```python
+response = httpx.post(
+    "http://127.0.0.1:8880/v1/audio/speech",
+    json={"input": "Hello", "voice": "canadian-lady"}
+)
+```
+
+It also appears in `GET /v1/voices` with `"type": "file"`.
+
+**Format.** Any line reading `key: value` (or `key = value`) whose key is a
+known parameter sets that parameter. Every other non-comment line contributes to
+the voice design. Supported keys:
+
+| Key | Purpose |
+|-----|---------|
+| `seed` | Fix the RNG so this voice sounds the same every time |
+| `speed` | Playback speed |
+| `num_step` | Inference steps |
+| `guidance_scale`, `t_shift`, `position_temperature`, `class_temperature` | Generation tuning |
+| `denoise` | `true` / `false` |
+| `duration` | Fixed output length |
+| `language` | Language code |
+| `description` | Shown in `/v1/voices`; not sent to the model |
+| `instructions` | Voice design, if you prefer stating it explicitly |
+
+**Precedence.** Parameters in a file are defaults. Anything the request sets
+explicitly wins. Voice files also take precedence over the built-in OpenAI
+preset names, so a `nova.txt` replaces the built-in `nova` — the server logs a
+warning at startup when that happens.
+
+**Validation.** Attributes are checked the same way `instructions` is. A file
+that fails validation is skipped with a warning at startup rather than
+producing strange audio later, and the voice simply does not appear.
+
+Files are re-read when they change, so voices can be added or edited without
+restarting the server. Set the directory with `--voice-dir`.
+
 ### Reproducible Output
 
 Synthesis is random by default: the same request twice gives two different

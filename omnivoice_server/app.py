@@ -22,6 +22,8 @@ from .services.metrics import MetricsService
 from .services.model import ModelService
 from .services.profiles import ProfileService
 from .services.script import ScriptOrchestrator
+from .services.voice_files import VoiceFileService
+from .voice_presets import is_openai_voice_preset
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,7 @@ async def lifespan(app: FastAPI):
     )
 
     cfg.profile_dir.mkdir(parents=True, exist_ok=True)
+    cfg.voice_dir.mkdir(parents=True, exist_ok=True)
 
     model_svc = ModelService(cfg)
     await model_svc.load()
@@ -54,7 +57,26 @@ async def lifespan(app: FastAPI):
     )
 
     app.state.profile_svc = ProfileService(profile_dir=cfg.profile_dir)
+    app.state.voice_file_svc = VoiceFileService(voice_dir=cfg.voice_dir)
     app.state.metrics_svc = MetricsService()
+
+    # Parse every voice file once at startup so a typo is reported here rather
+    # than on the first request that happens to use it.
+    file_voices = app.state.voice_file_svc.list_voices()
+    if file_voices:
+        logger.info(
+            "Loaded %d voice file(s) from %s: %s",
+            len(file_voices),
+            cfg.voice_dir,
+            ", ".join(v.name for v in file_voices),
+        )
+        shadowed = sorted(v.name for v in file_voices if is_openai_voice_preset(v.name))
+        if shadowed:
+            logger.warning(
+                "Voice file(s) %s shadow built-in presets of the same name; "
+                "the files take precedence.",
+                ", ".join(shadowed),
+            )
     app.state.script_orchestrator = ScriptOrchestrator(
         inference_service=app.state.inference_svc,
         profile_service=app.state.profile_svc,

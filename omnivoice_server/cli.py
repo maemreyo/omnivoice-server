@@ -161,6 +161,15 @@ def main() -> None:
         dest="profile_dir",
         help="Voice profile directory (env: OMNIVOICE_PROFILE_DIR)",
     )
+    parser.add_argument(
+        "--voice-dir",
+        default=None,
+        dest="voice_dir",
+        help=(
+            "Directory of .txt voice files, each naming a voice design "
+            "(env: OMNIVOICE_VOICE_DIR)"
+        ),
+    )
 
     # Auth
     parser.add_argument(

@@ -10,7 +10,8 @@ import logging
 import tempfile
 from collections.abc import AsyncIterator
 from contextlib import suppress
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from dataclasses import field as dc_field
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -20,6 +21,7 @@ from pydantic import BaseModel, Field, field_validator
 from ..services.inference import InferenceService, SynthesisRequest, SynthesisResult
 from ..services.metrics import MetricsService
 from ..services.profiles import ProfileNotFoundError, ProfileService
+from ..services.voice_files import VoiceFile, VoiceFileService
 from ..utils.audio import (
     ResponseFormat,
     tensor_to_pcm16_bytes,
@@ -90,6 +92,10 @@ def _get_inference(request: Request) -> InferenceService:
     return request.app.state.inference_svc
 
 
+def _get_voice_files(request: Request) -> VoiceFileService:
+    return request.app.state.voice_file_svc
+
+
 def _get_profiles(request: Request) -> ProfileService:
     return request.app.state.profile_svc
 
@@ -119,10 +125,55 @@ def _pcm_stream_response(stream_iter: AsyncIterator[bytes]) -> StreamingResponse
     )
 
 
+def _lookup_voice_file(
+    voice_file_svc: VoiceFileService | None,
+    speaker_raw: str | None,
+    voice_raw: str | None,
+) -> VoiceFile | None:
+    """
+    Find a voice file matching `speaker` or `voice`, if either names one.
+
+    Prefixed and reserved values are skipped: `clone:` and `design:` have their
+    own resolution paths, and `auto` is the documented default rather than a
+    name an operator can claim.
+    """
+    if voice_file_svc is None:
+        return None
+
+    for candidate in (speaker_raw, voice_raw):
+        if not candidate:
+            continue
+        lowered = candidate.lower()
+        if lowered == "auto" or ":" in candidate:
+            continue
+        voice = voice_file_svc.get(candidate)
+        if voice is not None:
+            return voice
+    return None
+
+
+@dataclass
+class ResolvedVoice:
+    """
+    Outcome of working out which voice a request meant.
+
+    `params` carries defaults contributed by a voice file (issue #38). They are
+    weaker than anything the request set explicitly — a file names a voice, it
+    does not overrule the caller.
+    """
+
+    mode: str
+    instruct: str | None = None
+    ref_audio_path: str | None = None
+    ref_text: str | None = None
+    params: dict = dc_field(default_factory=dict)
+
+
 def _resolve_synthesis_mode(
     body: SpeechRequest,
     profile_svc: ProfileService,
-) -> tuple[str, str | None, str | None, str | None]:
+    voice_file_svc: VoiceFileService | None = None,
+) -> ResolvedVoice:
     """Resolve synthesis mode for /v1/audio/speech."""
     logger.debug(
         "[TRACE] _resolve_synthesis_mode called: speaker=%r, voice=%r, instructions=%r",
@@ -186,7 +237,11 @@ def _resolve_synthesis_mode(
                 profile_id,
                 ref_audio_path,
             )
-            return "clone", None, str(ref_audio_path), ref_text
+            return ResolvedVoice(
+                mode="clone",
+                ref_audio_path=str(ref_audio_path),
+                ref_text=ref_text,
+            )
         except ProfileNotFoundError:
             if explicit_clone:
                 logger.warning(f"[TRACE] Clone profile not found: {profile_id!r}")
@@ -198,6 +253,22 @@ def _resolve_synthesis_mode(
             logger.debug(
                 f"[TRACE] Profile '{profile_id}' not found; falling back to design/preset mode"
             )
+
+    # Voice files sit between clone profiles and built-in presets: both are
+    # things the operator created, and both should beat a built-in heuristic
+    # mapping of the same name (issue #38).
+    file_voice = _lookup_voice_file(voice_file_svc, speaker_raw, voice_raw)
+    if file_voice is not None:
+        logger.info(
+            "[TRACE] Resolved to DESIGN mode (voice file %s): %s",
+            file_voice.name,
+            file_voice.instructions,
+        )
+        return ResolvedVoice(
+            mode="design",
+            instruct=file_voice.instructions,
+            params=dict(file_voice.params),
+        )
 
     if speaker_raw and not speaker_preset and not speaker_raw.lower().startswith("clone:"):
         logger.warning(
@@ -217,7 +288,7 @@ def _resolve_synthesis_mode(
         try:
             canonicalized = validate_and_canonicalize_instructions(body.instructions)
             logger.info(f"[TRACE] Resolved to DESIGN mode (instructions): {canonicalized}")
-            return "design", canonicalized, None, None
+            return ResolvedVoice(mode="design", instruct=canonicalized)
         except InstructionValidationError as e:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -231,7 +302,7 @@ def _resolve_synthesis_mode(
             speaker_key,
             preset_instruct,
         )
-        return "design", preset_instruct, None, None
+        return ResolvedVoice(mode="design", instruct=preset_instruct)
 
     if voice_preset:
         preset_instruct = voice_preset
@@ -240,7 +311,7 @@ def _resolve_synthesis_mode(
             voice_key,
             preset_instruct,
         )
-        return "design", preset_instruct, None, None
+        return ResolvedVoice(mode="design", instruct=preset_instruct)
 
     if voice_raw:
         design_voice = voice_raw
@@ -249,13 +320,13 @@ def _resolve_synthesis_mode(
         try:
             canonicalized = validate_and_canonicalize_instructions(design_voice)
             logger.info(f"[TRACE] Resolved to DESIGN mode (voice instructions): {canonicalized}")
-            return "design", canonicalized, None, None
+            return ResolvedVoice(mode="design", instruct=canonicalized)
         except InstructionValidationError as e:
             if voice_raw.lower() == "auto":
                 logger.info(
                     f"[TRACE] Resolved to DESIGN mode (default): {DEFAULT_DESIGN_INSTRUCTIONS}"
                 )
-                return "design", DEFAULT_DESIGN_INSTRUCTIONS, None, None
+                return ResolvedVoice(mode="design", instruct=DEFAULT_DESIGN_INSTRUCTIONS)
             if not is_openai_voice_preset(voice_raw):
                 logger.warning(
                     "[TRACE] Unsupported voice value=%r; rejecting instead of silent fallback",
@@ -271,7 +342,7 @@ def _resolve_synthesis_mode(
                 ) from e
 
     logger.info(f"[TRACE] Resolved to DESIGN mode (default): {DEFAULT_DESIGN_INSTRUCTIONS}")
-    return "design", DEFAULT_DESIGN_INSTRUCTIONS, None, None
+    return ResolvedVoice(mode="design", instruct=DEFAULT_DESIGN_INSTRUCTIONS)
 
 
 @router.post("/audio/speech")
@@ -280,17 +351,18 @@ async def create_speech(
     inference_svc: InferenceService = Depends(_get_inference),
     profile_svc: ProfileService = Depends(_get_profiles),
     metrics_svc: MetricsService = Depends(_get_metrics),
+    voice_file_svc: VoiceFileService = Depends(_get_voice_files),
     cfg=Depends(_get_cfg),
 ):
     """Generate speech from text."""
-    mode, instruct, ref_audio_path, ref_text = _resolve_synthesis_mode(body, profile_svc)
+    resolved = _resolve_synthesis_mode(body, profile_svc, voice_file_svc)
 
     req = SynthesisRequest(
         text=body.input,
-        mode=mode,
-        instruct=instruct,
-        ref_audio_path=ref_audio_path,
-        ref_text=ref_text,
+        mode=resolved.mode,
+        instruct=resolved.instruct,
+        ref_audio_path=resolved.ref_audio_path,
+        ref_text=resolved.ref_text,
         speed=body.speed,
         num_step=body.num_step,
         guidance_scale=body.guidance_scale,
@@ -307,6 +379,7 @@ async def create_speech(
         audio_chunk_threshold=body.audio_chunk_threshold,
         seed=body.seed,
     )
+    req = _apply_voice_file_params(req, resolved.params, body)
 
     unknown_tags = find_unknown_nonverbal_tags(body.input)
     if unknown_tags:
@@ -375,6 +448,30 @@ async def create_speech(
         media_type=media_type,
         headers=_synthesis_headers(result, unknown_tags),
     )
+
+
+def _apply_voice_file_params(
+    req: SynthesisRequest,
+    params: dict,
+    body: SpeechRequest,
+) -> SynthesisRequest:
+    """
+    Fill in parameters pinned by a voice file, without overruling the caller.
+
+    Uses pydantic's `model_fields_set` rather than comparing against defaults:
+    `speed` defaults to 1.0, so an explicit `"speed": 1.0` is indistinguishable
+    from an omitted one by value alone, and a voice file would silently win.
+    """
+    if not params:
+        return req
+
+    explicitly_set = body.model_fields_set
+    updates = {
+        key: value
+        for key, value in params.items()
+        if key not in explicitly_set and hasattr(req, key)
+    }
+    return replace(req, **updates) if updates else req
 
 
 def _synthesis_headers(result, unknown_tags: list[str]) -> dict[str, str]:
