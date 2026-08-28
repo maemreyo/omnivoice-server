@@ -26,7 +26,10 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          # Must match [tool.mypy] python_version. Running mypy under a newer
+          # interpreter pulls in dependency stubs written for that interpreter,
+          # which mypy then refuses to parse against the older target.
+          python-version: "3.10"
       - name: Install dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg

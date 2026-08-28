@@ -76,6 +76,17 @@ python_version = "3.10"
 strict = false
 ignore_missing_imports = true
 
+# numpy >= 2.4 ships stubs using PEP 695 `type` statements, which mypy cannot
+# parse under python_version = "3.10" — it aborts before checking our own code.
+# The type-check job therefore runs on 3.10 itself (see ci.yml), which resolves
+# a numpy old enough to still support 3.10. follow_imports_for_stubs keeps the
+# skip below effective if a future numpy backports the syntax anyway;
+# follow_imports alone does not apply to .pyi files.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
