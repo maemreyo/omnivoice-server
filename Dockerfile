@@ -12,8 +12,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml README.md ./
 COPY omnivoice_server ./omnivoice_server
 
-# Install PyTorch CPU (smaller image, works everywhere)
-RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# Install PyTorch CPU (smaller image, works everywhere).
+# Versions are pinned to match ci.yml. Unpinned, pip resolved a newer torch
+# whose dependencies needed an sdist build, and --index-url REPLACES PyPI, so
+# the build backend (flit_core) was unresolvable and the image failed to build.
+# Deliberately no --extra-index-url here: PyPI also publishes torch==2.8.0 as
+# the CUDA-bundled build, and pip may pick either for an equal version.
+RUN pip install --no-cache-dir torch==2.8.0 torchaudio==2.8.0 \
+    --index-url https://download.pytorch.org/whl/cpu
 
 # Install the package
 RUN pip install --no-cache-dir .
