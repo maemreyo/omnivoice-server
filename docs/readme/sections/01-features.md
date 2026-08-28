@@ -6,6 +6,7 @@ omnivoice-server forwards these features directly to the upstream OmniVoice mode
 
 - **Voice design attributes** - Control gender, age, pitch, accent, dialect, and whisper style
 - **Voice cloning** - Clone voices from reference audio samples
+- **Built-in web UI** - Try voices and copy working request snippets at `/ui`
 - **Non-verbal expressions** - Inline symbols like `[laughter]`, `[breath]`, `[sigh]`, `[sniff]`
 - **Pronunciation control** - Pinyin hints for Chinese, CMU dictionary format for English
 - **Generation parameters** - Fine-tune quality with `num_step`, `guidance_scale`, `temperature`, `denoise`, and more

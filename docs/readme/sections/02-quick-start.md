@@ -51,4 +51,14 @@ omnivoice-server
 
 The server will start at `http://127.0.0.1:8880` by default.
 
+### Try It in a Browser
+
+Open **http://127.0.0.1:8880/ui** (or just `http://127.0.0.1:8880`, which
+redirects there). The built-in UI lets you hear a voice before writing any code:
+pick or describe a voice, generate speech, play it back, and copy the equivalent
+`curl`, Python, JavaScript or OpenAI-SDK call for whatever you just built.
+
+Disable it with `--no-web-ui`.
+
+
 **Voice Control**: `/v1/audio/speech` accepts explicit `instructions` (strongest control), plus OpenAI-style preset names in `voice` or `speaker` (server-only convenience mappings). If none are provided, it falls back to the default design prompt: `male, middle-aged, moderate pitch, british accent`

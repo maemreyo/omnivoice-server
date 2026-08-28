@@ -137,6 +137,13 @@ class Settings(BaseSettings):
         default=Path(platformdirs.user_data_dir("omnivoice")) / "profiles",
         description="Directory for saved voice cloning profiles",
     )
+    web_ui: bool = Field(
+        default=True,
+        description=(
+            "Serve the browser UI at /ui. It talks to this server's own API and "
+            "adds no privileges beyond it; disable with --no-web-ui."
+        ),
+    )
     voice_dir: Path = Field(
         default=Path(platformdirs.user_data_dir("omnivoice")) / "voices",
         description=(
