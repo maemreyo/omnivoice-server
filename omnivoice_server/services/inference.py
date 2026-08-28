@@ -241,10 +241,14 @@ class InferenceService:
         duration_s = sum(t.shape[-1] for t in tensors) / 24_000
         latency_s = time.monotonic() - t0
 
-        logger.debug(
-            f"Synthesized {duration_s:.2f}s audio in {latency_s:.2f}s "
-            f"(RTF={latency_s / duration_s:.3f})"
-        )
+        # An f-string argument is built whether or not debug logging is on, so a
+        # zero-length generation used to raise ZeroDivisionError here and surface
+        # as a 500 — turning empty audio into a crash on the logging line.
+        rtf = f"{latency_s / duration_s:.3f}" if duration_s > 0 else "n/a"
+        logger.debug("Synthesized %.2fs audio in %.2fs (RTF=%s)", duration_s, latency_s, rtf)
+
+        if duration_s == 0:
+            logger.warning("Generation returned no audio for text: %r", req.text[:80])
         return SynthesisResult(
             tensors=tensors,
             duration_s=duration_s,

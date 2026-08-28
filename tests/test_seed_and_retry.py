@@ -210,3 +210,26 @@ def test_known_tags_produce_no_warning_header(client):
     resp = client.post("/v1/audio/speech", json={"input": "Hi [laughter] there"})
     assert resp.status_code == 200
     assert "X-Unknown-Nonverbal-Tags" not in resp.headers
+
+
+# ── Empty generations ────────────────────────────────────────────────────────
+
+
+def test_zero_length_output_does_not_crash():
+    """
+    The RTF log line divides by duration. Its f-string was built regardless of
+    log level, so an empty generation raised ZeroDivisionError and reached the
+    client as a 500 — a crash caused by the logging, not by the empty audio.
+    """
+    model = _FakeModel([[torch.zeros(1, 0)]])
+    result = _service(model)._run_sync(_req())
+
+    assert result.duration_s == 0
+    assert result.tensors is not None
+
+
+def test_empty_tensor_list_does_not_crash():
+    model = _FakeModel([[]])
+    result = _service(model)._run_sync(_req())
+
+    assert result.duration_s == 0
