@@ -13,13 +13,15 @@ from __future__ import annotations
 import asyncio
 import gc
 import logging
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import torch
 
 from ..config import Settings
+from ..utils.audio import is_degenerate_audio
 from .model import ModelService
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,7 @@ class SynthesisRequest:
     postprocess_output: bool | None = None
     audio_chunk_duration: float | None = None
     audio_chunk_threshold: float | None = None
+    seed: int | None = None  # None → server default, which may itself be None
 
 
 @dataclass
@@ -54,6 +57,7 @@ class SynthesisResult:
     tensors: list  # list[torch.Tensor], each (1, T)
     duration_s: float
     latency_s: float
+    retried: bool = False  # True if the first attempt was discarded as degenerate
 
 
 class OmniVoiceAdapter:
@@ -182,6 +186,10 @@ class InferenceService:
         self._cfg = cfg
         self._semaphore = asyncio.Semaphore(cfg.max_concurrent)
         self._adapter = OmniVoiceAdapter(cfg)
+        # torch's RNG is process-global, so two seeded generations running in
+        # different pool threads would consume each other's random state.
+        self._seed_lock = threading.Lock()
+        self._seed_concurrency_warned = False
 
     async def synthesize(
         self,
@@ -213,9 +221,20 @@ class InferenceService:
         """Blocking inference. Runs in thread pool thread."""
         t0 = time.monotonic()
         model = self._model_svc.model
+        seed = req.seed if req.seed is not None else self._cfg.seed
+        retried = False
 
         try:
-            tensors = self._adapter.call(req, model)
+            tensors = self._generate(req, model, seed)
+
+            if self._should_retry(req, tensors):
+                logger.warning(
+                    "Output looks degenerate (near-silent for most of its duration) — "
+                    "retrying with position_temperature=0. Text: %r",
+                    req.text[:80],
+                )
+                tensors = self._generate(replace(req, position_temperature=0.0), model, seed)
+                retried = True
         finally:
             _cleanup_memory(self._cfg.device)
 
@@ -230,6 +249,50 @@ class InferenceService:
             tensors=tensors,
             duration_s=duration_s,
             latency_s=latency_s,
+            retried=retried,
+        )
+
+    def _generate(self, req: SynthesisRequest, model, seed: int | None) -> list[torch.Tensor]:
+        """Run one generation, seeding the global RNG first when asked to."""
+        if seed is None:
+            return self._adapter.call(req, model)
+
+        if self._cfg.max_concurrent > 1 and not self._seed_concurrency_warned:
+            self._seed_concurrency_warned = True
+            logger.warning(
+                "seed is set but max_concurrent=%d. Seeded requests are serialised "
+                "against each other, but an unseeded request generating at the same "
+                "time still advances the shared RNG. Use --max-concurrent 1 for "
+                "bit-exact reproducibility.",
+                self._cfg.max_concurrent,
+            )
+
+        with self._seed_lock:
+            torch.manual_seed(seed)
+            return self._adapter.call(req, model)
+
+    def _should_retry(self, req: SynthesisRequest, tensors: list) -> bool:
+        """
+        Whether a generation should be discarded and re-rolled.
+
+        Only worth doing when the sampler had freedom to go wrong: at
+        position_temperature=0 the retry would reproduce the same output.
+        """
+        if not self._cfg.retry_degenerate:
+            return False
+
+        position_temperature = (
+            req.position_temperature
+            if req.position_temperature is not None
+            else self._cfg.position_temperature
+        )
+        if position_temperature <= 0:
+            return False
+
+        return is_degenerate_audio(
+            tensors,
+            silence_rms=self._cfg.degenerate_silence_rms,
+            max_silent_fraction=self._cfg.degenerate_max_silent_fraction,
         )
 
 

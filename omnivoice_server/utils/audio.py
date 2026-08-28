@@ -354,3 +354,86 @@ def group_by_speaker(segments: list[dict]) -> dict[str, torch.Tensor]:
         speaker_groups[speaker].append(audio)
 
     return {speaker: torch.cat(audios, dim=-1) for speaker, audios in speaker_groups.items()}
+
+
+# ── Degenerate output detection ──────────────────────────────────────────────
+#
+# OmniVoice occasionally returns audio that is technically valid — finite, right
+# shape, right length — but perceptually empty: mostly breath and ambient noise
+# with little or no speech. It is a sampling failure, most visible when several
+# non-verbal tags share one utterance and position_temperature is high
+# (issue #37; see docs/verification/QA_SAMPLE_RESULTS.md, case D01).
+#
+# Overall RMS is a poor detector because the failure leaves occasional loud
+# bursts, and because a legitimately quiet render (the `whisper` design style)
+# would trip any threshold set high enough to catch it. What actually separates
+# the two is *distribution*: the failure mode is near-silent for most of its
+# duration. Whispered speech is quiet but continuous.
+
+DEGENERATE_FRAME_MS = 100
+
+
+def _to_numpy_1d(tensor: torch.Tensor | np.ndarray) -> np.ndarray:
+    """Flatten an audio tensor/array to 1-D float32 numpy, detaching if needed."""
+    if torch.is_tensor(tensor):
+        arr = tensor.detach().to("cpu", torch.float32).numpy()
+    else:
+        arr = np.asarray(tensor, dtype=np.float32)
+    return arr.reshape(-1)
+
+
+def silent_frame_fraction(
+    tensors: list[torch.Tensor | np.ndarray],
+    silence_rms: float,
+    frame_ms: int = DEGENERATE_FRAME_MS,
+    sample_rate: int = SAMPLE_RATE,
+) -> float:
+    """
+    Fraction of fixed-length frames whose RMS falls below `silence_rms`.
+
+    Returns 0.0 for empty or sub-frame-length input, so callers never treat
+    "too short to judge" as a failure.
+    """
+    if not tensors:
+        return 0.0
+
+    flat = [_to_numpy_1d(t) for t in tensors]
+    signal = np.concatenate(flat) if len(flat) > 1 else flat[0]
+
+    frame_len = max(1, int(sample_rate * frame_ms / 1000))
+    n_frames = signal.shape[0] // frame_len
+    if n_frames == 0:
+        return 0.0
+
+    frames = signal[: n_frames * frame_len].reshape(n_frames, frame_len)
+    # NaN would poison the mean; treat non-finite samples as silence.
+    frames = np.nan_to_num(frames, nan=0.0, posinf=0.0, neginf=0.0)
+    frame_rms = np.sqrt(np.mean(np.square(frames, dtype=np.float64), axis=1))
+
+    return float(np.count_nonzero(frame_rms < silence_rms) / n_frames)
+
+
+def is_degenerate_audio(
+    tensors: list[torch.Tensor | np.ndarray],
+    silence_rms: float,
+    max_silent_fraction: float,
+    min_duration_s: float = 1.0,
+    sample_rate: int = SAMPLE_RATE,
+) -> bool:
+    """
+    Report whether a generation looks like a sampling failure rather than speech.
+
+    Short outputs are never flagged: a one-word render is legitimately mostly
+    silence, and re-rolling it would cost more than it saves.
+    """
+    if not tensors:
+        return False
+
+    total_samples = sum(_to_numpy_1d(t).shape[0] for t in tensors)
+    if total_samples < min_duration_s * sample_rate:
+        return False
+
+    return (
+        silent_frame_fraction(tensors, silence_rms=silence_rms, sample_rate=sample_rate)
+        > max_silent_fraction
+    )

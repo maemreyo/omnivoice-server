@@ -11,6 +11,59 @@ from __future__ import annotations
 
 import re
 
+# Non-verbal symbols OmniVoice recognises inline in text. Anything else in
+# square brackets is passed to the model as literal text, which is how a typo
+# like [laugh] turns into unpredictable output rather than an error (issue #37).
+NONVERBAL_TAGS = frozenset(
+    {
+        "laughter",
+        "breath",
+        "sigh",
+        "sniff",
+        "confirmation-en",
+        "question-en",
+        "question-ah",
+        "question-oh",
+        "question-ei",
+        "question-yi",
+        "surprise-ah",
+        "surprise-oh",
+        "surprise-wa",
+        "surprise-yo",
+        "dissatisfaction-hnn",
+    }
+)
+
+# Deliberately permissive: matches anything bracketed so unknown tags can be
+# reported. Pronunciation hints use a different syntax and are not matched here.
+_BRACKETED = re.compile(r"\[([a-zA-Z][a-zA-Z0-9_-]*)\]")
+
+
+def find_nonverbal_tags(text: str) -> list[str]:
+    """Return every bracketed tag in `text`, in order, including unknown ones."""
+    if not text:
+        return []
+    return [m.group(1).lower() for m in _BRACKETED.finditer(text)]
+
+
+def count_nonverbal_tags(text: str) -> int:
+    """Number of recognised non-verbal tags in `text`."""
+    return sum(1 for tag in find_nonverbal_tags(text) if tag in NONVERBAL_TAGS)
+
+
+def find_unknown_nonverbal_tags(text: str) -> list[str]:
+    """
+    Bracketed tokens that look like non-verbal tags but are not recognised.
+
+    Deduplicated, order preserved, so the caller can name them all in one
+    warning rather than one per occurrence.
+    """
+    seen: dict[str, None] = {}
+    for tag in find_nonverbal_tags(text):
+        if tag not in NONVERBAL_TAGS:
+            seen.setdefault(tag, None)
+    return list(seen)
+
 # Split at sentence boundaries: period/exclamation/question followed by space and capital letter
 # Also split at Chinese/Japanese sentence endings
 _SENTENCE_END = re.compile(

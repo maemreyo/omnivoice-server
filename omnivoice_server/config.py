@@ -76,6 +76,43 @@ class Settings(BaseSettings):
             "Temperature for token sampling at each step. 0=greedy, higher=more randomness."
         ),
     )
+    seed: int | None = Field(
+        default=None,
+        ge=0,
+        le=2**32 - 1,
+        description=(
+            "Default RNG seed for synthesis. None = fresh randomness per request. "
+            "Requests may override per-call. Reproducibility is exact only when a "
+            "seeded request is not served alongside others; see --max-concurrent."
+        ),
+    )
+
+    # Degenerate-output detection (issue #37)
+    # OmniVoice can return audio that is valid but perceptually empty — mostly
+    # breath and ambient noise instead of speech. It is a sampling failure and
+    # re-rolling with a deterministic position temperature reliably clears it.
+    retry_degenerate: bool = Field(
+        default=True,
+        description=(
+            "Re-run synthesis with position_temperature=0 when the output looks "
+            "like a sampling failure (near-silent for most of its duration)."
+        ),
+    )
+    degenerate_silence_rms: float = Field(
+        default=0.01,
+        ge=0.0,
+        le=1.0,
+        description="Frame RMS below this counts as silence when scoring output.",
+    )
+    degenerate_max_silent_fraction: float = Field(
+        default=0.75,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Fraction of near-silent frames above which output is treated as a "
+            "sampling failure. Raise it if legitimately sparse audio is retried."
+        ),
+    )
 
     # Inference
     max_concurrent: int = Field(
