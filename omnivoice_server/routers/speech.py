@@ -10,6 +10,7 @@ import logging
 import tempfile
 from collections.abc import AsyncIterator
 from contextlib import suppress
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -28,7 +29,7 @@ from ..utils.instruction_validation import (
     InstructionValidationError,
     validate_and_canonicalize_instructions,
 )
-from ..utils.text import split_sentences
+from ..utils.text import NONVERBAL_TAGS, find_unknown_nonverbal_tags, split_sentences
 from ..voice_presets import (
     DEFAULT_DESIGN_INSTRUCTIONS,
     get_openai_voice_preset,
@@ -67,6 +68,15 @@ class SpeechRequest(BaseModel):
     audio_chunk_duration: float | None = Field(default=None, gt=0.0)
     audio_chunk_threshold: float | None = Field(default=None, gt=0.0)
     request_timeout_s: int | None = Field(default=None, ge=1, le=600)
+    seed: int | None = Field(
+        default=None,
+        ge=0,
+        le=2**32 - 1,
+        description=(
+            "RNG seed. The same seed with the same text and parameters reproduces "
+            "the same audio, so a designed voice stays consistent across calls."
+        ),
+    )
 
     @field_validator("model")
     @classmethod
@@ -295,7 +305,20 @@ async def create_speech(
         postprocess_output=body.postprocess_output,
         audio_chunk_duration=body.audio_chunk_duration,
         audio_chunk_threshold=body.audio_chunk_threshold,
+        seed=body.seed,
     )
+
+    unknown_tags = find_unknown_nonverbal_tags(body.input)
+    if unknown_tags:
+        # Not an error: unrecognised brackets are still synthesisable as literal
+        # text. But they are almost always a typo, and the resulting audio is
+        # confusing enough that silence would be unhelpful (issue #37).
+        logger.warning(
+            "Unrecognised non-verbal tags %s — these are synthesised as literal "
+            "text, not as sounds. Supported tags: %s",
+            unknown_tags,
+            ", ".join(sorted(NONVERBAL_TAGS)),
+        )
 
     if body.stream or cfg.stream:
         # Streaming only supports PCM
@@ -350,35 +373,33 @@ async def create_speech(
     return Response(
         content=audio_bytes,
         media_type=media_type,
-        headers={
-            "X-Audio-Duration-S": str(round(result.duration_s, 3)),
-            "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
-        },
+        headers=_synthesis_headers(result, unknown_tags),
     )
+
+
+def _synthesis_headers(result, unknown_tags: list[str]) -> dict[str, str]:
+    """Response headers describing how a synthesis actually went."""
+    headers = {
+        "X-Audio-Duration-S": str(round(result.duration_s, 3)),
+        "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
+    }
+    if getattr(result, "retried", False):
+        headers["X-Synthesis-Retried"] = "degenerate-output"
+    if unknown_tags:
+        headers["X-Unknown-Nonverbal-Tags"] = ",".join(unknown_tags)
+    return headers
 
 
 def _chunk_request(sentence: str, base_req: SynthesisRequest) -> SynthesisRequest:
-    return SynthesisRequest(
-        text=sentence,
-        mode=base_req.mode,
-        instruct=base_req.instruct,
-        ref_audio_path=base_req.ref_audio_path,
-        ref_text=base_req.ref_text,
-        speed=base_req.speed,
-        num_step=base_req.num_step,
-        guidance_scale=base_req.guidance_scale,
-        denoise=base_req.denoise,
-        t_shift=base_req.t_shift,
-        position_temperature=base_req.position_temperature,
-        class_temperature=base_req.class_temperature,
-        duration=base_req.duration,
-        language=base_req.language,
-        layer_penalty_factor=base_req.layer_penalty_factor,
-        preprocess_prompt=base_req.preprocess_prompt,
-        postprocess_output=base_req.postprocess_output,
-        audio_chunk_duration=base_req.audio_chunk_duration,
-        audio_chunk_threshold=base_req.audio_chunk_threshold,
-    )
+    """
+    One sentence of a streamed request, carrying every other parameter forward.
+
+    Uses `replace` rather than rebuilding field by field: the previous version
+    enumerated all 20 fields, so any parameter added to SynthesisRequest was
+    silently dropped from streamed requests until someone remembered this
+    function too.
+    """
+    return replace(base_req, text=sentence)
 
 
 async def _stream_sentences(
@@ -499,6 +520,7 @@ async def create_speech_clone(
     audio_chunk_duration: float | None = Form(default=None, gt=0.0),
     audio_chunk_threshold: float | None = Form(default=None, gt=0.0),
     request_timeout_s: int | None = Form(default=None, ge=1, le=600),
+    seed: int | None = Form(default=None, ge=0, le=2**32 - 1),
     inference_svc: InferenceService = Depends(_get_inference),
     metrics_svc: MetricsService = Depends(_get_metrics),
     cfg=Depends(_get_cfg),
@@ -554,6 +576,16 @@ async def create_speech_clone(
             postprocess_output=postprocess_output,
             audio_chunk_duration=audio_chunk_duration,
             audio_chunk_threshold=audio_chunk_threshold,
+            seed=seed,
+        )
+
+    unknown_tags = find_unknown_nonverbal_tags(text)
+    if unknown_tags:
+        logger.warning(
+            "Unrecognised non-verbal tags %s — these are synthesised as literal "
+            "text, not as sounds. Supported tags: %s",
+            unknown_tags,
+            ", ".join(sorted(NONVERBAL_TAGS)),
         )
 
     if stream or cfg.stream:
@@ -618,8 +650,5 @@ async def create_speech_clone(
         return Response(
             content=audio_output,
             media_type=media_type,
-            headers={
-                "X-Audio-Duration-S": str(round(result.duration_s, 3)),
-                "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
-            },
+            headers=_synthesis_headers(result, unknown_tags),
         )

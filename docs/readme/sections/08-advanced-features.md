@@ -30,6 +30,61 @@ Supported symbols (from upstream OmniVoice):
 - `[surprise-yo]` - Surprised "yo" sound
 - `[dissatisfaction-hnn]` - Dissatisfied "hnn" sound
 
+**Tags outside this list are not errors — they are synthesized as literal text.**
+`[laugh]` is not `[laughter]`; it becomes the spoken word "laugh". The server logs
+a warning and returns the offending tags in an `X-Unknown-Nonverbal-Tags`
+response header so typos are visible without listening to the output.
+
+#### Reliability
+
+Packing several non-verbal tags into one short utterance is the least reliable
+way to use them. OmniVoice occasionally returns audio that is technically valid
+but perceptually empty — mostly breath and ambient noise with little speech.
+It is a sampling failure, not a server error, and it is intermittent: the same
+request can succeed on the next attempt (issue #37).
+
+The server detects this and automatically re-runs the generation with
+`position_temperature=0`, which is deterministic and does not exhibit the
+failure. A retried request is flagged with `X-Synthesis-Retried:
+degenerate-output`. Disable with `--no-retry-degenerate`.
+
+To avoid the re-roll cost entirely, set it yourself:
+
+```python
+{
+    "input": "Hello [laughter] this is amazing [breath] really cool [sigh]",
+    "position_temperature": 0
+}
+```
+
+One or two tags in a longer sentence is the reliable pattern. Four tags in
+eight words is not.
+
+### Reproducible Output
+
+Synthesis is random by default: the same request twice gives two different
+voices. Pass a `seed` to make it repeatable — the same seed with the same text
+and parameters produces the same audio.
+
+```python
+response = httpx.post(
+    "http://127.0.0.1:8880/v1/audio/speech",
+    json={
+        "input": "This will sound the same every time.",
+        "instructions": "female, young adult, canadian accent",
+        "seed": 1234
+    }
+)
+```
+
+Set a server-wide default with `--seed 1234`; individual requests can still
+override it.
+
+**Concurrency caveat**: the underlying RNG is process-global. Seeded requests are
+serialized against each other, but an unseeded request generating at the same
+moment still advances that RNG. For bit-exact reproducibility, run with
+`--max-concurrent 1`.
+
 ### Pronunciation Control
 
 Provide pronunciation hints inline in text (upstream pass-through feature):

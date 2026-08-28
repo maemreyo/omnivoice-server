@@ -84,6 +84,26 @@ def main() -> None:
         dest="class_temperature",
         help="Token sampling temperature, 0-2 (env: OMNIVOICE_CLASS_TEMPERATURE)",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        dest="seed",
+        help=(
+            "Default RNG seed, making output reproducible across runs. "
+            "Requests can override it. (env: OMNIVOICE_SEED)"
+        ),
+    )
+    parser.add_argument(
+        "--no-retry-degenerate",
+        action="store_false",
+        default=None,
+        dest="retry_degenerate",
+        help=(
+            "Do not re-roll generations that come back near-silent. "
+            "(env: OMNIVOICE_RETRY_DEGENERATE)"
+        ),
+    )
 
     # Inference
     parser.add_argument(

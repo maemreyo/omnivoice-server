@@ -13,6 +13,8 @@
 | `--model-id` | `OMNIVOICE_MODEL_ID` | `k2-fsa/OmniVoice` | HuggingFace repo or local path |
 | `--profile-dir` | `OMNIVOICE_PROFILE_DIR` | `~/.omnivoice/profiles` | Voice profiles directory |
 | `--log-level` | `OMNIVOICE_LOG_LEVEL` | `info` | Logging level |
+| `--seed` | `OMNIVOICE_SEED` | _(none)_ | Default RNG seed; requests may override. Needs `--max-concurrent 1` for bit-exact repeats |
+| `--no-retry-degenerate` | `OMNIVOICE_RETRY_DEGENERATE` | retry on | Stop re-rolling generations that return near-silent |
 
 ### CORS Notes
 

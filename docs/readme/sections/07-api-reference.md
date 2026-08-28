@@ -28,9 +28,22 @@ Generate speech from text (OpenAI-compatible).
   "preprocess_prompt": true,
   "postprocess_output": true,
   "audio_chunk_duration": 0.5,
-  "audio_chunk_threshold": 0.1
+  "audio_chunk_threshold": 0.1,
+  "seed": 1234
 }
 ```
+
+`seed` (optional): fixes the RNG so identical requests produce identical audio.
+Omit it for fresh randomness on every call. See
+[Advanced Features](08-advanced-features.md#reproducible-output).
+
+**Response headers:**
+- `X-Audio-Duration-S` — length of the returned audio
+- `X-Synthesis-Latency-S` — time spent generating
+- `X-Synthesis-Retried` — present as `degenerate-output` when the first attempt
+  came back near-silent and was re-rolled
+- `X-Unknown-Nonverbal-Tags` — comma-separated bracketed tags that are not
+  recognised non-verbal symbols and were synthesized as literal text
 
 **Parameter precedence**:
 - `instructions` (strongest, upstream voice design)
@@ -59,6 +72,7 @@ One-shot voice cloning (multipart form).
 - `layer_penalty_factor` (optional): Layer penalty factor
 - `preprocess_prompt` (optional): Enable prompt preprocessing
 - `postprocess_output` (optional): Enable output postprocessing
+- `seed` (optional): RNG seed for reproducible output
 - `audio_chunk_duration` (optional): Audio chunk duration
 - `audio_chunk_threshold` (optional): Audio chunk threshold
 
