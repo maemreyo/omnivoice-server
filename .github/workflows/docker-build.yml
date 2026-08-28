@@ -7,6 +7,9 @@ name: Docker Build Validation
 # Uses `--output type=cacheonly`: every layer is built and validated, but the
 # final image is never exported or loaded. This keeps the CUDA build (multi-GB
 # base + torch wheels) inside the runner's disk budget.
+#
+# Keep the docker/* action versions in step with docker-publish.yml. Validating
+# a build on an older major than the one that publishes it defeats the point.
 
 on:
   pull_request:
@@ -45,10 +48,10 @@ jobs:
           df -h /
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build ${{ matrix.dockerfile }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./${{ matrix.dockerfile }}
