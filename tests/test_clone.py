@@ -5,6 +5,12 @@ Tests for one-shot voice cloning endpoint.
 from __future__ import annotations
 
 import io
+import os
+from unittest.mock import AsyncMock
+
+import torch
+
+from omnivoice_server.services.inference import SynthesisResult
 
 
 def test_clone_returns_wav(client, sample_audio_bytes):
@@ -16,6 +22,90 @@ def test_clone_returns_wav(client, sample_audio_bytes):
     )
     assert resp.status_code == 200
     assert resp.content[:4] == b"RIFF"
+
+
+def test_clone_response_format_pcm(client, sample_audio_bytes):
+    resp = client.post(
+        "/v1/audio/speech/clone",
+        data={"text": "Hello world", "response_format": "pcm"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 200
+    assert "audio/pcm" in resp.headers["content-type"]
+    assert resp.content[:4] != b"RIFF"
+
+
+def test_clone_streaming_returns_pcm_headers(client, sample_audio_bytes):
+    resp = client.post(
+        "/v1/audio/speech/clone",
+        data={"text": "Hello world", "stream": "true", "response_format": "pcm"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 200
+    assert "audio/pcm" in resp.headers["content-type"]
+    assert resp.headers.get("X-Audio-Sample-Rate") == "24000"
+    assert resp.headers.get("X-Audio-Channels") == "1"
+    assert resp.headers.get("X-Audio-Bit-Depth") == "16"
+    assert resp.headers.get("X-Audio-Format") == "pcm-int16-le"
+    assert len(resp.content) > 0
+    assert resp.content[:4] != b"RIFF"
+
+
+def test_clone_streaming_rejects_non_pcm(client, sample_audio_bytes):
+    resp = client.post(
+        "/v1/audio/speech/clone",
+        data={"text": "Hello world", "stream": "true", "response_format": "wav"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 400
+    error_msg = resp.json().get("detail") or resp.json().get("error", {}).get("message", "")
+    assert "response_format='pcm'" in error_msg
+
+
+def test_clone_streaming_keeps_ref_audio_available(client, sample_audio_bytes):
+    seen_paths = []
+
+    async def synthesize(req, **_kwargs):
+        seen_paths.append(req.ref_audio_path)
+        assert req.mode == "clone"
+        assert req.ref_audio_path is not None
+        assert os.path.exists(req.ref_audio_path)
+        tensor = torch.zeros(1, 24_000)
+        return SynthesisResult(tensors=[tensor], duration_s=1.0, latency_s=0.05)
+
+    client.app.state.inference_svc.synthesize = AsyncMock(side_effect=synthesize)
+    resp = client.post(
+        "/v1/audio/speech/clone",
+        data={"text": "Hello world", "stream": "true", "response_format": "pcm"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 200
+    assert seen_paths
+    assert not os.path.exists(seen_paths[0])
+
+
+def test_clone_force_streaming_cfg_rejects_default_wav(client, sample_audio_bytes, monkeypatch):
+    monkeypatch.setattr(client.app.state.cfg, "stream", True)
+    resp = client.post(
+        "/v1/audio/speech/clone",
+        data={"text": "Hello world"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 400
+    error_msg = resp.json().get("detail") or resp.json().get("error", {}).get("message", "")
+    assert "response_format='pcm'" in error_msg
+
+
+def test_clone_force_streaming_cfg_accepts_pcm(client, sample_audio_bytes, monkeypatch):
+    monkeypatch.setattr(client.app.state.cfg, "stream", True)
+    resp = client.post(
+        "/v1/audio/speech/clone",
+        data={"text": "Hello world", "response_format": "pcm"},
+        files={"ref_audio": ("ref.wav", io.BytesIO(sample_audio_bytes), "audio/wav")},
+    )
+    assert resp.status_code == 200
+    assert "audio/pcm" in resp.headers["content-type"]
+    assert resp.headers.get("X-Audio-Sample-Rate") == "24000"
 
 
 def test_clone_empty_audio_rejected(client):

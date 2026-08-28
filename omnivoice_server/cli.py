@@ -84,8 +84,54 @@ def main() -> None:
         dest="class_temperature",
         help="Token sampling temperature, 0-2 (env: OMNIVOICE_CLASS_TEMPERATURE)",
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        dest="seed",
+        help=(
+            "Default RNG seed, making output reproducible across runs. "
+            "Requests can override it. (env: OMNIVOICE_SEED)"
+        ),
+    )
+    parser.add_argument(
+        "--no-retry-degenerate",
+        action="store_false",
+        default=None,
+        dest="retry_degenerate",
+        help=(
+            "Do not re-roll generations that come back near-silent. "
+            "(env: OMNIVOICE_RETRY_DEGENERATE)"
+        ),
+    )
 
     # Inference
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        default=None,
+        dest="stream",
+        help="Force-enable streaming for all requests (env: OMNIVOICE_STREAM)",
+    )
+    parser.add_argument(
+        "--no-stream",
+        action="store_false",
+        dest="stream",
+        help="Disable forced streaming",
+    )
+    parser.add_argument(
+        "--stream-overlap",
+        action="store_true",
+        default=None,
+        dest="stream_overlap",
+        help="Enable overlapped sentence streaming (env: OMNIVOICE_STREAM_OVERLAP)",
+    )
+    parser.add_argument(
+        "--no-stream-overlap",
+        action="store_false",
+        dest="stream_overlap",
+        help="Disable overlapped sentence streaming",
+    )
     parser.add_argument(
         "--max-concurrent",
         type=int,
@@ -114,6 +160,22 @@ def main() -> None:
         default=None,
         dest="profile_dir",
         help="Voice profile directory (env: OMNIVOICE_PROFILE_DIR)",
+    )
+    parser.add_argument(
+        "--no-web-ui",
+        action="store_false",
+        default=None,
+        dest="web_ui",
+        help="Do not serve the browser UI at /ui (env: OMNIVOICE_WEB_UI)",
+    )
+    parser.add_argument(
+        "--voice-dir",
+        default=None,
+        dest="voice_dir",
+        help=(
+            "Directory of .txt voice files, each naming a voice design "
+            "(env: OMNIVOICE_VOICE_DIR)"
+        ),
     )
 
     # Auth

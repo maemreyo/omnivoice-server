@@ -12,7 +12,11 @@
 | `--cors-allow-credentials` | `OMNIVOICE_CORS_ALLOW_CREDENTIALS` | `false` | Allow credentialed CORS requests; requires explicit origins |
 | `--model-id` | `OMNIVOICE_MODEL_ID` | `k2-fsa/OmniVoice` | HuggingFace repo or local path |
 | `--profile-dir` | `OMNIVOICE_PROFILE_DIR` | `~/.omnivoice/profiles` | Voice profiles directory |
+| `--voice-dir` | `OMNIVOICE_VOICE_DIR` | `<user data dir>/omnivoice/voices` | Directory of `.txt` voice files selectable by filename |
 | `--log-level` | `OMNIVOICE_LOG_LEVEL` | `info` | Logging level |
+| `--no-web-ui` | `OMNIVOICE_WEB_UI` | UI on | Stop serving the browser UI at `/ui` |
+| `--seed` | `OMNIVOICE_SEED` | _(none)_ | Default RNG seed; requests may override. Needs `--max-concurrent 1` for bit-exact repeats |
+| `--no-retry-degenerate` | `OMNIVOICE_RETRY_DEGENERATE` | retry on | Stop re-rolling generations that return near-silent |
 
 ### CORS Notes
 

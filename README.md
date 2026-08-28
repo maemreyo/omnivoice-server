@@ -4,6 +4,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![CI](https://github.com/maemreyo/omnivoice-server/actions/workflows/ci.yml/badge.svg)](https://github.com/maemreyo/omnivoice-server/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/omnivoice-server.svg)](https://pypi.org/project/omnivoice-server/)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/omnivoice-server?period=total&units=INTERNATIONAL_SYSTEM&left_color=BLACK&right_color=GREEN&left_text=downloads)](https://pepy.tech/projects/omnivoice-server)
 
 OpenAI-compatible HTTP server for [OmniVoice](https://github.com/k2-fsa/OmniVoice) text-to-speech.
 
@@ -22,7 +23,7 @@ OpenAI-compatible HTTP server for [OmniVoice](https://github.com/k2-fsa/OmniVoic
 | **Getting Started** | [Features](docs/readme/sections/01-features.md) - [Quick Start](docs/readme/sections/02-quick-start.md) - [Verification Status](docs/readme/sections/03-verification-status.md) |
 | **Usage** | [API Usage](docs/readme/sections/04-api-usage.md) - [CLI Usage](docs/readme/sections/05-cli-usage.md) - [Configuration](docs/readme/sections/06-configuration.md) |
 | **Reference** | [API Reference](docs/readme/sections/07-api-reference.md) - [Advanced Features](docs/readme/sections/08-advanced-features.md) - [Examples](docs/readme/sections/09-examples.md) |
-| **Deployment** | [Docker Deployment](docs/readme/sections/10-docker-deployment.md) - [Hardware Requirements](docs/readme/sections/12-hardware-requirements.md) - [Performance](docs/readme/sections/13-performance.md) |
+| **Deployment** | [Docker Deployment](docs/readme/sections/10-docker-deployment.md) - [Hardware Requirements](docs/readme/sections/12-hardware-requirements.md) - [Performance](docs/readme/sections/13-performance.md) - [Benchmarks](BENCHMARKS.md) |
 | **Development** | [Development](docs/readme/sections/11-development.md) - [Troubleshooting](docs/readme/sections/14-troubleshooting.md) - [Known Limitations](docs/readme/sections/15-known-limitations.md) |
 | **Project** | [Documentation Index](docs/readme/sections/16-documentation-index.md) - [License](docs/readme/sections/17-license.md) - [Contributing](docs/readme/sections/18-contributing.md) - [Acknowledgments](docs/readme/sections/19-acknowledgments.md) - [Support](docs/readme/sections/20-support.md) |
 

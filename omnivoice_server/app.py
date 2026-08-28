@@ -16,12 +16,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .config import Settings
-from .routers import health, models, script, speech, voices
+from .routers import health, models, script, speech, voices, web
 from .services.inference import InferenceService
 from .services.metrics import MetricsService
 from .services.model import ModelService
 from .services.profiles import ProfileService
 from .services.script import ScriptOrchestrator
+from .services.voice_files import VoiceFileService
+from .voice_presets import is_openai_voice_preset
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,7 @@ async def lifespan(app: FastAPI):
     )
 
     cfg.profile_dir.mkdir(parents=True, exist_ok=True)
+    cfg.voice_dir.mkdir(parents=True, exist_ok=True)
 
     model_svc = ModelService(cfg)
     await model_svc.load()
@@ -54,7 +57,26 @@ async def lifespan(app: FastAPI):
     )
 
     app.state.profile_svc = ProfileService(profile_dir=cfg.profile_dir)
+    app.state.voice_file_svc = VoiceFileService(voice_dir=cfg.voice_dir)
     app.state.metrics_svc = MetricsService()
+
+    # Parse every voice file once at startup so a typo is reported here rather
+    # than on the first request that happens to use it.
+    file_voices = app.state.voice_file_svc.list_voices()
+    if file_voices:
+        logger.info(
+            "Loaded %d voice file(s) from %s: %s",
+            len(file_voices),
+            cfg.voice_dir,
+            ", ".join(v.name for v in file_voices),
+        )
+        shadowed = sorted(v.name for v in file_voices if is_openai_voice_preset(v.name))
+        if shadowed:
+            logger.warning(
+                "Voice file(s) %s shadow built-in presets of the same name; "
+                "the files take precedence.",
+                ", ".join(shadowed),
+            )
     app.state.script_orchestrator = ScriptOrchestrator(
         inference_service=app.state.inference_svc,
         profile_service=app.state.profile_svc,
@@ -67,6 +89,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"Startup complete in {elapsed:.1f}s. Listening on http://{cfg.host}:{cfg.port}")
 
     # Announce readiness to stdout (for process supervisors/callers to detect port)
+    if cfg.web_ui and web.index_exists():
+        logger.info(f"Web UI at http://{cfg.host}:{cfg.port}/ui")
+
     print(f"OMNIVOICE_READY host={cfg.host} port={cfg.port}", flush=True)
 
     yield
@@ -139,7 +164,13 @@ def create_app(cfg: Settings) -> FastAPI:
             if request.method == "OPTIONS":
                 return await call_next(request)
             # Skip auth for health, metrics, and model listing
-            if request.url.path in ("/health", "/metrics", "/v1/models"):
+            unauthenticated = {"/health", "/metrics", "/v1/models"}
+            if cfg.web_ui:
+                # The UI page itself must load unauthenticated, or there is
+                # nowhere to type the key. It is a static document; every API
+                # call it makes still carries the Authorization header.
+                unauthenticated |= {"/", "/ui"}
+            if request.url.path in unauthenticated:
                 return await call_next(request)
             auth = request.headers.get("Authorization", "")
             if auth != f"Bearer {cfg.api_key}":
@@ -194,5 +225,14 @@ def create_app(cfg: Settings) -> FastAPI:
     app.include_router(models.router, prefix="/v1")
     app.include_router(script.router, prefix="/v1")
     app.include_router(health.router)
+
+    if cfg.web_ui:
+        if web.index_exists():
+            app.include_router(web.router)
+        else:
+            logger.warning(
+                "Web UI enabled but its asset is missing at %s; skipping /ui.",
+                web.INDEX_PATH,
+            )
 
     return app

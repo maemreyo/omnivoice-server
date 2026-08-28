@@ -43,10 +43,21 @@ ENV PATH="${VIRTUAL_ENV}/bin:${PATH}"
 #OMNIVOICE ENVs
 ENV OMNIVOICE_LOG_LEVEL=info
 
+# --index-url REPLACES PyPI rather than adding to it, so build backends pulled
+# in by these wheels are otherwise unresolvable. Safe to add PyPI back here:
+# the +cu128 local version tags do not exist on PyPI, so torch/torchaudio can
+# only resolve from the CUDA index.
 RUN --mount=type=cache,target=/home/ubuntu/.cache/pip pip install \
     torchcodec==0.11 torch==2.8.0+cu128 torchaudio==2.8.0+cu128 \
-    --index-url https://download.pytorch.org/whl/cu128 && \
-    pip install git+https://github.com/maemreyo/omnivoice-server.git
+    --index-url https://download.pytorch.org/whl/cu128 \
+    --extra-index-url https://pypi.org/simple
+
+# Install the server from the build context, not from git.
+# Installing from git pinned every image — including release-tagged ones — to
+# whatever main happened to be at build time.
+COPY --chown=ubuntu:ubuntu pyproject.toml README.md ./
+COPY --chown=ubuntu:ubuntu omnivoice_server ./omnivoice_server
+RUN --mount=type=cache,target=/home/ubuntu/.cache/pip pip install .
 
 # Expose server port
 EXPOSE 8880

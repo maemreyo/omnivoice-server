@@ -93,18 +93,22 @@ class ModelService:
 
     @staticmethod
     def _has_nan(tensors: torch.Tensor | np.ndarray | list | None) -> bool:
-        np: types.ModuleType | None
+        # Declared then assigned, rather than `import numpy as np` into an
+        # annotated name: the latter is a redefinition, which mypy rejects.
+        numpy_mod: types.ModuleType | None
         try:
-            import numpy as np
+            import numpy
+
+            numpy_mod = numpy
         except Exception:
-            np = None
+            numpy_mod = None
 
         def contains_nan(x) -> bool:
             if x is None:
                 return False
             # Check numpy arrays first to avoid calling torch.isnan on ndarray outputs (issue #17).
-            if np is not None and isinstance(x, np.ndarray):
-                return bool(np.isnan(x).any())
+            if numpy_mod is not None and isinstance(x, numpy_mod.ndarray):
+                return bool(numpy_mod.isnan(x).any())
             if torch.is_tensor(x):
                 return bool(torch.isnan(x).any().item())
             if isinstance(x, (list, tuple)):
