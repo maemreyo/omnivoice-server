@@ -162,6 +162,13 @@ def main() -> None:
         help="Voice profile directory (env: OMNIVOICE_PROFILE_DIR)",
     )
     parser.add_argument(
+        "--no-web-ui",
+        action="store_false",
+        default=None,
+        dest="web_ui",
+        help="Do not serve the browser UI at /ui (env: OMNIVOICE_WEB_UI)",
+    )
+    parser.add_argument(
         "--voice-dir",
         default=None,
         dest="voice_dir",
