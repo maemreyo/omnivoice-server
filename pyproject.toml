@@ -76,6 +76,17 @@ python_version = "3.10"
 strict = false
 ignore_missing_imports = true
 
+# numpy >= 2.4 ships stubs using PEP 695 `type` statements, which mypy cannot
+# parse under python_version = "3.10" — it aborts before checking our own code:
+#   numpy/__init__.pyi: error: Type statement is only supported in Python 3.12
+# Skipping the stubs keeps the 3.10 target (the package's supported floor)
+# meaningful. numpy is an indirect dependency via torch and is already treated
+# loosely here; 3.10-syntax regressions stay covered by ruff's py310 target and
+# the 3.10 pytest leg.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
