@@ -1,5 +1,5 @@
 # Multi-stage build for omnivoice-server
-FROM python:3.10-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
@@ -12,14 +12,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml README.md ./
 COPY omnivoice_server ./omnivoice_server
 
-# Install PyTorch CPU (smaller image, works everywhere)
-RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# Install PyTorch CPU (smaller image, works everywhere).
+# Versions are pinned to match ci.yml. Unpinned, pip resolved a newer torch
+# whose dependencies needed an sdist build, and --index-url REPLACES PyPI, so
+# the build backend (flit_core) was unresolvable and the image failed to build.
+# Deliberately no --extra-index-url here: PyPI also publishes torch==2.8.0 as
+# the CUDA-bundled build, and pip may pick either for an equal version.
+RUN pip install --no-cache-dir torch==2.8.0 torchaudio==2.8.0 \
+    --index-url https://download.pytorch.org/whl/cpu
 
 # Install the package
 RUN pip install --no-cache-dir .
 
 # Runtime stage
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -30,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin/omnivoice-server /usr/local/bin/omnivoice-server
 
 # Create profile directory
