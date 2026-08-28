@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-08-28
+
+### Added
+
+- **Browser UI at `/ui`** ([#36](https://github.com/maemreyo/omnivoice-server/issues/36))
+  - Lists real voices from `/v1/voices` — presets, clone profiles and voice files
+  - Generates and plays audio in place; separate tab for one-shot voice cloning
+  - Renders the current form as a working `curl`, Python, JavaScript or OpenAI-SDK call
+  - Served by default; disable with `--no-web-ui`. `/` redirects to `/ui` while enabled
+  - The page loads without an API key when `--api-key` is set (there would be nowhere to type it); the endpoints it calls still require one
+- **Voices defined as `.txt` files in a directory** ([#38](https://github.com/maemreyo/omnivoice-server/issues/38))
+  - A file's name becomes a voice name, selectable by OpenAI-compatible clients that can only send a bare `voice` string
+  - Files may pin `seed`, `speed`, `num_step`, `guidance_scale`, `t_shift`, `position_temperature`, `class_temperature`, `denoise`, `duration` and `language`, plus a `description`
+  - Request parameters always win over file parameters
+  - Files take precedence over built-in presets of the same name, with a startup warning
+  - Validated at startup like `instructions`; an invalid file is skipped, never fatal
+  - Re-read on change, so voices can be added or edited without a restart
+  - New `--voice-dir` (`OMNIVOICE_VOICE_DIR`)
+- **`seed` parameter** on `/v1/audio/speech` and `/v1/audio/speech/clone`, plus `--seed` as a server default. The same seed with the same text and parameters reproduces the same audio byte for byte. Bit-exact reproducibility requires `--max-concurrent 1`, since torch's RNG is process-global
+- **`X-Unknown-Nonverbal-Tags`** response header naming bracketed tokens that are not recognised non-verbal symbols and were synthesized as literal text ([#37](https://github.com/maemreyo/omnivoice-server/issues/37))
+- **`X-No-Speech-Detected`** response header flagging generations that contain no detectable speech, with `--no-detect-no-speech` to turn the check off
+
+### Fixed
+
+- **Non-verbal tags in short text produce no speech** ([#37](https://github.com/maemreyo/omnivoice-server/issues/37)). Not fixable at the server layer, but now detected and documented accurately. Measured against the real model: a single `[laughter]` fails 3/3 in a 3-word sentence and 0/3 in a 13-word one. Allow roughly 8-10 words of ordinary text per tag. The failure is a loud, steady low-frequency drone rather than silence, it is not specific to any tag, and no generation parameter avoids it — `num_step` 8/16/32 and `position_temperature=0` were each measured three times and all twelve failed. The `position_temperature=0` workaround previously recorded in `docs/verification/QA_SAMPLE_RESULTS.md` was never verified and does not work; that note has been corrected
+- Zero-length generations no longer return HTTP 500. The RTF log line divided by duration inside an f-string, which is evaluated regardless of log level, so an empty result crashed on the line meant to describe it
+- Streamed responses now carry `X-Unknown-Nonverbal-Tags` as well; previously only buffered responses did, contradicting the documentation
+- `mypy` had been failing since numpy 2.4 shipped PEP 695 stubs, aborting before checking any project code. The type-check job now runs on the interpreter its configuration targets
+- `_chunk_request` rebuilt `SynthesisRequest` field by field, silently dropping any newly added parameter from streamed requests
+
+### Docker
+
+- **The CPU image did not build.** `torch` was unpinned and `--index-url` replaces PyPI rather than adding to it, so pip could not resolve `flit_core`. Pinned to match CI
+- **The CUDA image now builds the code under test.** It installed the server with `pip install git+...`, so every image — including release-tagged ones — contained `main` HEAD rather than the tagged code. Previously published images are affected and should be rebuilt
+- CPU base image moved from `python:3.10-slim` to `python:3.12-slim`, the newest interpreter in the CI test matrix. The runtime stage copied site-packages from a hardcoded `python3.10` path, so any base bump silently broke without it
+- Added `.dockerignore`; the build context previously carried `.git`, `docs` and samples
+
+### CI
+
+- Both Docker images are now built on any pull request that touches them. Neither was built before merge — `docker-publish.yml` only runs on `release: published` — which is why a broken CPU image went unnoticed
+- `docker/*` action versions kept in step between the build and publish workflows
+- `tests/test_cors.py` entered the app lifespan twice, the second time with its mocks already torn down, so every run downloaded and loaded the real 2.1GB model once per test
+
 ## [0.2.4] - 2026-05-12
 
 ### Added

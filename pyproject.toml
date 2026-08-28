@@ -64,6 +64,21 @@ omnivoice-server = "omnivoice_server.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["omnivoice_server"]
 
+# The source distribution otherwise carried ~20MB of audio: QA sample renders,
+# a benchmark reference clip, and a 14MB mp3 attached to an old investigation.
+# None of it is needed to build or install, and all of it is in git for anyone
+# who wants it. Documentation prose stays — it is 652KB and the README links
+# into it.
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.github",
+    "/samples",
+    "/voice_samples",
+    "**/*.wav",
+    "**/*.mp3",
+    "**/*.flac",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
