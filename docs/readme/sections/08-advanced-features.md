@@ -35,30 +35,51 @@ Supported symbols (from upstream OmniVoice):
 a warning and returns the offending tags in an `X-Unknown-Nonverbal-Tags`
 response header so typos are visible without listening to the output.
 
-#### Reliability
+#### Reliability: give tags enough text around them
 
-Packing several non-verbal tags into one short utterance is the least reliable
-way to use them. OmniVoice occasionally returns audio that is technically valid
-but perceptually empty — mostly breath and ambient noise with little speech.
-It is a sampling failure, not a server error, and it is intermittent: the same
-request can succeed on the next attempt (issue #37).
+A non-verbal tag in a short utterance makes OmniVoice emit a steady
+low-frequency drone containing no speech at all — at normal volume, so it is
+easy to mistake for a corrupt file rather than a failed generation (issue #37).
 
-The server detects this and automatically re-runs the generation with
-`position_temperature=0`, which is deterministic and does not exhibit the
-failure. A retried request is flagged with `X-Synthesis-Retried:
-degenerate-output`. Disable with `--no-retry-degenerate`.
+What governs it is the amount of ordinary text per tag, not the tag itself.
+Measured against `k2-fsa/OmniVoice`, three runs each, using zero-crossing rate
+per 250ms window to detect the presence of speech:
 
-To avoid the re-roll cost entirely, set it yourself:
+| Text with one `[laughter]` tag | Words | Failed |
+|--------------------------------|-------|--------|
+| `Hello [laughter] hi.` | 3 | **3/3** |
+| `Hello [laughter] this is amazing.` | 5 | **2/3** |
+| `Hello there [laughter] this is really amazing.` | 7 | 0/3 |
+| `Hello there my friend [laughter] this is really quite amazing.` | 10 | 0/3 |
+| `Hello there my dear old friend [laughter] this is really quite amazing today.` | 13 | 0/3 |
+
+**Rule of thumb: allow roughly 8–10 words of ordinary text per tag.** The
+reported failure — three tags across eight words — works out at under three
+words per tag and fails every time.
+
+Things that are *not* the cause, each measured:
+
+- **Not tag-specific.** `[laughter]`, `[sigh]`, `[breath]`, `[sniff]` and
+  `[question-en]` all behave identically: fine in a long sentence, drone in a
+  short one.
+- **Not short text by itself.** The same short sentences without any tag
+  synthesize normally.
+- **Not a parameter you can tune around.** `num_step` at 8, 16 and 32, and
+  `position_temperature=0`, were each tried three times on the failing input;
+  all twelve results failed.
 
 ```python
-{
-    "input": "Hello [laughter] this is amazing [breath] really cool [sigh]",
-    "position_temperature": 0
-}
+# Reliable — the tag has room to breathe
+{"input": "Hello there my friend [laughter] this is really quite amazing."}
+
+# Fails — three tags across eight words
+{"input": "Hello [laughter] this is amazing [breath] really cool [sigh]"}
 ```
 
-One or two tags in a longer sentence is the reliable pattern. Four tags in
-eight words is not.
+The server checks its own output and sets `X-No-Speech-Detected: true` when a
+generation comes back as a drone, so this is visible without listening to every
+file. It does not retry: no parameter recovers it, so a retry would only double
+the latency. Disable the check with `--no-detect-no-speech`.
 
 ### Named Voices from a Directory
 

@@ -87,30 +87,26 @@ class Settings(BaseSettings):
         ),
     )
 
-    # Degenerate-output detection (issue #37)
-    # OmniVoice can return audio that is valid but perceptually empty — mostly
-    # breath and ambient noise instead of speech. It is a sampling failure and
-    # re-rolling with a deterministic position temperature reliably clears it.
-    retry_degenerate: bool = Field(
+    # No-speech detection (issue #37)
+    # OmniVoice can return a steady low-frequency drone instead of a voice when
+    # several non-verbal tags share one short utterance. It is reported rather
+    # than retried: no generation parameter is known to recover it.
+    detect_no_speech: bool = Field(
         default=True,
         description=(
-            "Re-run synthesis with position_temperature=0 when the output looks "
-            "like a sampling failure (near-silent for most of its duration)."
+            "Warn when a generation contains no detectable speech. Adds a "
+            "zero-crossing-rate pass over the output; costs microseconds."
         ),
     )
-    degenerate_silence_rms: float = Field(
-        default=0.01,
-        ge=0.0,
-        le=1.0,
-        description="Frame RMS below this counts as silence when scoring output.",
-    )
-    degenerate_max_silent_fraction: float = Field(
-        default=0.75,
+    min_speech_ratio: float = Field(
+        default=0.15,
         ge=0.0,
         le=1.0,
         description=(
-            "Fraction of near-silent frames above which output is treated as a "
-            "sampling failure. Raise it if legitimately sparse audio is retried."
+            "Minimum fraction of audible windows that must look like speech. "
+            "Measured on the real model: healthy output scores 0.6-0.9, the "
+            "known failure scores 0.0-0.07. Lower it if a legitimate voice is "
+            "being flagged."
         ),
     )
 

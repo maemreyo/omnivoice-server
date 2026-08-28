@@ -16,7 +16,7 @@ import logging
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import torch
 
@@ -57,7 +57,7 @@ class SynthesisResult:
     tensors: list  # list[torch.Tensor], each (1, T)
     duration_s: float
     latency_s: float
-    retried: bool = False  # True if the first attempt was discarded as degenerate
+    no_speech_detected: bool = False  # Output looks like a drone, not speech
 
 
 class OmniVoiceAdapter:
@@ -222,21 +222,21 @@ class InferenceService:
         t0 = time.monotonic()
         model = self._model_svc.model
         seed = req.seed if req.seed is not None else self._cfg.seed
-        retried = False
 
         try:
             tensors = self._generate(req, model, seed)
-
-            if self._should_retry(req, tensors):
-                logger.warning(
-                    "Output looks degenerate (near-silent for most of its duration) — "
-                    "retrying with position_temperature=0. Text: %r",
-                    req.text[:80],
-                )
-                tensors = self._generate(replace(req, position_temperature=0.0), model, seed)
-                retried = True
         finally:
             _cleanup_memory(self._cfg.device)
+
+        no_speech = self._looks_like_no_speech(tensors)
+        if no_speech:
+            logger.warning(
+                "Generation contains no detectable speech — a steady low-frequency "
+                "drone rather than a voice. This happens when several non-verbal "
+                "tags share one short utterance; no generation parameter is known "
+                "to recover it. Try spreading tags across sentences. Text: %r",
+                req.text[:120],
+            )
 
         duration_s = sum(t.shape[-1] for t in tensors) / 24_000
         latency_s = time.monotonic() - t0
@@ -253,7 +253,7 @@ class InferenceService:
             tensors=tensors,
             duration_s=duration_s,
             latency_s=latency_s,
-            retried=retried,
+            no_speech_detected=no_speech,
         )
 
     def _generate(self, req: SynthesisRequest, model, seed: int | None) -> list[torch.Tensor]:
@@ -275,28 +275,21 @@ class InferenceService:
             torch.manual_seed(seed)
             return self._adapter.call(req, model)
 
-    def _should_retry(self, req: SynthesisRequest, tensors: list) -> bool:
+    def _looks_like_no_speech(self, tensors: list) -> bool:
         """
-        Whether a generation should be discarded and re-rolled.
+        Whether a generation came back as a drone rather than a voice.
 
-        Only worth doing when the sampler had freedom to go wrong: at
-        position_temperature=0 the retry would reproduce the same output.
+        Reported, not retried. Measured against the real model, no parameter
+        combination recovers the case this detects — including
+        position_temperature=0, which an earlier version of this code retried
+        into. Re-rolling would double the latency and return the same thing.
         """
-        if not self._cfg.retry_degenerate:
-            return False
-
-        position_temperature = (
-            req.position_temperature
-            if req.position_temperature is not None
-            else self._cfg.position_temperature
-        )
-        if position_temperature <= 0:
+        if not self._cfg.detect_no_speech:
             return False
 
         return is_degenerate_audio(
             tensors,
-            silence_rms=self._cfg.degenerate_silence_rms,
-            max_silent_fraction=self._cfg.degenerate_max_silent_fraction,
+            min_speech_ratio=self._cfg.min_speech_ratio,
         )
 
 

@@ -1,5 +1,5 @@
 """
-Seed plumbing and degenerate-output retry (issue #37, groundwork for #38).
+Seed plumbing and no-speech detection (issue #37, groundwork for #38).
 """
 
 from __future__ import annotations
@@ -15,17 +15,25 @@ from omnivoice_server.services.inference import InferenceService, SynthesisReque
 SAMPLE_RATE = 24_000
 
 
-def _speech_like(duration_s: float = 3.0) -> torch.Tensor:
+def _speech_like(duration_s: float = 3.0, seed: int = 0) -> torch.Tensor:
+    """Harmonic stack reaching into the fricative range — reads as speech."""
+    generator = torch.Generator().manual_seed(seed)
     n = int(SAMPLE_RATE * duration_s)
     t = torch.arange(n, dtype=torch.float32) / SAMPLE_RATE
-    return (0.2 * torch.sin(2 * torch.pi * 220 * t)).unsqueeze(0)
+
+    signal = torch.zeros(n)
+    for i, freq in enumerate([140, 280, 560, 1120, 2240, 3360]):
+        signal += torch.sin(2 * torch.pi * freq * t) / (i + 1)
+    signal *= 0.6 + 0.4 * torch.sin(2 * torch.pi * 4 * t)
+    signal += 0.35 * torch.randn(n, generator=generator)
+
+    return (0.2 * signal / signal.abs().max()).unsqueeze(0)
 
 
-def _mostly_silent(duration_s: float = 7.0) -> torch.Tensor:
-    n = int(SAMPLE_RATE * duration_s)
-    out = torch.full((n,), 1e-4, dtype=torch.float32)
-    out[-int(SAMPLE_RATE * 0.3) :] = 0.3
-    return out.unsqueeze(0)
+def _drone(duration_s: float = 3.8) -> torch.Tensor:
+    """Loud, steady, very low frequency — the issue #37 failure."""
+    t = torch.arange(int(SAMPLE_RATE * duration_s), dtype=torch.float32) / SAMPLE_RATE
+    return (0.15 * torch.sin(2 * torch.pi * 30.0 * t)).unsqueeze(0)
 
 
 class _FakeModel:
@@ -55,61 +63,57 @@ def _req(**kwargs) -> SynthesisRequest:
     return SynthesisRequest(text="Hello [laughter] world", mode="auto", **kwargs)
 
 
-# ── Retry on degenerate output ───────────────────────────────────────────────
+# ── No-speech reporting ──────────────────────────────────────────────────────
 
 
-def test_degenerate_output_is_retried_deterministically():
-    model = _FakeModel([[_mostly_silent()], [_speech_like()]])
+def test_drone_output_is_reported_not_retried():
+    """
+    Measured against the real model, no parameter recovers this failure —
+    including position_temperature=0, which an earlier version retried into.
+    Re-rolling would double the latency and return the same drone, so the
+    result is flagged and returned instead.
+    """
+    model = _FakeModel([[_drone()]])
     result = _service(model)._run_sync(_req())
 
-    assert len(model.calls) == 2
-    assert result.retried is True
-    # The retry must remove the sampler freedom that produced the bad roll.
-    assert model.calls[0]["position_temperature"] == 5.0
-    assert model.calls[1]["position_temperature"] == 0.0
+    assert len(model.calls) == 1, "a second generation would be wasted work"
+    assert result.no_speech_detected is True
 
 
-def test_healthy_output_is_not_retried():
+def test_healthy_output_is_not_flagged():
     model = _FakeModel([[_speech_like()]])
     result = _service(model)._run_sync(_req())
 
     assert len(model.calls) == 1
-    assert result.retried is False
+    assert result.no_speech_detected is False
 
 
-def test_retry_is_skipped_when_already_deterministic():
-    """At position_temperature=0 a retry would reproduce the same output."""
-    model = _FakeModel([[_mostly_silent()], [_speech_like()]])
-    result = _service(model)._run_sync(_req(position_temperature=0.0))
+def test_detection_can_be_disabled():
+    model = _FakeModel([[_drone()]])
+    result = _service(model, detect_no_speech=False)._run_sync(_req())
 
-    assert len(model.calls) == 1
-    assert result.retried is False
+    assert result.no_speech_detected is False
 
 
-def test_retry_can_be_disabled():
-    model = _FakeModel([[_mostly_silent()], [_speech_like()]])
-    result = _service(model, retry_degenerate=False)._run_sync(_req())
-
-    assert len(model.calls) == 1
-    assert result.retried is False
-
-
-def test_second_attempt_is_returned_even_if_also_degenerate():
-    """One retry, not a loop — a persistently bad prompt must still terminate."""
-    model = _FakeModel([[_mostly_silent()], [_mostly_silent()]])
+def test_flagged_output_is_still_returned_to_the_caller():
+    """Detection is advisory. Withholding the audio would be a worse failure."""
+    model = _FakeModel([[_drone()]])
     result = _service(model)._run_sync(_req())
 
-    assert len(model.calls) == 2
-    assert result.retried is True
+    assert result.tensors
+    assert result.duration_s > 0
 
 
-def test_retry_preserves_every_other_parameter():
-    model = _FakeModel([[_mostly_silent()], [_speech_like()]])
-    _service(model)._run_sync(_req(speed=1.5, guidance_scale=3.0, num_step=12))
+def test_flagging_is_independent_of_position_temperature():
+    """
+    The old code skipped the check at position_temperature=0, on the theory
+    that a retry there was pointless. There is no retry now, and the failure
+    occurs at 0 as readily as at the default — measured, not assumed.
+    """
+    model = _FakeModel([[_drone()]])
+    result = _service(model)._run_sync(_req(position_temperature=0.0))
 
-    first, second = model.calls
-    for key in ("speed", "guidance_scale", "num_step", "text", "denoise", "t_shift"):
-        assert first[key] == second[key], f"{key} changed across the retry"
+    assert result.no_speech_detected is True
 
 
 # ── Seeding ──────────────────────────────────────────────────────────────────

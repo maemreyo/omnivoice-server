@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import torch
 
-from omnivoice_server.utils.audio import is_degenerate_audio, silent_frame_fraction
+from omnivoice_server.utils.audio import is_degenerate_audio, speech_window_ratio
 from omnivoice_server.utils.text import (
     NONVERBAL_TAGS,
     count_nonverbal_tags,
@@ -92,68 +92,122 @@ def test_every_documented_tag_is_recognised():
     assert NONVERBAL_TAGS == documented
 
 
-# ── Degenerate output detection ──────────────────────────────────────────────
+# ── No-speech detection ──────────────────────────────────────────────────────
+#
+# Thresholds here are calibrated against real output from k2-fsa/OmniVoice,
+# recorded while investigating issue #37:
+#
+#   plain text, no tags     speech-window ratio 0.71, 0.75, 1.00
+#   one non-verbal tag                           0.38
+#   three tags (the report)                      0.00  (6 samples, 4 parameter
+#                                                       configurations)
+#
+# The synthetic signals below are shaped to land in the same places.
 
 
-def test_healthy_audio_has_no_silent_frames():
-    assert silent_frame_fraction([_speech_like(3.0)], silence_rms=0.01) == 0.0
-
-
-def test_failure_shaped_audio_is_mostly_silent():
-    fraction = silent_frame_fraction([_mostly_silent(7.0)], silence_rms=0.01)
-    assert fraction > 0.9
-
-
-def test_healthy_audio_is_not_flagged():
-    assert not is_degenerate_audio(
-        [_speech_like(3.0)], silence_rms=0.01, max_silent_fraction=0.75
-    )
-
-
-def test_failure_shaped_audio_is_flagged():
-    assert is_degenerate_audio(
-        [_mostly_silent(7.0)], silence_rms=0.01, max_silent_fraction=0.75
-    )
-
-
-def test_quiet_but_continuous_audio_is_not_flagged():
+def _drone(duration_s: float, freq: float = 30.0, amplitude: float = 0.15) -> torch.Tensor:
     """
-    A whispered render is quiet everywhere but silent nowhere. Overall RMS would
-    condemn it; frame distribution correctly clears it.
+    Loud, steady, very low frequency — the shape of the issue #37 failure.
+
+    Deliberately not quiet: the real failure runs at RMS 2500-12000 with only
+    2.7% of frames near-silent. A detector keying on loudness misses it, which
+    is exactly what the first attempt at this did.
     """
-    whisper = _speech_like(4.0, amplitude=0.03)
-    assert not is_degenerate_audio(
-        [whisper], silence_rms=0.01, max_silent_fraction=0.75
-    )
+    t = torch.arange(int(SAMPLE_RATE * duration_s), dtype=torch.float32) / SAMPLE_RATE
+    return (amplitude * torch.sin(2 * torch.pi * freq * t)).unsqueeze(0)
+
+
+def _speech_like(duration_s: float, amplitude: float = 0.2, seed: int = 0) -> torch.Tensor:
+    """
+    Harmonic stack reaching into the fricative range, under a syllable-rate
+    envelope. A bare 220Hz tone will not do: its zero-crossing rate is 0.018,
+    below the speech threshold, so it would read as a drone.
+    """
+    generator = torch.Generator().manual_seed(seed)
+    n = int(SAMPLE_RATE * duration_s)
+    t = torch.arange(n, dtype=torch.float32) / SAMPLE_RATE
+
+    signal = torch.zeros(n)
+    for i, freq in enumerate([140, 280, 560, 1120, 2240, 3360]):
+        signal += torch.sin(2 * torch.pi * freq * t) / (i + 1)
+    signal *= 0.6 + 0.4 * torch.sin(2 * torch.pi * 4 * t)
+    signal += 0.35 * torch.randn(n, generator=generator)
+
+    return (amplitude * signal / signal.abs().max()).unsqueeze(0)
+
+
+def _whisper_like(duration_s: float, seed: int = 1) -> torch.Tensor:
+    """Quiet broadband noise — a whispered render, which must not be flagged."""
+    generator = torch.Generator().manual_seed(seed)
+    return (0.02 * torch.randn(int(SAMPLE_RATE * duration_s), generator=generator)).unsqueeze(0)
+
+
+def test_speech_scores_high():
+    assert speech_window_ratio([_speech_like(3.0)]) > 0.9
+
+
+def test_drone_scores_zero():
+    assert speech_window_ratio([_drone(3.8)]) == 0.0
+
+
+def test_drone_is_flagged():
+    assert is_degenerate_audio([_drone(3.8)], min_speech_ratio=0.15)
+
+
+def test_speech_is_not_flagged():
+    assert not is_degenerate_audio([_speech_like(3.0)], min_speech_ratio=0.15)
+
+
+def test_loud_drone_is_flagged_despite_being_loud():
+    """
+    The regression this whole change exists for. The first detector looked for
+    near-silence; the real failure is loud and steady, so it never fired.
+    """
+    loud = _drone(3.8, amplitude=0.4)
+    assert loud.abs().max() > 0.3
+    assert is_degenerate_audio([loud], min_speech_ratio=0.15)
+
+
+def test_whisper_is_not_flagged():
+    """Whispering is quiet but broadband, so its ZCR is high, not low."""
+    assert not is_degenerate_audio([_whisper_like(4.0)], min_speech_ratio=0.15)
+
+
+def test_pauses_do_not_count_against_speech():
+    """Silence between sentences is excluded rather than scored as failure."""
+    speech = _speech_like(1.5)
+    silence = torch.zeros(1, int(SAMPLE_RATE * 2.0))
+    assert not is_degenerate_audio([speech, silence, speech], min_speech_ratio=0.15)
 
 
 def test_short_output_is_never_flagged():
-    """A one-word render is legitimately mostly silence; re-rolling wastes time."""
-    assert not is_degenerate_audio(
-        [_mostly_silent(0.4)], silence_rms=0.01, max_silent_fraction=0.75
-    )
+    """Too few windows to judge, and onset/decay dominate."""
+    assert not is_degenerate_audio([_drone(0.4)], min_speech_ratio=0.15)
 
 
 def test_empty_output_is_not_flagged():
-    assert not is_degenerate_audio([], silence_rms=0.01, max_silent_fraction=0.75)
-    assert silent_frame_fraction([], silence_rms=0.01) == 0.0
+    assert not is_degenerate_audio([], min_speech_ratio=0.15)
+
+
+def test_silent_output_is_not_flagged_as_a_drone():
+    """
+    All-silence is a different failure and not what this detects; scoring it
+    here would report the wrong cause.
+    """
+    assert not is_degenerate_audio([torch.zeros(1, SAMPLE_RATE * 3)], min_speech_ratio=0.15)
 
 
 def test_sub_frame_input_does_not_divide_by_zero():
-    tiny = torch.zeros(1, 10)
-    assert silent_frame_fraction([tiny], silence_rms=0.01) == 0.0
+    assert speech_window_ratio([torch.zeros(1, 10)]) == 1.0
 
 
-def test_nan_samples_count_as_silence_rather_than_poisoning_the_mean():
-    """NaN would otherwise make every frame RMS NaN, and NaN < x is False."""
-    n = int(SAMPLE_RATE * 3)
-    signal = torch.full((1, n), float("nan"))
-    assert silent_frame_fraction([signal], silence_rms=0.01) == 1.0
+def test_nan_samples_do_not_poison_the_score():
+    signal = torch.full((1, SAMPLE_RATE * 3), float("nan"))
+    assert speech_window_ratio([signal]) == 1.0
 
 
 def test_multiple_tensors_are_scored_as_one_stream():
-    chunks = [_mostly_silent(3.0), _mostly_silent(3.0)]
-    assert is_degenerate_audio(chunks, silence_rms=0.01, max_silent_fraction=0.75)
+    assert is_degenerate_audio([_drone(2.0), _drone(2.0)], min_speech_ratio=0.15)
 
 
 # ── Streaming responses ──────────────────────────────────────────────────────
