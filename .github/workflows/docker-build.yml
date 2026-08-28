@@ -1,0 +1,58 @@
+name: Docker Build Validation
+
+# The publish workflow only runs on `release: published`, so a broken Dockerfile
+# or an incompatible base-image bump stays invisible until release time.
+# This workflow builds both images on any PR that touches them.
+#
+# Uses `--output type=cacheonly`: every layer is built and validated, but the
+# final image is never exported or loaded. This keeps the CUDA build (multi-GB
+# base + torch wheels) inside the runner's disk budget.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'Dockerfile.cuda'
+      - 'pyproject.toml'
+      - '.github/workflows/docker-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: cpu
+            dockerfile: Dockerfile
+            free-disk: false
+          - name: cuda
+            dockerfile: Dockerfile.cuda
+            free-disk: true
+    steps:
+      - uses: actions/checkout@v6
+
+      # The CUDA base image plus cu128 torch wheels do not fit alongside the
+      # runner's preinstalled toolchains.
+      - name: Free disk space
+        if: matrix.free-disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /usr/local/share/boost "$AGENT_TOOLSDIRECTORY"
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.dockerfile }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./${{ matrix.dockerfile }}
+          push: false
+          outputs: type=cacheonly
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
