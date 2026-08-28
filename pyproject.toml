@@ -21,10 +21,13 @@ classifiers = [
 ]
 
 dependencies = [
-    # FIX: pin omnivoice to a compatible minor series.
-    # OmniVoice is brand-new (April 2026) and its API may change in 0.2.x.
-    # Widen this bound only after reviewing upstream changelogs.
-    "omnivoice>=0.1.0,<0.2.0",
+    # Reviewed 0.1.5 -> 0.2.1 by diffing the installed API, since upstream
+    # publishes no changelog: no method removed or renamed, generate() only
+    # gained `normalize_text` (defaults False), the 646-language list is
+    # unchanged, and the model repo and Python floor are the same. Smoke-tested
+    # against the same k2-fsa/OmniVoice checkpoint. Keep the upper bound at the
+    # next major and re-review before widening again.
+    "omnivoice>=0.1.0,<0.3.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "python-multipart>=0.0.12",
