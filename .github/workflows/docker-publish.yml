@@ -40,6 +40,21 @@ jobs:
             type=sha,prefix=
             latest
 
+      # Same tags with a -cuda suffix. Without this the CUDA image only ever
+      # got `cuda-latest` on a release, so there was no way to pin a CUDA
+      # deployment to a version — only the CPU step consumed the metadata above.
+      - name: Extract CUDA metadata
+        id: meta-cuda
+        uses: docker/metadata-action@v5
+        with:
+          images: maemreyo/omnivoice-server
+          flavor: |
+            latest=true
+            suffix=-cuda,onlatest=true
+          tags: |
+            type=ref,event=tag
+            type=sha,prefix=
+
       - name: Build and push CPU image
         uses: docker/build-push-action@v7
         with:
@@ -64,8 +79,8 @@ jobs:
           push: true
           tags: |
             maemreyo/omnivoice-server:cuda-latest
+            ${{ steps.meta-cuda.outputs.tags }}
             ${{ github.event.inputs.tag != '' && format('maemreyo/omnivoice-server:cuda-{0}', github.event.inputs.tag) || '' }}
-            ${{ format('maemreyo/omnivoice-server:{0}-cuda', github.event.inputs.tag != '' && github.event.inputs.tag || 'latest') }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
           cache-from: type=gha
