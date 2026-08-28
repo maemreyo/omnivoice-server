@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-05-12
+
+### Added
+
+- Streaming support for voice clone endpoint (`/v1/audio/speech/clone`) ([#32](https://github.com/maemreyo/omnivoice-server/issues/32))
+  - New `stream` parameter (boolean, default: false) enables sentence-level streaming
+  - New `response_format` parameter supports all formats (wav, pcm, mp3, opus, aac, flac)
+  - Streaming mode requires `response_format='pcm'` and returns proper PCM headers
+  - Proper tempdir lifecycle management ensures ref_audio exists during streaming synthesis
+  - Respects global `cfg.stream` configuration for forced streaming mode
+
+### Changed
+
+- Extracted shared `_pcm_stream_response()` helper to reduce code duplication between `/v1/audio/speech` and `/v1/audio/speech/clone`
+- Clone endpoint now supports all response formats via `tensors_to_formatted_bytes()` (previously hardcoded to WAV)
+
+### Technical
+
+- Added comprehensive test coverage for clone streaming (PCM headers, format validation, tempdir lifecycle, cfg.stream behavior)
+
 ## [0.2.2] - 2026-04-20
 
 ### Added

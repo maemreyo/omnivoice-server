@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OmniVoice Server</title>
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --border: #e3e1dd;
+    --text: #1f1e1c;
+    --muted: #6b6862;
+    --accent: #b4530a;
+    --accent-soft: #fdf1e7;
+    --code-bg: #f5f3f0;
+    --danger: #a52020;
+    --ok: #2f6f3e;
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #191817;
+      --panel: #222120;
+      --border: #363330;
+      --text: #eceae6;
+      --muted: #9d9890;
+      --accent: #e0854a;
+      --accent-soft: #2c2320;
+      --code-bg: #1b1a19;
+      --danger: #e08a8a;
+      --ok: #7fbf8f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+  .status { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.ok { background: var(--ok); }
+  .dot.bad { background: var(--danger); }
+  .spacer { flex: 1 1 auto; }
+  main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 20px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+  }
+  .panel + .panel { margin-top: 20px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em;
+       color: var(--muted); margin: 0 0 14px; font-weight: 600; }
+  label { display: block; font-size: 13px; margin-bottom: 5px; color: var(--muted); }
+  input, select, textarea, button {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    width: 100%;
+  }
+  textarea { resize: vertical; min-height: 96px; font-size: 14px; }
+  input:focus, select:focus, textarea:focus {
+    outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent;
+  }
+  .field { margin-bottom: 14px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  button.primary {
+    background: var(--accent); color: #fff; border-color: transparent;
+    font-weight: 600; cursor: pointer; padding: 10px;
+  }
+  button.primary:disabled { opacity: 0.55; cursor: default; }
+  button.ghost {
+    width: auto; background: transparent; cursor: pointer;
+    font-size: 12px; padding: 4px 9px; color: var(--muted);
+  }
+  button.ghost.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 5px; }
+  details { margin-bottom: 14px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  audio { width: 100%; margin-top: 12px; }
+  .msg { font-size: 13px; padding: 10px 12px; border-radius: 6px; margin-top: 12px; display: none; }
+  .msg.err { display: block; background: var(--accent-soft); color: var(--danger);
+             border: 1px solid var(--danger); white-space: pre-wrap; }
+  .msg.info { display: block; background: var(--accent-soft); border: 1px solid var(--border); }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .meta code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>OmniVoice Server</h1>
+  <div class="status"><span class="dot" id="dot"></span><span id="statusText">checking…</span></div>
+  <div class="spacer"></div>
+  <div style="width:230px">
+    <input id="apiKey" type="password" placeholder="API key (only if --api-key set)"
+           autocomplete="off" style="font-size:13px;padding:5px 9px">
+  </div>
+</header>
+
+<main>
+  <div>
+    <div class="panel">
+      <div class="tabs">
+        <button class="ghost active" data-tab="design">Design a voice</button>
+        <button class="ghost" data-tab="clone">Clone from audio</button>
+      </div>
+
+      <div class="field">
+        <label for="text">Text</label>
+        <textarea id="text">Hello, this is OmniVoice running locally. [laughter] Try changing the voice.</textarea>
+        <div class="hint" id="tagHint"></div>
+      </div>
+
+      <div id="designPane">
+        <div class="field">
+          <label for="voice">Voice</label>
+          <select id="voice"></select>
+          <div class="hint" id="voiceHint"></div>
+        </div>
+        <div class="field">
+          <label for="instructions">Or describe one (overrides the selection above)</label>
+          <input id="instructions" placeholder="female, young adult, canadian accent">
+          <div class="hint" id="attrHint">Loading supported attributes…</div>
+        </div>
+      </div>
+
+      <div id="clonePane" class="hidden">
+        <div class="field">
+          <label for="refAudio">Reference audio</label>
+          <input id="refAudio" type="file" accept="audio/*">
+          <div class="hint">A few seconds of clean speech works best.</div>
+        </div>
+        <div class="field">
+          <label for="refText">Reference transcript (optional)</label>
+          <input id="refText" placeholder="What the reference audio says">
+        </div>
+      </div>
+
+      <details>
+        <summary>Generation parameters</summary>
+        <div class="row-3">
+          <div class="field">
+            <label for="format">Format</label>
+            <select id="format">
+              <option>wav</option><option>mp3</option><option>opus</option>
+              <option>aac</option><option>flac</option><option>pcm</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="speed">Speed</label>
+            <input id="speed" type="number" step="0.05" min="0.25" max="4" placeholder="1.0">
+          </div>
+          <div class="field">
+            <label for="numStep">Steps</label>
+            <input id="numStep" type="number" min="1" max="64" placeholder="server default">
+          </div>
+        </div>
+        <div class="row-3">
+          <div class="field">
+            <label for="seed">Seed</label>
+            <input id="seed" type="number" min="0" placeholder="random">
+          </div>
+          <div class="field">
+            <label for="posTemp">Position temp.</label>
+            <input id="posTemp" type="number" step="0.5" min="0" max="10" placeholder="5.0">
+          </div>
+          <div class="field">
+            <label for="guidance">Guidance</label>
+            <input id="guidance" type="number" step="0.1" min="0" max="10" placeholder="2.0">
+          </div>
+        </div>
+        <div class="hint">
+          Set seed to any number to get the same audio every time. Set position
+          temperature to 0 for deterministic output — useful when non-verbal
+          tags produce noise.
+        </div>
+      </details>
+
+      <button class="primary" id="go">Generate speech</button>
+      <div class="msg" id="msg"></div>
+      <audio id="player" controls class="hidden"></audio>
+      <div class="meta hidden" id="resultMeta"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>The same request, in code</h2>
+      <div class="tabs">
+        <button class="ghost active" data-lang="curl">curl</button>
+        <button class="ghost" data-lang="python">python</button>
+        <button class="ghost" data-lang="js">javascript</button>
+        <button class="ghost" data-lang="openai">openai sdk</button>
+      </div>
+      <pre id="snippet"></pre>
+      <div class="hint">Updates as you change the form.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Available voices</h2>
+      <pre id="voiceList">Loading…</pre>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var base = location.origin;
+  var mode = "design";
+  var lang = "curl";
+  var voices = [];
+  var lastUrl = null;
+
+  // Remembering the key is a local convenience; it never leaves this browser.
+  try {
+    var saved = localStorage.getItem("omnivoice.apiKey");
+    if (saved) $("apiKey").value = saved;
+  } catch (e) { /* private mode, storage disabled — no key remembered */ }
+  $("apiKey").addEventListener("input", function () {
+    try { localStorage.setItem("omnivoice.apiKey", $("apiKey").value); } catch (e) {}
+    render();
+  });
+
+  function authHeaders(extra) {
+    var h = extra || {};
+    var key = $("apiKey").value.trim();
+    if (key) h["Authorization"] = "Bearer " + key;
+    return h;
+  }
+
+  function setStatus(state, text) {
+    $("dot").className = "dot" + (state ? " " + state : "");
+    $("statusText").textContent = text;
+  }
+
+  function showMessage(kind, text) {
+    var el = $("msg");
+    el.className = "msg " + kind;
+    el.textContent = text;
+  }
+
+  function clearMessage() { $("msg").className = "msg"; }
+
+  // ── Health ────────────────────────────────────────────────────────────────
+
+  function checkHealth() {
+    fetch(base + "/health").then(function (r) {
+      return r.json().then(function (body) { return { ok: r.ok, body: body }; });
+    }).then(function (res) {
+      if (res.ok && res.body.ready) {
+        setStatus("ok", "ready · " + (res.body.model_id || "model loaded"));
+      } else {
+        setStatus("bad", res.body.status || "loading model…");
+        setTimeout(checkHealth, 3000);
+      }
+    }).catch(function () {
+      setStatus("bad", "server unreachable");
+      setTimeout(checkHealth, 5000);
+    });
+  }
+
+  // ── Voices ────────────────────────────────────────────────────────────────
+
+  function describe(v) {
+    if (v.type === "file") return v.name + " — from a voice file";
+    if (v.type === "clone") return "cloned profile";
+    if (v.type === "preset") return "preset";
+    return v.description || v.type;
+  }
+
+  function loadVoices() {
+    fetch(base + "/v1/voices", { headers: authHeaders() }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (body) {
+      voices = (body.voices || []).filter(function (v) {
+        return v.id.indexOf("<") === -1;  // drop the "design:<attributes>" placeholder
+      });
+
+      var sel = $("voice");
+      sel.innerHTML = "";
+      voices.forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = v.id;
+        opt.textContent = v.id + "  (" + v.type + ")";
+        sel.appendChild(opt);
+      });
+      sel.value = "auto";
+      updateVoiceHint();
+
+      var byType = {};
+      voices.forEach(function (v) { (byType[v.type] = byType[v.type] || []).push(v.id); });
+      $("voiceList").textContent = Object.keys(byType).map(function (t) {
+        return t + ":\n  " + byType[t].join("\n  ");
+      }).join("\n\n");
+
+      var attrs = body.design_attributes || {};
+      var parts = Object.keys(attrs).map(function (k) {
+        return k + ": " + (attrs[k] || []).join(", ");
+      });
+      $("attrHint").textContent = parts.length
+        ? "Supported — " + parts.join(" · ")
+        : "No attribute list returned.";
+      render();
+    }).catch(function (e) {
+      $("voiceList").textContent = "Could not load voices: " + e.message;
+      $("attrHint").textContent = "";
+    });
+  }
+
+  function updateVoiceHint() {
+    var picked = voices.filter(function (v) { return v.id === $("voice").value; })[0];
+    $("voiceHint").textContent = picked ? describe(picked) : "";
+  }
+
+  // ── Non-verbal tag feedback ───────────────────────────────────────────────
+
+  var KNOWN_TAGS = [
+    "laughter", "breath", "sigh", "sniff", "confirmation-en", "question-en",
+    "question-ah", "question-oh", "question-ei", "question-yi", "surprise-ah",
+    "surprise-oh", "surprise-wa", "surprise-yo", "dissatisfaction-hnn"
+  ];
+
+  function checkTags() {
+    var found = ($("text").value.match(/\[([a-zA-Z][a-zA-Z0-9_-]*)\]/g) || []);
+    var unknown = [];
+    var known = 0;
+    found.forEach(function (raw) {
+      var tag = raw.slice(1, -1).toLowerCase();
+      if (KNOWN_TAGS.indexOf(tag) === -1) {
+        if (unknown.indexOf(tag) === -1) unknown.push(tag);
+      } else {
+        known++;
+      }
+    });
+
+    var hint = $("tagHint");
+    if (unknown.length) {
+      hint.textContent = "Not a non-verbal tag: [" + unknown.join("], [") +
+        "] — this will be spoken as literal text.";
+    } else if (known >= 3) {
+      hint.textContent = known + " non-verbal tags in one utterance can produce " +
+        "noise. Set position temperature to 0 if it does.";
+    } else {
+      hint.textContent = "Supports non-verbal tags such as [laughter], [breath], [sigh].";
+    }
+  }
+
+  // ── Request assembly ──────────────────────────────────────────────────────
+
+  function numeric(id) {
+    var raw = $(id).value.trim();
+    if (raw === "") return null;
+    var n = Number(raw);
+    return isNaN(n) ? null : n;
+  }
+
+  function buildBody() {
+    var body = { input: $("text").value };
+    var instructions = $("instructions").value.trim();
+
+    if (instructions) body.instructions = instructions;
+    else if ($("voice").value && $("voice").value !== "auto") body.voice = $("voice").value;
+
+    var fmt = $("format").value;
+    if (fmt !== "wav") body.response_format = fmt;
+
+    [["speed", "speed"], ["num_step", "numStep"], ["seed", "seed"],
+     ["position_temperature", "posTemp"], ["guidance_scale", "guidance"]
+    ].forEach(function (pair) {
+      var value = numeric(pair[1]);
+      if (value !== null) body[pair[0]] = value;
+    });
+    return body;
+  }
+
+  // ── Snippets ──────────────────────────────────────────────────────────────
+
+  function shellQuote(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+
+  function renderSnippet() {
+    var key = $("apiKey").value.trim();
+    var out;
+
+    if (mode === "clone") {
+      var name = ($("refAudio").files[0] || {}).name || "reference.wav";
+      if (lang === "curl") {
+        out = "curl -X POST " + base + "/v1/audio/speech/clone \\\n" +
+          (key ? "  -H " + shellQuote("Authorization: Bearer " + key) + " \\\n" : "") +
+          "  -F " + shellQuote("text=" + $("text").value) + " \\\n" +
+          "  -F " + shellQuote("ref_audio=@" + name) + " \\\n" +
+          "  --output speech." + $("format").value;
+      } else if (lang === "python") {
+        out = "import httpx\n\n" +
+          'with open("' + name + '", "rb") as f:\n' +
+          "    r = httpx.post(\n" +
+          '        "' + base + '/v1/audio/speech/clone",\n' +
+          "        data={\"text\": " + JSON.stringify($("text").value) + "},\n" +
+          "        files={\"ref_audio\": f},\n" +
+          (key ? '        headers={"Authorization": "Bearer ' + key + '"},\n' : "") +
+          "        timeout=300,\n" +
+          "    )\n" +
+          'open("speech.' + $("format").value + '", "wb").write(r.content)';
+      } else if (lang === "js") {
+        out = "const form = new FormData();\n" +
+          "form.append(\"text\", " + JSON.stringify($("text").value) + ");\n" +
+          "form.append(\"ref_audio\", fileInput.files[0]);\n\n" +
+          'const res = await fetch("' + base + '/v1/audio/speech/clone", {\n' +
+          '  method: "POST",\n' +
+          (key ? '  headers: { Authorization: "Bearer ' + key + '" },\n' : "") +
+          "  body: form,\n});\n" +
+          "const blob = await res.blob();";
+      } else {
+        out = "# The OpenAI SDK has no voice-cloning call.\n" +
+          "# Use the multipart endpoint directly (see the python tab),\n" +
+          "# or save a profile first:\n\n" +
+          "#   POST /v1/voices/profiles  (profile_id + ref_audio)\n\n" +
+          "# then select it as a normal voice:\n" +
+          'client.audio.speech.create(model="omnivoice", voice="clone:my-profile", input="…")';
+      }
+      $("snippet").textContent = out;
+      return;
+    }
+
+    var body = buildBody();
+    if (lang === "curl") {
+      out = "curl -X POST " + base + "/v1/audio/speech \\\n" +
+        "  -H 'Content-Type: application/json' \\\n" +
+        (key ? "  -H " + shellQuote("Authorization: Bearer " + key) + " \\\n" : "") +
+        "  -d " + shellQuote(JSON.stringify(body)) + " \\\n" +
+        "  --output speech." + $("format").value;
+    } else if (lang === "python") {
+      out = "import httpx\n\n" +
+        "r = httpx.post(\n" +
+        '    "' + base + '/v1/audio/speech",\n' +
+        "    json=" + JSON.stringify(body, null, 4).replace(/\n/g, "\n    ") + ",\n" +
+        (key ? '    headers={"Authorization": "Bearer ' + key + '"},\n' : "") +
+        "    timeout=300,\n" +
+        ")\n" +
+        'open("speech.' + $("format").value + '", "wb").write(r.content)';
+    } else if (lang === "js") {
+      out = 'const res = await fetch("' + base + '/v1/audio/speech", {\n' +
+        '  method: "POST",\n' +
+        "  headers: {\n" +
+        '    "Content-Type": "application/json",\n' +
+        (key ? '    Authorization: "Bearer ' + key + '",\n' : "") +
+        "  },\n" +
+        "  body: JSON.stringify(" + JSON.stringify(body) + "),\n" +
+        "});\n" +
+        "const blob = await res.blob();\n" +
+        "new Audio(URL.createObjectURL(blob)).play();";
+    } else {
+      var args = {
+        model: "omnivoice",
+        voice: body.voice || "auto",
+        input: body.input
+      };
+      if (body.instructions) args.instructions = body.instructions;
+      if (body.response_format) args.response_format = body.response_format;
+      if (body.speed) args.speed = body.speed;
+      out = "from openai import OpenAI\n\n" +
+        "client = OpenAI(\n" +
+        '    base_url="' + base + '/v1",\n' +
+        '    api_key="' + (key || "not-needed") + '",\n' +
+        ")\n\n" +
+        "response = client.audio.speech.create(\n" +
+        Object.keys(args).map(function (k) {
+          return "    " + k + "=" + JSON.stringify(args[k]) + ",";
+        }).join("\n") + "\n)\n" +
+        'response.write_to_file("speech.' + $("format").value + '")\n\n' +
+        "# Parameters without an OpenAI equivalent (seed, num_step,\n" +
+        "# position_temperature) need the raw HTTP call — see the python tab.";
+    }
+    $("snippet").textContent = out;
+  }
+
+  function render() { renderSnippet(); checkTags(); }
+
+  // ── Generate ──────────────────────────────────────────────────────────────
+
+  function generate() {
+    clearMessage();
+    $("player").classList.add("hidden");
+    $("resultMeta").classList.add("hidden");
+
+    if (!$("text").value.trim()) {
+      showMessage("err", "Enter some text first.");
+      return;
+    }
+
+    var request;
+    if (mode === "clone") {
+      var file = $("refAudio").files[0];
+      if (!file) {
+        showMessage("err", "Choose a reference audio file first.");
+        return;
+      }
+      var form = new FormData();
+      form.append("text", $("text").value);
+      form.append("ref_audio", file);
+      if ($("refText").value.trim()) form.append("ref_text", $("refText").value.trim());
+      form.append("response_format", $("format").value);
+      ["speed", "num_step", "seed", "position_temperature", "guidance_scale"]
+        .forEach(function (name) {
+          var body = buildBody();
+          if (body[name] !== undefined) form.append(name, body[name]);
+        });
+      request = fetch(base + "/v1/audio/speech/clone", {
+        method: "POST", headers: authHeaders(), body: form
+      });
+    } else {
+      request = fetch(base + "/v1/audio/speech", {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(buildBody())
+      });
+    }
+
+    $("go").disabled = true;
+    $("go").textContent = "Generating…";
+    var started = Date.now();
+
+    request.then(function (res) {
+      if (!res.ok) {
+        return res.text().then(function (text) {
+          var detail = text;
+          try { detail = JSON.parse(text).detail || text; } catch (e) {}
+          throw new Error("HTTP " + res.status + "\n" +
+            (typeof detail === "string" ? detail : JSON.stringify(detail, null, 2)));
+        });
+      }
+      var headers = {
+        duration: res.headers.get("X-Audio-Duration-S"),
+        latency: res.headers.get("X-Synthesis-Latency-S"),
+        retried: res.headers.get("X-Synthesis-Retried"),
+        unknownTags: res.headers.get("X-Unknown-Nonverbal-Tags")
+      };
+      return res.blob().then(function (blob) { return { blob: blob, headers: headers }; });
+    }).then(function (result) {
+      if (lastUrl) URL.revokeObjectURL(lastUrl);
+      lastUrl = URL.createObjectURL(result.blob);
+
+      var player = $("player");
+      player.src = lastUrl;
+      player.classList.remove("hidden");
+      player.play().catch(function () { /* autoplay blocked — controls still work */ });
+
+      var h = result.headers;
+      var bits = [];
+      if (h.duration) bits.push(h.duration + "s audio");
+      if (h.latency) bits.push("generated in " + h.latency + "s");
+      bits.push(Math.round((Date.now() - started) / 100) / 10 + "s round trip");
+      var meta = bits.join(" · ");
+      if (h.retried) {
+        meta += " — first attempt came back near-silent and was retried " +
+          "automatically (position_temperature=0)";
+      }
+      if (h.unknownTags) {
+        meta += " — unrecognised tags spoken literally: " + h.unknownTags;
+      }
+      $("resultMeta").textContent = meta;
+      $("resultMeta").classList.remove("hidden");
+    }).catch(function (e) {
+      showMessage("err", e.message);
+    }).finally(function () {
+      $("go").disabled = false;
+      $("go").textContent = "Generate speech";
+    });
+  }
+
+  // ── Wiring ────────────────────────────────────────────────────────────────
+
+  document.querySelectorAll("[data-tab]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll("[data-tab]").forEach(function (b) {
+        b.classList.toggle("active", b === btn);
+      });
+      mode = btn.dataset.tab;
+      $("designPane").classList.toggle("hidden", mode !== "design");
+      $("clonePane").classList.toggle("hidden", mode !== "clone");
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-lang]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      document.querySelectorAll("[data-lang]").forEach(function (b) {
+        b.classList.toggle("active", b === btn);
+      });
+      lang = btn.dataset.lang;
+      renderSnippet();
+    });
+  });
+
+  ["text", "instructions", "format", "speed", "numStep", "seed", "posTemp",
+   "guidance", "refText", "refAudio"].forEach(function (id) {
+    $(id).addEventListener("input", render);
+    $(id).addEventListener("change", render);
+  });
+  $("voice").addEventListener("change", function () { updateVoiceHint(); render(); });
+  $("go").addEventListener("click", generate);
+
+  checkHealth();
+  loadVoices();
+  render();
+})();
+</script>
+</body>
+</html>

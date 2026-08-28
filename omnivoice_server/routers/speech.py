@@ -9,26 +9,29 @@ import asyncio
 import logging
 import tempfile
 from collections.abc import AsyncIterator
+from contextlib import suppress
+from dataclasses import dataclass, replace
+from dataclasses import field as dc_field
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-from ..services.inference import InferenceService, SynthesisRequest
+from ..services.inference import InferenceService, SynthesisRequest, SynthesisResult
 from ..services.metrics import MetricsService
 from ..services.profiles import ProfileNotFoundError, ProfileService
+from ..services.voice_files import VoiceFile, VoiceFileService
 from ..utils.audio import (
     ResponseFormat,
     tensor_to_pcm16_bytes,
     tensors_to_formatted_bytes,
-    tensors_to_wav_bytes,
 )
 from ..utils.instruction_validation import (
     InstructionValidationError,
     validate_and_canonicalize_instructions,
 )
-from ..utils.text import split_sentences
+from ..utils.text import NONVERBAL_TAGS, find_unknown_nonverbal_tags, split_sentences
 from ..voice_presets import (
     DEFAULT_DESIGN_INSTRUCTIONS,
     get_openai_voice_preset,
@@ -67,6 +70,15 @@ class SpeechRequest(BaseModel):
     audio_chunk_duration: float | None = Field(default=None, gt=0.0)
     audio_chunk_threshold: float | None = Field(default=None, gt=0.0)
     request_timeout_s: int | None = Field(default=None, ge=1, le=600)
+    seed: int | None = Field(
+        default=None,
+        ge=0,
+        le=2**32 - 1,
+        description=(
+            "RNG seed. The same seed with the same text and parameters reproduces "
+            "the same audio, so a designed voice stays consistent across calls."
+        ),
+    )
 
     @field_validator("model")
     @classmethod
@@ -78,6 +90,10 @@ class SpeechRequest(BaseModel):
 
 def _get_inference(request: Request) -> InferenceService:
     return request.app.state.inference_svc
+
+
+def _get_voice_files(request: Request) -> VoiceFileService:
+    return request.app.state.voice_file_svc
 
 
 def _get_profiles(request: Request) -> ProfileService:
@@ -96,10 +112,73 @@ def _effective_timeout_s(request_timeout_s: int | None, cfg) -> int:
     return request_timeout_s or cfg.request_timeout_s
 
 
+def _pcm_stream_response(
+    stream_iter: AsyncIterator[bytes],
+    unknown_tags: list[str] | None = None,
+) -> StreamingResponse:
+    headers = {
+        "X-Audio-Sample-Rate": "24000",
+        "X-Audio-Channels": "1",
+        "X-Audio-Bit-Depth": "16",
+        "X-Audio-Format": "pcm-int16-le",
+    }
+    # A streamed response cannot report a retry — headers go out before the
+    # first sentence is generated — but unrecognised tags are known upfront,
+    # and a streaming caller has the same typo problem as any other.
+    if unknown_tags:
+        headers["X-Unknown-Nonverbal-Tags"] = ",".join(unknown_tags)
+    return StreamingResponse(stream_iter, media_type="audio/pcm", headers=headers)
+
+
+def _lookup_voice_file(
+    voice_file_svc: VoiceFileService | None,
+    speaker_raw: str | None,
+    voice_raw: str | None,
+) -> VoiceFile | None:
+    """
+    Find a voice file matching `speaker` or `voice`, if either names one.
+
+    Prefixed and reserved values are skipped: `clone:` and `design:` have their
+    own resolution paths, and `auto` is the documented default rather than a
+    name an operator can claim.
+    """
+    if voice_file_svc is None:
+        return None
+
+    for candidate in (speaker_raw, voice_raw):
+        if not candidate:
+            continue
+        lowered = candidate.lower()
+        if lowered == "auto" or ":" in candidate:
+            continue
+        voice = voice_file_svc.get(candidate)
+        if voice is not None:
+            return voice
+    return None
+
+
+@dataclass
+class ResolvedVoice:
+    """
+    Outcome of working out which voice a request meant.
+
+    `params` carries defaults contributed by a voice file (issue #38). They are
+    weaker than anything the request set explicitly — a file names a voice, it
+    does not overrule the caller.
+    """
+
+    mode: str
+    instruct: str | None = None
+    ref_audio_path: str | None = None
+    ref_text: str | None = None
+    params: dict = dc_field(default_factory=dict)
+
+
 def _resolve_synthesis_mode(
     body: SpeechRequest,
     profile_svc: ProfileService,
-) -> tuple[str, str | None, str | None, str | None]:
+    voice_file_svc: VoiceFileService | None = None,
+) -> ResolvedVoice:
     """Resolve synthesis mode for /v1/audio/speech."""
     logger.debug(
         "[TRACE] _resolve_synthesis_mode called: speaker=%r, voice=%r, instructions=%r",
@@ -163,7 +242,11 @@ def _resolve_synthesis_mode(
                 profile_id,
                 ref_audio_path,
             )
-            return "clone", None, str(ref_audio_path), ref_text
+            return ResolvedVoice(
+                mode="clone",
+                ref_audio_path=str(ref_audio_path),
+                ref_text=ref_text,
+            )
         except ProfileNotFoundError:
             if explicit_clone:
                 logger.warning(f"[TRACE] Clone profile not found: {profile_id!r}")
@@ -175,6 +258,22 @@ def _resolve_synthesis_mode(
             logger.debug(
                 f"[TRACE] Profile '{profile_id}' not found; falling back to design/preset mode"
             )
+
+    # Voice files sit between clone profiles and built-in presets: both are
+    # things the operator created, and both should beat a built-in heuristic
+    # mapping of the same name (issue #38).
+    file_voice = _lookup_voice_file(voice_file_svc, speaker_raw, voice_raw)
+    if file_voice is not None:
+        logger.info(
+            "[TRACE] Resolved to DESIGN mode (voice file %s): %s",
+            file_voice.name,
+            file_voice.instructions,
+        )
+        return ResolvedVoice(
+            mode="design",
+            instruct=file_voice.instructions,
+            params=dict(file_voice.params),
+        )
 
     if speaker_raw and not speaker_preset and not speaker_raw.lower().startswith("clone:"):
         logger.warning(
@@ -194,7 +293,7 @@ def _resolve_synthesis_mode(
         try:
             canonicalized = validate_and_canonicalize_instructions(body.instructions)
             logger.info(f"[TRACE] Resolved to DESIGN mode (instructions): {canonicalized}")
-            return "design", canonicalized, None, None
+            return ResolvedVoice(mode="design", instruct=canonicalized)
         except InstructionValidationError as e:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -208,7 +307,7 @@ def _resolve_synthesis_mode(
             speaker_key,
             preset_instruct,
         )
-        return "design", preset_instruct, None, None
+        return ResolvedVoice(mode="design", instruct=preset_instruct)
 
     if voice_preset:
         preset_instruct = voice_preset
@@ -217,7 +316,7 @@ def _resolve_synthesis_mode(
             voice_key,
             preset_instruct,
         )
-        return "design", preset_instruct, None, None
+        return ResolvedVoice(mode="design", instruct=preset_instruct)
 
     if voice_raw:
         design_voice = voice_raw
@@ -226,13 +325,13 @@ def _resolve_synthesis_mode(
         try:
             canonicalized = validate_and_canonicalize_instructions(design_voice)
             logger.info(f"[TRACE] Resolved to DESIGN mode (voice instructions): {canonicalized}")
-            return "design", canonicalized, None, None
+            return ResolvedVoice(mode="design", instruct=canonicalized)
         except InstructionValidationError as e:
             if voice_raw.lower() == "auto":
                 logger.info(
                     f"[TRACE] Resolved to DESIGN mode (default): {DEFAULT_DESIGN_INSTRUCTIONS}"
                 )
-                return "design", DEFAULT_DESIGN_INSTRUCTIONS, None, None
+                return ResolvedVoice(mode="design", instruct=DEFAULT_DESIGN_INSTRUCTIONS)
             if not is_openai_voice_preset(voice_raw):
                 logger.warning(
                     "[TRACE] Unsupported voice value=%r; rejecting instead of silent fallback",
@@ -248,7 +347,7 @@ def _resolve_synthesis_mode(
                 ) from e
 
     logger.info(f"[TRACE] Resolved to DESIGN mode (default): {DEFAULT_DESIGN_INSTRUCTIONS}")
-    return "design", DEFAULT_DESIGN_INSTRUCTIONS, None, None
+    return ResolvedVoice(mode="design", instruct=DEFAULT_DESIGN_INSTRUCTIONS)
 
 
 @router.post("/audio/speech")
@@ -257,17 +356,18 @@ async def create_speech(
     inference_svc: InferenceService = Depends(_get_inference),
     profile_svc: ProfileService = Depends(_get_profiles),
     metrics_svc: MetricsService = Depends(_get_metrics),
+    voice_file_svc: VoiceFileService = Depends(_get_voice_files),
     cfg=Depends(_get_cfg),
 ):
     """Generate speech from text."""
-    mode, instruct, ref_audio_path, ref_text = _resolve_synthesis_mode(body, profile_svc)
+    resolved = _resolve_synthesis_mode(body, profile_svc, voice_file_svc)
 
     req = SynthesisRequest(
         text=body.input,
-        mode=mode,
-        instruct=instruct,
-        ref_audio_path=ref_audio_path,
-        ref_text=ref_text,
+        mode=resolved.mode,
+        instruct=resolved.instruct,
+        ref_audio_path=resolved.ref_audio_path,
+        ref_text=resolved.ref_text,
         speed=body.speed,
         num_step=body.num_step,
         guidance_scale=body.guidance_scale,
@@ -282,9 +382,23 @@ async def create_speech(
         postprocess_output=body.postprocess_output,
         audio_chunk_duration=body.audio_chunk_duration,
         audio_chunk_threshold=body.audio_chunk_threshold,
+        seed=body.seed,
     )
+    req = _apply_voice_file_params(req, resolved.params, body)
 
-    if body.stream:
+    unknown_tags = find_unknown_nonverbal_tags(body.input)
+    if unknown_tags:
+        # Not an error: unrecognised brackets are still synthesisable as literal
+        # text. But they are almost always a typo, and the resulting audio is
+        # confusing enough that silence would be unhelpful (issue #37).
+        logger.warning(
+            "Unrecognised non-verbal tags %s — these are synthesised as literal "
+            "text, not as sounds. Supported tags: %s",
+            unknown_tags,
+            ", ".join(sorted(NONVERBAL_TAGS)),
+        )
+
+    if body.stream or cfg.stream:
         # Streaming only supports PCM
         # (WAV streaming requires implementation of streaming RIFF headers)
         if body.response_format != "pcm":
@@ -294,16 +408,12 @@ async def create_speech(
                     f"Streaming only supports response_format='pcm', got '{body.response_format}'"
                 ),
             )
-        return StreamingResponse(
-            _stream_sentences(body.input, req, inference_svc, metrics_svc, cfg),
-            media_type="audio/pcm",
-            headers={
-                "X-Audio-Sample-Rate": "24000",
-                "X-Audio-Channels": "1",
-                "X-Audio-Bit-Depth": "16",
-                "X-Audio-Format": "pcm-int16-le",
-            },
+        stream_iter = (
+            _stream_sentences_overlapped(body.input, req, inference_svc, metrics_svc, cfg)
+            if cfg.stream_overlap
+            else _stream_sentences(body.input, req, inference_svc, metrics_svc, cfg)
         )
+        return _pcm_stream_response(stream_iter, unknown_tags)
 
     timeout_s = _effective_timeout_s(body.request_timeout_s, cfg)
 
@@ -341,11 +451,57 @@ async def create_speech(
     return Response(
         content=audio_bytes,
         media_type=media_type,
-        headers={
-            "X-Audio-Duration-S": str(round(result.duration_s, 3)),
-            "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
-        },
+        headers=_synthesis_headers(result, unknown_tags),
     )
+
+
+def _apply_voice_file_params(
+    req: SynthesisRequest,
+    params: dict,
+    body: SpeechRequest,
+) -> SynthesisRequest:
+    """
+    Fill in parameters pinned by a voice file, without overruling the caller.
+
+    Uses pydantic's `model_fields_set` rather than comparing against defaults:
+    `speed` defaults to 1.0, so an explicit `"speed": 1.0` is indistinguishable
+    from an omitted one by value alone, and a voice file would silently win.
+    """
+    if not params:
+        return req
+
+    explicitly_set = body.model_fields_set
+    updates = {
+        key: value
+        for key, value in params.items()
+        if key not in explicitly_set and hasattr(req, key)
+    }
+    return replace(req, **updates) if updates else req
+
+
+def _synthesis_headers(result, unknown_tags: list[str]) -> dict[str, str]:
+    """Response headers describing how a synthesis actually went."""
+    headers = {
+        "X-Audio-Duration-S": str(round(result.duration_s, 3)),
+        "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
+    }
+    if getattr(result, "retried", False):
+        headers["X-Synthesis-Retried"] = "degenerate-output"
+    if unknown_tags:
+        headers["X-Unknown-Nonverbal-Tags"] = ",".join(unknown_tags)
+    return headers
+
+
+def _chunk_request(sentence: str, base_req: SynthesisRequest) -> SynthesisRequest:
+    """
+    One sentence of a streamed request, carrying every other parameter forward.
+
+    Uses `replace` rather than rebuilding field by field: the previous version
+    enumerated all 20 fields, so any parameter added to SynthesisRequest was
+    silently dropped from streamed requests until someone remembered this
+    function too.
+    """
+    return replace(base_req, text=sentence)
 
 
 async def _stream_sentences(
@@ -362,27 +518,7 @@ async def _stream_sentences(
         return
 
     for sentence in sentences:
-        req = SynthesisRequest(
-            text=sentence,
-            mode=base_req.mode,
-            instruct=base_req.instruct,
-            ref_audio_path=base_req.ref_audio_path,
-            ref_text=base_req.ref_text,
-            speed=base_req.speed,
-            num_step=base_req.num_step,
-            guidance_scale=base_req.guidance_scale,
-            denoise=base_req.denoise,
-            t_shift=base_req.t_shift,
-            position_temperature=base_req.position_temperature,
-            class_temperature=base_req.class_temperature,
-            duration=base_req.duration,
-            language=base_req.language,
-            layer_penalty_factor=base_req.layer_penalty_factor,
-            preprocess_prompt=base_req.preprocess_prompt,
-            postprocess_output=base_req.postprocess_output,
-            audio_chunk_duration=base_req.audio_chunk_duration,
-            audio_chunk_threshold=base_req.audio_chunk_threshold,
-        )
+        req = _chunk_request(sentence, base_req)
         try:
             result = await inference_svc.synthesize(req)
             metrics_svc.record_success(result.latency_s)
@@ -398,12 +534,76 @@ async def _stream_sentences(
             return
 
 
+async def _stream_sentences_overlapped(
+    text: str,
+    base_req: SynthesisRequest,
+    inference_svc: InferenceService,
+    metrics_svc: MetricsService,
+    cfg,
+) -> AsyncIterator[bytes]:
+    sentences = split_sentences(text, max_chars=cfg.stream_chunk_max_chars)
+
+    if not sentences:
+        return
+
+    queue: asyncio.Queue[tuple[str, SynthesisResult | Exception | None]] = asyncio.Queue(maxsize=1)
+
+    async def produce() -> None:
+        try:
+            for sentence in sentences:
+                req = _chunk_request(sentence, base_req)
+                try:
+                    result = await inference_svc.synthesize(req)
+                    metrics_svc.record_success(result.latency_s)
+                    await queue.put(("result", result))
+                except asyncio.TimeoutError:
+                    metrics_svc.record_timeout()
+                    logger.warning(f"Streaming chunk timed out: '{sentence[:50]}...'")
+                    await queue.put(("stop", None))
+                    return
+                except Exception as exc:
+                    metrics_svc.record_error()
+                    logger.exception(f"Streaming chunk failed: '{sentence[:50]}...'")
+                    await queue.put(("error", exc))
+                    return
+            await queue.put(("stop", None))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Unexpected error in streaming producer")
+            with suppress(Exception):
+                await queue.put(("stop", None))
+            raise
+
+    producer = asyncio.create_task(produce())
+    try:
+        while True:
+            kind, payload = await queue.get()
+            if kind == "result":
+                for tensor in payload.tensors:  # type: ignore[union-attr]
+                    yield tensor_to_pcm16_bytes(tensor)
+            elif kind == "error":
+                return
+            else:
+                return
+    finally:
+        if not producer.done():
+            producer.cancel()
+            with suppress(asyncio.CancelledError):
+                await producer
+        else:
+            with suppress(Exception):
+                producer.result()
+
+
 @router.post("/audio/speech/clone")
 async def create_speech_clone(
     request: Request,
     text: str = Form(..., min_length=1, max_length=10_000),
     ref_audio: UploadFile = File(...),
     ref_text: str | None = Form(default=None),
+    response_format: ResponseFormat = Form(default="wav"),
+    stream: bool = Form(default=False),
     speed: float = Form(default=1.0, ge=0.25, le=4.0),
     num_step: int | None = Form(default=None, ge=1, le=64),
     guidance_scale: float | None = Form(default=None, ge=0.0, le=10.0),
@@ -422,6 +622,7 @@ async def create_speech_clone(
     audio_chunk_duration: float | None = Form(default=None, gt=0.0),
     audio_chunk_threshold: float | None = Form(default=None, gt=0.0),
     request_timeout_s: int | None = Form(default=None, ge=1, le=600),
+    seed: int | None = Form(default=None, ge=0, le=2**32 - 1),
     inference_svc: InferenceService = Depends(_get_inference),
     metrics_svc: MetricsService = Depends(_get_metrics),
     cfg=Depends(_get_cfg),
@@ -457,11 +658,8 @@ async def create_speech_clone(
             detail=str(e),
         )
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = str(Path(tmpdir) / "ref_audio.wav")
-        Path(tmp_path).write_bytes(audio_bytes)
-
-        req = SynthesisRequest(
+    def build_request(tmp_path: str) -> SynthesisRequest:
+        return SynthesisRequest(
             text=text,
             mode="clone",
             ref_audio_path=tmp_path,
@@ -480,7 +678,46 @@ async def create_speech_clone(
             postprocess_output=postprocess_output,
             audio_chunk_duration=audio_chunk_duration,
             audio_chunk_threshold=audio_chunk_threshold,
+            seed=seed,
         )
+
+    unknown_tags = find_unknown_nonverbal_tags(text)
+    if unknown_tags:
+        logger.warning(
+            "Unrecognised non-verbal tags %s — these are synthesised as literal "
+            "text, not as sounds. Supported tags: %s",
+            unknown_tags,
+            ", ".join(sorted(NONVERBAL_TAGS)),
+        )
+
+    if stream or cfg.stream:
+        if response_format != "pcm":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Streaming only supports response_format='pcm', got '{response_format}'"
+                ),
+            )
+
+        async def clone_stream() -> AsyncIterator[bytes]:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                tmp_path = str(Path(tmpdir) / "ref_audio.wav")
+                Path(tmp_path).write_bytes(audio_bytes)
+                req = build_request(tmp_path)
+                stream_iter = (
+                    _stream_sentences_overlapped(text, req, inference_svc, metrics_svc, cfg)
+                    if cfg.stream_overlap
+                    else _stream_sentences(text, req, inference_svc, metrics_svc, cfg)
+                )
+                async for chunk in stream_iter:
+                    yield chunk
+
+        return _pcm_stream_response(clone_stream(), unknown_tags)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = str(Path(tmpdir) / "ref_audio.wav")
+        Path(tmp_path).write_bytes(audio_bytes)
+        req = build_request(tmp_path)
         timeout_s = _effective_timeout_s(request_timeout_s, cfg)
 
         try:
@@ -503,11 +740,17 @@ async def create_speech_clone(
                 detail=f"Synthesis failed: {e}",
             )
 
+        try:
+            audio_output, media_type = tensors_to_formatted_bytes(result.tensors, response_format)
+        except RuntimeError as e:
+            logger.warning(f"Format conversion failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_501_NOT_IMPLEMENTED,
+                detail=f"Audio format '{response_format}' not available: {e}",
+            )
+
         return Response(
-            content=tensors_to_wav_bytes(result.tensors),
-            media_type="audio/wav",
-            headers={
-                "X-Audio-Duration-S": str(round(result.duration_s, 3)),
-                "X-Synthesis-Latency-S": str(round(result.latency_s, 3)),
-            },
+            content=audio_output,
+            media_type=media_type,
+            headers=_synthesis_headers(result, unknown_tags),
         )

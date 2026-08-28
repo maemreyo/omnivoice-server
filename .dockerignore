@@ -1,0 +1,22 @@
+# Keep the build context small — neither image needs history, docs or samples.
+.git
+.github
+docs
+tests
+scripts
+samples
+*.egg-info
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+coverage.xml
+.coverage
+*.wav
+*.mp3
+*.flac

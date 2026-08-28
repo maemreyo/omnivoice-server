@@ -1,5 +1,19 @@
 ## Known Limitations
 
+### Non-Verbal Tags in Dense Utterances
+
+Several non-verbal tags in one short utterance can make OmniVoice return audio
+that is valid but perceptually empty — near-silent for most of its duration,
+with occasional bursts. It is an upstream sampling failure and it is
+intermittent; the identical request often succeeds on the next attempt.
+
+The server detects near-silent output and re-runs it once with
+`position_temperature=0`, so most occurrences are invisible to callers. Set
+`position_temperature: 0` yourself to skip the wasted first attempt, or spread
+tags across sentences rather than packing them into one.
+
+See [Advanced Features](08-advanced-features.md) and issue #37.
+
 ### Streaming Voice Consistency
 
 When using `stream=True` (server-only HTTP streaming transport), each sentence is synthesized independently from the same instructions or default design prompt. With non-zero temperature settings, timbre can still drift across chunks because there is no shared state between sentence-level synthesis calls.
