@@ -62,7 +62,13 @@ def _mock_synthesize(req, **_kwargs):
 
 
 @pytest.fixture
-def settings(tmp_path_factory):  # FIX: tmp_path_factory is a fixture param, not pytest attr
+def voice_dir(tmp_path_factory):
+    """Directory backing the .txt voice files feature."""
+    return tmp_path_factory.mktemp("voices")
+
+
+@pytest.fixture
+def settings(tmp_path_factory, voice_dir):  # tmp_path_factory is a fixture param
     profile_dir = tmp_path_factory.mktemp("profiles")
     return Settings(
         device="cpu",
@@ -70,6 +76,7 @@ def settings(tmp_path_factory):  # FIX: tmp_path_factory is a fixture param, not
         max_concurrent=1,
         api_key="",
         profile_dir=profile_dir,
+        voice_dir=voice_dir,
     )
 
 

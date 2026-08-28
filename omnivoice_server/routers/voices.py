@@ -24,6 +24,7 @@ from ..services.profiles import (
     ProfileNotFoundError,
     ProfileService,
 )
+from ..services.voice_files import VoiceFileService
 from ..voice_presets import DEFAULT_DESIGN_INSTRUCTIONS, DESIGN_ATTRIBUTES, OPENAI_VOICE_PRESETS
 
 logger = logging.getLogger(__name__)
@@ -34,12 +35,17 @@ def _get_profiles(request: Request) -> ProfileService:
     return request.app.state.profile_svc
 
 
+def _get_voice_files(request: Request) -> VoiceFileService:
+    return request.app.state.voice_file_svc
+
+
 # ── GET /v1/voices ───────────────────────────────────────────────────────────
 
 
 @router.get("/voices")
 async def list_voices(
     profile_svc: ProfileService = Depends(_get_profiles),
+    voice_file_svc: VoiceFileService = Depends(_get_voice_files),
 ):
     built_in = [
         {
@@ -76,10 +82,24 @@ async def list_voices(
         for p in profiles
     ]
 
+    # Voice files are listed under their bare name, because that bare name is
+    # exactly what an OpenAI-compatible client will send back as `voice`.
+    file_voices = [
+        {
+            "id": v.name,
+            "type": "file",
+            "description": v.description or v.instructions,
+            "instructions": v.instructions,
+            "params": v.params,
+        }
+        for v in voice_file_svc.list_voices()
+    ]
+
+    all_voices = built_in + file_voices + clone_voices
     return {
-        "voices": built_in + clone_voices,
+        "voices": all_voices,
         "design_attributes": DESIGN_ATTRIBUTES,
-        "total": len(built_in) + len(clone_voices),
+        "total": len(all_voices),
     }
 
 
