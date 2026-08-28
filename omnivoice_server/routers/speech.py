@@ -112,17 +112,22 @@ def _effective_timeout_s(request_timeout_s: int | None, cfg) -> int:
     return request_timeout_s or cfg.request_timeout_s
 
 
-def _pcm_stream_response(stream_iter: AsyncIterator[bytes]) -> StreamingResponse:
-    return StreamingResponse(
-        stream_iter,
-        media_type="audio/pcm",
-        headers={
-            "X-Audio-Sample-Rate": "24000",
-            "X-Audio-Channels": "1",
-            "X-Audio-Bit-Depth": "16",
-            "X-Audio-Format": "pcm-int16-le",
-        },
-    )
+def _pcm_stream_response(
+    stream_iter: AsyncIterator[bytes],
+    unknown_tags: list[str] | None = None,
+) -> StreamingResponse:
+    headers = {
+        "X-Audio-Sample-Rate": "24000",
+        "X-Audio-Channels": "1",
+        "X-Audio-Bit-Depth": "16",
+        "X-Audio-Format": "pcm-int16-le",
+    }
+    # A streamed response cannot report a retry — headers go out before the
+    # first sentence is generated — but unrecognised tags are known upfront,
+    # and a streaming caller has the same typo problem as any other.
+    if unknown_tags:
+        headers["X-Unknown-Nonverbal-Tags"] = ",".join(unknown_tags)
+    return StreamingResponse(stream_iter, media_type="audio/pcm", headers=headers)
 
 
 def _lookup_voice_file(
@@ -408,7 +413,7 @@ async def create_speech(
             if cfg.stream_overlap
             else _stream_sentences(body.input, req, inference_svc, metrics_svc, cfg)
         )
-        return _pcm_stream_response(stream_iter)
+        return _pcm_stream_response(stream_iter, unknown_tags)
 
     timeout_s = _effective_timeout_s(body.request_timeout_s, cfg)
 
@@ -707,7 +712,7 @@ async def create_speech_clone(
                 async for chunk in stream_iter:
                     yield chunk
 
-        return _pcm_stream_response(clone_stream())
+        return _pcm_stream_response(clone_stream(), unknown_tags)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = str(Path(tmpdir) / "ref_audio.wav")

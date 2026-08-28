@@ -154,3 +154,38 @@ def test_nan_samples_count_as_silence_rather_than_poisoning_the_mean():
 def test_multiple_tensors_are_scored_as_one_stream():
     chunks = [_mostly_silent(3.0), _mostly_silent(3.0)]
     assert is_degenerate_audio(chunks, silence_rms=0.01, max_silent_fraction=0.75)
+
+
+# ── Streaming responses ──────────────────────────────────────────────────────
+
+
+def test_streamed_response_reports_unknown_tags(client):
+    """
+    A retry cannot be reported on a stream — headers go out first — but a typo
+    is knowable before generation starts, and streaming callers make typos too.
+    """
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hi [laugh] there", "stream": True, "response_format": "pcm"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers["X-Unknown-Nonverbal-Tags"] == "laugh"
+
+
+def test_streamed_response_omits_the_header_when_tags_are_valid(client):
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hi [laughter] there", "stream": True, "response_format": "pcm"},
+    )
+    assert resp.status_code == 200
+    assert "X-Unknown-Nonverbal-Tags" not in resp.headers
+
+
+def test_streamed_response_keeps_its_pcm_headers(client):
+    """The new header must not displace the format headers clients rely on."""
+    resp = client.post(
+        "/v1/audio/speech",
+        json={"input": "Hi [laugh] there", "stream": True, "response_format": "pcm"},
+    )
+    assert resp.headers["X-Audio-Sample-Rate"] == "24000"
+    assert resp.headers["X-Audio-Format"] == "pcm-int16-le"
