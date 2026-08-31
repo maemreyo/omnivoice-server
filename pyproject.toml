@@ -24,7 +24,7 @@ dependencies = [
     # FIX: pin omnivoice to a compatible minor series.
     # OmniVoice is brand-new (April 2026) and its API may change in 0.2.x.
     # Widen this bound only after reviewing upstream changelogs.
-    "omnivoice>=0.1.0,<0.2.0",
+    "omnivoice>=0.1.0,<0.3.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "python-multipart>=0.0.12",
