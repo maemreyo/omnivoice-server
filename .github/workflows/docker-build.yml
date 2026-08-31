@@ -36,7 +36,7 @@ jobs:
             dockerfile: Dockerfile.cuda
             free-disk: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # The CUDA base image plus cu128 torch wheels do not fit alongside the
       # runner's preinstalled toolchains.
