@@ -1,5 +1,5 @@
 # Multi-stage build for omnivoice-server
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -25,7 +25,7 @@ RUN pip install --no-cache-dir torch==2.8.0 torchaudio==2.8.0 \
 RUN pip install --no-cache-dir .
 
 # Runtime stage
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
